@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.service';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { GovernanceModule } from './governance/governance.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { NotesModule } from './notes/notes.module';
 import { OpsModule } from './ops/ops.module';
@@ -53,6 +54,7 @@ import { RedisModule } from './redis/redis.module';
     NotesModule,
     PaymentsModule,
     OpsModule,
+    GovernanceModule,
     AdminModule,
     ScheduleModule.forRoot(),
   ],

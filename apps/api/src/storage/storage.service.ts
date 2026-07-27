@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ValidationError } from '../common/errors';
@@ -194,6 +200,45 @@ export class StorageService {
 
     if (sizeBytes <= 0) {
       throw new ValidationError({ sizeBytes: ['That file appears to be empty.'] });
+    }
+  }
+
+  /**
+   * Write bytes the server generated itself — report exports, invoice PDFs,
+   * generated letters. The presigned path is for browser uploads only; these
+   * never pass through a client, so there is nothing to sign.
+   */
+  async putObject(storageKey: string, body: Buffer, contentType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.env.S3_BUCKET,
+        Key: storageKey,
+        Body: body,
+        ContentType: contentType,
+        ContentLength: body.length,
+      }),
+    );
+  }
+
+  /**
+   * Delete an object.
+   *
+   * Deliberately narrow: this exists for expiring *generated* artefacts such as
+   * report exports. Evidence, certificates and consent forms are permanent by
+   * requirement, and their tables independently reject DELETE — nothing in the
+   * application calls this on them.
+   */
+  async deleteObject(storageKey: string): Promise<void> {
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: this.env.S3_BUCKET, Key: storageKey }),
+      );
+    } catch (error: unknown) {
+      // An artefact that is already gone is the desired end state, so a
+      // failure here must not stall the sweeper.
+      this.logger.warn(
+        `Could not delete ${storageKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
