@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AdminModule } from './admin/admin.module';
 import { ApplicantsModule } from './applicants/applicants.module';
 import { AuditModule } from './audit/audit.service';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { LookupsModule } from './lookups/lookups.module';
+import { NotesModule } from './notes/notes.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { TimelineModule } from './timeline/timeline.module';
+import { VaultModule } from './vault/vault.module';
 import { AllExceptionsFilter } from './common/exception.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
 import { ConfigModule } from './config/config.module';
@@ -38,6 +43,11 @@ import { RedisModule } from './redis/redis.module';
     TimelineModule,
     PrivacyModule,
     ApplicantsModule,
+    DashboardModule,
+    LookupsModule,
+    VaultModule,
+    NotesModule,
+    AdminModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

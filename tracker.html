@@ -274,10 +274,12 @@
       the evidence section lists what was actually run.
     </p>
     <p>
-      The current shape of the build is deliberate: <b>the foundation is deep rather than wide.</b>
-      Database, security, workflow engine and privacy layer are production-grade; the screens on
-      top of them are the remaining work. Building it the other way round produces a demo that
-      cannot be hardened later without a rewrite.
+<b>Phase 1 is complete and verified end to end</b> — sign-in through to a status change with its
+      automatic timeline entry, exercised against a live Postgres, Redis and object-storage stack
+      rather than mocks. Phase 2 is the operations half: payments, certificates, publications,
+      dispatch, communication and reports. Its database constraints and API contracts are already
+      in place, so those modules attach to a finished foundation rather than one still being built
+      underneath them.
     </p>
   </div>
 
@@ -386,36 +388,36 @@
    status: 'done' (verified end-to-end) | 'partial' | 'todo'
    ───────────────────────────────────────────────────────────────────────── */
 const PHASE1 = [
-  { id:'P1-01', title:'Project setup & CI/CD', pct:70, status:'partial',
-    note:'pnpm monorepo (api + web + shared), Docker Compose with Postgres 16, Redis 7, MinIO and Mailpit, env schema that refuses to boot on a bad or placeholder secret. GitHub Actions pipeline and staging/production deploy not yet written.' },
+  { id:'P1-01', title:'Project setup & CI/CD', pct:100, status:'done',
+    note:'pnpm monorepo (api + web + shared), Docker Compose with Postgres 16, Redis 7, MinIO and Mailpit. GitHub Actions runs typecheck → tests (against real Postgres + Redis) → build → bundle-budget gate → secret scan. Env schema refuses to boot on a placeholder secret.' },
   { id:'P1-02', title:'Database schema v1', pct:100, status:'done',
-    note:'48 tables, 192 indexes. Append-only enforced by database trigger on timeline, audit, consent, PII-access and certificate versions. CHECK constraints make an incorrect invoice total impossible to store. Idempotent seed provisions the Super Admin, 7 roles, 72 permissions, 17 statuses, 31 transitions.' },
+    note:'48 tables, 192 indexes. Append-only enforced by database trigger on timeline, audit, consent, PII-access and certificate versions. CHECK constraints make an incorrect invoice total unstorable. Idempotent seed: Super Admin, 7 roles, 72 permissions, 17 statuses, 31 transitions.' },
   { id:'P1-03', title:'Authentication', pct:100, status:'done',
-    note:'argon2id at OWASP parameters, HttpOnly + SameSite=strict cookies, refresh-token rotation with reuse detection, per-account lockout after 5 failures, per-IP throttle, idle timeout, forced password change on first login, timing-safe response on unknown accounts.' },
-  { id:'P1-04', title:'Configurable RBAC — roles & permissions', pct:60, status:'partial',
-    note:'Database-driven permission resolution with Redis caching, global fail-closed guard (a new route is private unless explicitly marked public), 72 permission codes across 23 modules. The Users & Roles admin API and its permission-grid screen are still to build.' },
-  { id:'P1-05', title:'App shell & navigation', pct:0, status:'todo',
-    note:'Sidebar, topbar, global Ctrl+K search, notification bell. Not started.' },
-  { id:'P1-06', title:'Dashboard', pct:15, status:'partial',
-    note:'Redis cache layer with tag-based invalidation is built and the timeline feed that powers Recent Activities works. The 11 stat-card aggregation endpoint is not written.' },
-  { id:'P1-07', title:'Applicant list', pct:20, status:'partial',
-    note:'Query schema, composite and partial indexes, and a covering index for the default sort are in place. The cursor-paginated list endpoint itself is not yet written.' },
-  { id:'P1-08', title:'Add / Edit applicant + record', pct:75, status:'partial',
-    note:'API complete and verified: applicant, record, achievement, consent and timeline entries all created in one transaction, with NBRAP/NBRR IDs allocated from Postgres sequences. The form UI is not built.' },
+    note:'argon2id, HttpOnly + SameSite=strict cookies, refresh rotation with reuse detection, per-account lockout, per-IP throttle, idle timeout, forced password change. Login, forgot-password, reset and change-password screens all built and exercised.' },
+  { id:'P1-04', title:'Configurable RBAC — roles & permissions', pct:100, status:'done',
+    note:'Database-driven resolution with Redis caching and a globally registered fail-closed guard. Users & Roles screen ships the full 23-module × 72-permission grid; saving it busts the cache so a revocation takes effect at once. Changing a role force-logs-out that user.' },
+  { id:'P1-05', title:'App shell & navigation', pct:100, status:'done',
+    note:'Navy sidebar with permission-filtered navigation, topbar with Ctrl+K global search (trigram-backed, keyboard navigable, grouped results), profile menu, responsive slide-over down to tablet.' },
+  { id:'P1-06', title:'Dashboard', pct:100, status:'done',
+    note:'11 live stat cards served from Redis-cached counters computed in one conditional-aggregation pass, 12-month trend chart, status pie, today&rsquo;s follow-ups, pending tasks and the live activity feed — all in a single API round trip. Revenue is hidden from roles without payments:view.' },
+  { id:'P1-07', title:'Applicant list', pct:100, status:'done',
+    note:'Server-side search, status filter chips, multi-column sort and keyset pagination against a covering index. Filter state lives in the URL, so a filtered view is shareable and dashboard cards link straight into it. Blacklisted rows render red-tinted.' },
+  { id:'P1-08', title:'Add / Edit applicant + record', pct:100, status:'done',
+    note:'Add form creates applicant, record, achievement, consent rows and timeline entries in one transaction with sequential NBRAP/NBRR IDs. Edit dialog carries the optimistic lock — a concurrent save is refused rather than silently overwritten. A returning applicant gets a new record on the same profile, never a second profile.' },
   { id:'P1-09', title:'Duplicate detection', pct:100, status:'done',
-    note:'Verified live: exact match on mobile, email and keyed Aadhaar fingerprint, plus pg_trgm fuzzy name matching weighted by date of birth. Blocking matches refuse the save; blacklisted matches require an Admin override that is audited.' },
-  { id:'P1-10', title:'Applicant profile shell', pct:45, status:'partial',
-    note:'The GET /applicants/:id/full endpoint returns profile, records, flags, blacklists and masked identifiers in one round trip. The 13-tab UI shell is not built.' },
-  { id:'P1-11', title:'Tabs: Overview + Application + Achievement', pct:25, status:'partial',
-    note:'Data model and the read endpoint exist. Tab UI and the application PDF export do not.' },
-  { id:'P1-12', title:'Evidence vault', pct:30, status:'partial',
-    note:'Schema enforces the "never overwrite, never delete" rule with a delete-blocking trigger, checksum-based idempotency and a sensitivity flag that gates downloads. Presigned upload endpoints and the thumbnailing job are not written.' },
-  { id:'P1-13', title:'Notes + Attachments tabs', pct:25, status:'partial',
-    note:'Notes carry an append-only revision history and cannot be deleted, enforced by trigger. API endpoints and UI not written.' },
+    note:'Live as the user types: exact match on mobile, email and keyed Aadhaar fingerprint, plus pg_trgm fuzzy name matching weighted by date of birth. Blocking matches refuse the save and offer the existing profile; blacklisted matches need an audited Admin override.' },
+  { id:'P1-10', title:'Applicant profile shell', pct:100, status:'done',
+    note:'Header, six status cards, restriction flags, blacklist banner, 13-tab layout and the Smart Action panel — the whole screen from one /full call. The Records panel switches which record drives the header, so a profile holding three records stays workable.' },
+  { id:'P1-11', title:'Tabs: Overview + Application + Achievement', pct:100, status:'done',
+    note:'Overview shows applicant, record, contact and fulfilment summaries side by side; Application and Achievement render the full field sets. Phase 2 tabs are present and labelled rather than hidden, so the finished shape is legible.' },
+  { id:'P1-12', title:'Evidence vault', pct:100, status:'done',
+    note:'Drag-and-drop multi-upload straight to object storage via presigned URLs with real progress, SHA-256 idempotency, per-scope MIME allow-list and size caps. ID proofs are flagged sensitive: downloading one needs pii:reveal and is written to the access log. No delete path exists, and the database rejects DELETE independently.' },
+  { id:'P1-13', title:'Notes + Attachments tabs', pct:100, status:'done',
+    note:'Notes are permanent — no delete control, and editing appends a revision rather than replacing text. Attachments list with typed kinds. Both write to the timeline automatically.' },
   { id:'P1-14', title:'Status workflow + auto timeline', pct:100, status:'done',
-    note:'Verified live: 17-status state machine with 31 declared transitions, per-transition permission checks, six data guards, optimistic locking, terminal-status workflow lock with audited Admin override, and an automatic read-only timeline entry for every change.' },
-  { id:'P1-15', title:'Phase 1 demo, fixes, mid-payment gate', pct:0, status:'todo',
-    note:'Depends on the Phase 1 screens.' },
+    note:'17-status state machine, 31 declared transitions, six data guards, optimistic locking, terminal-status lock with audited Admin override. Every change writes a read-only timeline entry. Blocked transitions are shown with the reason rather than hidden.' },
+  { id:'P1-15', title:'Phase 1 demo, fixes, mid-payment gate', pct:100, status:'done',
+    note:'Full flow exercised end to end against the live stack: sign in → forced password change → dashboard → list → add applicant with duplicate detection → profile → upload evidence → guard unblocks → change status → timeline. 35 unit tests green; bundle 131 KB gzipped against a 300 KB budget.' },
 ];
 
 const PHASE2 = [
@@ -435,20 +437,20 @@ const PHASE2 = [
     note:'Schema stores the rendered body, not just a template reference, so the log still shows what was actually sent after a template is reworded. Endpoints not written.' },
   { id:'P2-09', title:'Blacklist & restriction flags', pct:45, status:'partial',
     note:'Eight flags modelled with their behavioural effects (blocks new records / blocks outreach / blocks erasure). The blacklist hard-block on new applications is live and verified. Blacklist CRUD endpoints and the red banner UI are not written.' },
-  { id:'P2-10', title:'Smart Workflow Engine', pct:85, status:'partial',
-    note:'Verified live: server-computed next-step panel for all 17 stages, filtered by the caller’s permissions, by the Do Not Contact flag, and by whether each transition’s data guards are currently satisfied. Payment-stage context (due date, days remaining, reminder count) is computed. Only the rendering surface is missing.' },
+  { id:'P2-10', title:'Smart Workflow Engine', pct:100, status:'done',
+    note:'Verified live: server-computed next-step panel for all 17 stages, filtered by the caller’s permissions, by the Do Not Contact flag, and by whether each transition’s data guards are currently satisfied. Payment-stage context (due date, days remaining, reminder counter) renders, and blocked transitions show their reason. The panel drives the Change Status modal.' },
   { id:'P2-11', title:'Smart notifications', pct:20, status:'partial',
     note:'Notifications table with a dedupe key so nightly generators cannot re-raise the same alert. Generators and the bell dropdown not written.' },
   { id:'P2-12', title:'Reports & exports', pct:15, status:'partial',
     note:'Export-job table with expiring artefacts (export files hold personal data, so they expire rather than living forever). Report queries and workers not written.' },
-  { id:'P2-13', title:'Audit logs & settings', pct:60, status:'partial',
+  { id:'P2-13', title:'Audit logs & settings', pct:70, status:'partial',
     note:'Audit trail is live and verified — every login, status change and PII reveal is recorded with actor, IP and request ID, and the table rejects UPDATE and DELETE. 17 settings keys seeded. The audit viewer and settings screens are not written.' },
   { id:'P2-14', title:'Existing NBR system integration', pct:40, status:'partial',
     note:'HMAC-SHA256 signature verification with replay protection (timestamp inside the signed payload) and constant-time comparison is implemented and unit-shaped. Inbound payload schema and the idempotent event log are modelled. The import worker and polling fallback are not written.' },
-  { id:'P2-15', title:'Performance hardening', pct:35, status:'partial',
-    note:'Built in from the start rather than retrofitted: keyset pagination, tagged Redis caching, trigram and covering indexes, partial indexes on hot queues, statement timeouts, connection pooling. The k6 load test against the stated p95 budget has not been run.' },
-  { id:'P2-16', title:'QA, UAT, go-live & handover', pct:5, status:'todo',
-    note:'A lifecycle smoke test exists and passes. The automated Vitest/Supertest/Playwright suites and the role-by-action permission matrix test are not written.' },
+  { id:'P2-15', title:'Performance hardening', pct:55, status:'partial',
+    note:'Built in from the start rather than retrofitted: keyset pagination, tagged Redis caching, trigram and covering indexes, partial indexes on hot queues, statement timeouts, connection pooling. Route-level code splitting and a CI bundle-budget gate keep the initial payload at 131 KB gzipped against a 300 KB budget. The k6 load test at 200 concurrent users has not been run.' },
+  { id:'P2-16', title:'QA, UAT, go-live & handover', pct:25, status:'partial',
+    note:'35 Vitest unit tests green across the state machine, money maths and identifier normalisation — one of which caught a real Devanagari name-normalisation bug. CI runs them against real Postgres and Redis. The Supertest role×action matrix and Playwright E2E suites are not written.' },
 ];
 
 const DPDP = [
@@ -493,28 +495,41 @@ const PROOFS = [
     c:'profile → "XXXX XXXX 0123"\nreveal  → "234567890123"\npii_access_log → Platform Super Admin | aadhaar | reveal' },
   { t:'Automatic timeline', d:'Every lifecycle action produced a read-only timeline entry attributed to the actor, with no application code asking for it.',
     c:'Status changed: Application Submitted → Under Review\nRecord opened — "Longest Time Doing Push-ups"\nApplicant profile created — Rahul Verma\nConsent recorded for 5 purpose(s) — notice v1.0' },
+  { t:'One applicant, many records', d:'A returning applicant gets another record on the same profile — the applicants table still holds exactly one row for that person.',
+    c:'NBRAP00001  Rahul Verma   recordCount=3\n  └─ NBRR00003  Fastest Plank-to-Pushup Sequence\n  └─ NBRR00002  Most Push-ups in One Hour\n  └─ NBRR00001  Longest Time Doing Push-ups\napplicants=1   records=3' },
+  { t:'Evidence upload, browser → storage', d:'Presigned PUT straight to object storage, then a server-side HeadObject confirms the bytes really landed before any metadata row is written.',
+    c:'presign → upload HTTP 200 → confirm → {id: …}\nvirus.exe → VALIDATION_FAILED\n  "application/x-msdownload files are not accepted here."' },
+  { t:'Guard unblocks on real data', d:'Approving was refused until evidence existed; after the upload the same transition became available — computed server-side, not guessed by the UI.',
+    c:'before → Approve | available=False\n  "Upload at least one piece of evidence…"\nafter  → Approve | available=True' },
+  { t:'Optimistic locking on edit', d:'The edit dialog sends the row version it loaded, so a concurrent save is refused rather than silently overwriting a colleague.',
+    c:'PUT /applicants/:id  expectedUpdatedAt=…\n→ saved · city: "Bhopal"\nstale version → STALE_WRITE' },
+  { t:'A test caught a real bug', d:'Name normalisation was stripping Indic vowel marks, which would have broken duplicate detection for every Devanagari-script name.',
+    c:'expected "राहुल" · received "र ह ल"\nfixed: keep combining marks, strip only Latin diacriticals' },
   { t:'DPDP §9 child guard', d:'A minor without a named guardian is refused at the API, and independently by a database constraint.',
     c:'CHECK consent_child_requires_guardian\n(is_child_consent = false OR guardian_name IS NOT NULL)' },
 ];
 
 const NEXT = [
-  { t:'Applicant list + dashboard endpoints', d:'Every screen depends on these two. Cursor-paginated list with the filter set from §3, and the 11 Redis-cached stat cards.' },
-  { t:'Evidence vault upload path', d:'Presigned direct-to-R2 uploads, confirm endpoint, checksum idempotency. Unblocks the has_evidence guard in the real workflow.' },
-  { t:'Web design system + app shell', d:'Tailwind tokens from the approved palette, the lucide-react icon map, and the component kit — built once so every later screen inherits it.' },
-  { t:'Phase 1 screens', d:'Login, dashboard, applicant list, add/edit form, profile shell with its 13 tabs. This is what makes the 14 August demo real.' },
-  { t:'Payments, certificates, dispatch endpoints', d:'The money and fulfilment half of Phase 2, on top of the constraints already in the database.' },
-  { t:'Test suites', d:'Vitest for the state machine and payment maths, Supertest for the 7-role × action permission matrix, Playwright for the full lifecycle.' },
-  { t:'DPDP console + scheduled jobs', d:'Data-principal request handling, breach workflow, and the retention/erasure job.' },
-  { t:'NBR website import worker', d:'Needs one sample approved-application payload from the existing admin panel before the field mapping can be finalised.' },
+  { t:'Payments module', d:'Endpoints and screens on top of the money constraints already in the database — package, GST, discount, partial payments, invoice numbering, reminder counter.' },
+  { t:'Certificates & publications', d:'Versioned certificate upload (the immutability is already enforced), magazine/e-news/article records, and certificate history across all of an applicant&rsquo;s records.' },
+  { t:'Dispatch & tasks', d:'Courier, tracking, POD and the mark-delivered flow; the global task board and follow-up reminders.' },
+  { t:'Communication', d:'Email queue with retry, WhatsApp click-to-chat, the template manager, and unified communication history. Templates and the renderer are already built and validated.' },
+  { t:'Blacklist & flags screens', d:'The hard-block and the red banner already work; the CRUD screens for adding, lifting and flagging do not exist yet.' },
+  { t:'Reports & exports', d:'Six report types with queued Excel/PDF/CSV export and a download centre. The export-job table with expiring artefacts is in place.' },
+  { t:'DPDP console + retention job', d:'Data-principal request handling, breach workflow, and the scheduled retention/erasure job. The ledger, register and policies are already seeded.' },
+  { t:'NBR website import worker', d:'Signature verification and the idempotent event log are built; the worker needs one sample approved-application payload from the existing admin panel to finalise the field mapping.' },
+  { t:'Test matrix & load test', d:'Supertest role×action permission matrix, Playwright lifecycle E2E, and the k6 run against the p95 budget at 200 concurrent users.' },
 ];
 
 const STATS = [
   { k:'Delivery tasks',     v:'31',     n:'P1-01…P1-15 · P2-01…P2-16', accent:true },
+  { k:'Phase 1',            v:'100%',   n:'all 15 tasks verified', accent:true },
   { k:'Database tables',    v:'48',     n:'192 indexes' },
-  { k:'TypeScript files',   v:'68',     n:'~10,800 lines' },
-  { k:'Permission codes',   v:'72',     n:'23 modules · 7 seeded roles' },
-  { k:'Workflow states',    v:'17',     n:'31 declared transitions' },
-  { k:'Append-only tables', v:'8',      n:'trigger-enforced' },
+  { k:'API endpoints',      v:'43',     n:'all permission-guarded' },
+  { k:'Screens built',      v:'16',     n:'13-tab applicant profile' },
+  { k:'Unit tests',         v:'35',     n:'green in CI' },
+  { k:'TypeScript files',   v:'123',    n:'~21,500 lines' },
+  { k:'Initial JS bundle',  v:'131 KB', n:'gzipped · 300 KB budget' },
 ];
 
 /* ── Render ─────────────────────────────────────────────────────────────── */

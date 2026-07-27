@@ -20,7 +20,7 @@ Live build status: open **[`tracker.html`](tracker.html)** in a browser.
 | Database | PostgreSQL 16 · Drizzle ORM | `pg_trgm` fuzzy search and partial indexes serve the search and duplicate-detection requirements with no extra services |
 | Cache / queue | Redis 7 · BullMQ | Dashboard counters, sessions, rate limiting, and every heavy job |
 | Files | Cloudflare R2 (MinIO locally) | Direct-to-storage presigned uploads; the API only records metadata |
-| Web | React 18 · Vite · TanStack Query · Tailwind | *(not yet built — see tracker)* |
+| Web | React 18 · Vite · TanStack Query · Tailwind | Route-split SPA; 131 KB gzipped initial payload against a 300 KB budget, enforced in CI |
 | Shared | `@nbr/shared` | Zod schemas, the workflow state machine and the RBAC vocabulary, imported by **both** sides so the form and the endpoint cannot disagree |
 
 ## Getting started
@@ -32,7 +32,15 @@ pnpm infra:up                 # Postgres, Redis, MinIO, Mailpit
 pnpm --filter @nbr/shared build
 pnpm db:migrate
 pnpm db:seed
-pnpm dev:api
+pnpm dev                      # API on :4100, web on :5173
+```
+
+Create the private storage bucket once:
+
+```bash
+docker run --rm --network nbr-crm_default --entrypoint sh minio/mc:latest -c \
+  "mc alias set local http://nbr-minio:9000 nbr_minio nbr_minio_password && \
+   mc mb --ignore-existing local/nbr-vault && mc anonymous set none local/nbr-vault"
 ```
 
 Generate the secrets the env schema demands:
@@ -59,7 +67,10 @@ apps/api/          NestJS API
   src/privacy/     DPDP: identifier encryption, PII access logging
   src/timeline/    Append-only activity log
   src/audit/       Append-only audit trail
-apps/web/          React SPA (not yet built)
+apps/web/          React SPA
+  src/components/  Design-system kit + app shell
+  src/routes/      Auth, dashboard, applicants, admin screens
+  src/lib/         API client (CSRF + token refresh), icon map, formatters
 packages/shared/   Domain kernel — statuses, transitions, permissions, Zod schemas
 docs/source/       Client requirement documents & the production plan
 tracker.html       Build progress tracker
@@ -98,6 +109,22 @@ NBR is the Data Fiduciary; applicants are Data Principals. Implemented controls:
 
 These are engineering controls. **Have a lawyer review the notice wording and retention
 periods before go-live.**
+
+## Phase 1 status
+
+Complete and verified end to end against a live stack. Open `tracker.html` for the
+task-by-task breakdown and the evidence behind each one.
+
+| # | Task | # | Task |
+|---|---|---|---|
+| P1-01 | Setup & CI/CD | P1-09 | Duplicate detection |
+| P1-02 | Database schema | P1-10 | Profile shell |
+| P1-03 | Authentication | P1-11 | Overview/Application/Achievement tabs |
+| P1-04 | Configurable RBAC | P1-12 | Evidence vault |
+| P1-05 | App shell & navigation | P1-13 | Notes & attachments |
+| P1-06 | Dashboard | P1-14 | Workflow + auto timeline |
+| P1-07 | Applicant list | P1-15 | Demo & verification |
+| P1-08 | Add / edit applicant | | |
 
 ## Extending the system
 

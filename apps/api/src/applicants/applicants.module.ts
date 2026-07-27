@@ -3,6 +3,8 @@ import { PrivacyModule } from '../privacy/privacy.module';
 import { RecordsController } from '../records/records.controller';
 import { WorkflowService } from '../records/workflow.service';
 import { TimelineModule } from '../timeline/timeline.module';
+import { AddRecordService } from './add-record.service';
+import { ApplicantListService } from './applicant-list.service';
 import { ApplicantsController } from './applicants.controller';
 import { ApplicantsService } from './applicants.service';
 import { DuplicateService } from './duplicate.service';
@@ -16,7 +18,7 @@ import { DuplicateService } from './duplicate.service';
 @Module({
   imports: [TimelineModule, PrivacyModule],
   controllers: [ApplicantsController, RecordsController],
-  providers: [ApplicantsService, DuplicateService, WorkflowService],
-  exports: [ApplicantsService, DuplicateService, WorkflowService],
+  providers: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],
+  exports: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],
 })
 export class ApplicantsModule {}

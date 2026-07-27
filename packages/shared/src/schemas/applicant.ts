@@ -203,3 +203,35 @@ export const applicantListQuerySchema = cursorQuerySchema.merge(sortQuerySchema)
 });
 
 export type ApplicantListQuery = z.infer<typeof applicantListQuerySchema>;
+
+/**
+ * Add a further record to an existing applicant (§4 "Person → Record #1 →
+ * Record #2 → Record #3"). Deliberately has no `applicant` block — a returning
+ * applicant's personal details are already on file and are edited through the
+ * profile, not re-entered per record.
+ */
+export const addRecordSchema = z.object({
+  source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
+  assignedToUserId: uuidSchema.optional(),
+  initialStatus: z
+    .nativeEnum(RECORD_STATUS)
+    .default(RECORD_STATUS.NEW_LEAD)
+    .refine(
+      (s) =>
+        (
+          [
+            RECORD_STATUS.NEW_LEAD,
+            RECORD_STATUS.APPLICATION_SUBMITTED,
+            RECORD_STATUS.UNDER_REVIEW,
+          ] as string[]
+        ).includes(s),
+      { message: 'A new record can only start at lead, submitted or under-review' },
+    ),
+  internalRemarks: optionalTrimmedString(2000),
+  achievement: achievementSchema,
+  /** Admin override when the applicant is blacklisted (§19). */
+  override: z.boolean().default(false),
+  overrideReason: optionalTrimmedString(500),
+});
+
+export type AddRecordInput = z.infer<typeof addRecordSchema>;

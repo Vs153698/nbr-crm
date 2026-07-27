@@ -47,13 +47,24 @@ export function normaliseEmail(input: string | null | undefined): string | null 
   return trimmed.length > 0 ? trimmed : null;
 }
 
-/** Collapse whitespace, strip punctuation and lowercase, for fuzzy name match. */
+/**
+ * Collapse whitespace, strip punctuation and lowercase, for fuzzy name match.
+ *
+ * Two subtleties, both of which matter for Indian names:
+ *
+ *  • Only *Latin* combining diacriticals (U+0300–U+036F) are stripped, so
+ *    "José" and "Jose" match. Indic vowel signs live in their own blocks and
+ *    must survive — stripping them turns "राहुल" into "र ह ल", which would
+ *    break duplicate detection for every Devanagari-script name.
+ *  • `\p{M}` (combining marks) is kept alongside `\p{L}`, because in Indic
+ *    scripts a matra is part of the letter, not decoration on it.
+ */
 export function normaliseName(input: string | null | undefined): string | null {
   if (!input) return null;
   const cleaned = input
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
