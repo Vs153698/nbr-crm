@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { NotesModule } from './notes/notes.module';
+import { OpsModule } from './ops/ops.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StorageModule } from './storage/storage.module';
 import { PrivacyModule } from './privacy/privacy.module';
@@ -51,6 +52,7 @@ import { RedisModule } from './redis/redis.module';
     VaultModule,
     NotesModule,
     PaymentsModule,
+    OpsModule,
     AdminModule,
     ScheduleModule.forRoot(),
   ],
