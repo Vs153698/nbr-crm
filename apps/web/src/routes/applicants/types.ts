@@ -158,3 +158,133 @@ export interface AttachmentItem {
   uploadedByName: string | null;
   createdAt: string;
 }
+
+// ── Phase 2 shapes ──────────────────────────────────────────────────────────
+
+export interface PaymentSummary {
+  id: string;
+  packageName: string;
+  amount: string;
+  discount: string;
+  taxableValue: string;
+  gstPercent: string;
+  gstAmount: string;
+  finalAmount: string;
+  amountPaid: string;
+  balanceDue: string;
+  status: string;
+  dueDate: string | null;
+  daysRemaining: number | null;
+  overdue: boolean;
+  reminderCount: number;
+  settledAt: string | null;
+  transactions: Array<{
+    id: string;
+    amount: string;
+    paidOn: string;
+    mode: string;
+    transactionRef: string | null;
+    remarks: string | null;
+    isReversal: boolean;
+    recordedByName: string | null;
+  }>;
+  invoices: Array<{
+    id: string;
+    invoiceNumber: string;
+    issuedOn: string;
+    finalAmount: string;
+    cancelledAt: string | null;
+  }>;
+}
+
+export interface CertificateView {
+  id: string;
+  certificateNumber: string | null;
+  recordNumber: string | null;
+  currentVersion: number;
+  issueDate: string | null;
+  versions: Array<{
+    id: string;
+    version: number;
+    certificateNumber: string | null;
+    issueDate: string | null;
+    versionReason: string | null;
+    hasEditableFile: boolean;
+    uploadedByName: string | null;
+    createdAt: string;
+    isCurrent: boolean;
+  }>;
+}
+
+export interface PublicationRow {
+  id: string;
+  kind: string;
+  title: string;
+  publishedOn: string | null;
+  magazineName: string | null;
+  pageNumber: string | null;
+  url: string | null;
+  hasFile: boolean;
+  notes: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface DispatchRow {
+  id: string;
+  courierPartner: string;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  dispatchedOn: string | null;
+  deliveryStatus: string;
+  deliveredOn: string | null;
+  hasPod: boolean;
+  contents: string | null;
+  remarks: string | null;
+  isCurrent: boolean;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface CommunicationRow {
+  id: string;
+  channel: string;
+  templateCode: string | null;
+  toAddress: string | null;
+  subject: string | null;
+  body: string;
+  status: string;
+  sentAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+  attemptCount: number;
+  callDurationMinutes: number | null;
+  callOutcome: string | null;
+  sentByName: string | null;
+  createdAt: string;
+}
+
+export interface RenderedMessage {
+  subject: string | null;
+  body: string;
+  missing: string[];
+  to: string | null;
+}
+
+export interface TaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueDate: string;
+  overdue: boolean;
+  assignedToUserId: string;
+  assignedToName: string | null;
+  applicantId: string | null;
+  applicantName: string | null;
+  applicantCode: string | null;
+  recordId: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}

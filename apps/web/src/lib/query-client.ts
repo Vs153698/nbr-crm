@@ -52,4 +52,19 @@ export const queryKeys = {
   roles: ['roles'] as const,
   permissionCatalogue: ['roles', 'catalogue'] as const,
   categories: ['categories'] as const,
+  payment: (recordId: string) => ['payments', recordId] as const,
+  certificate: (recordId: string) => ['certificates', recordId] as const,
+  publications: (recordId: string) => ['publications', recordId] as const,
+  dispatch: (recordId: string) => ['dispatch', recordId] as const,
+  communications: (applicantId: string, channel?: string) =>
+    ['communications', applicantId, channel ?? 'all'] as const,
+  tasks: (applicantId?: string) => ['tasks', applicantId ?? 'mine'] as const,
+  reports: (type: string, filters: Record<string, unknown>) =>
+    ['reports', type, filters] as const,
+  exports: ['exports'] as const,
+  auditLogs: (filters: Record<string, unknown>) => ['audit-logs', filters] as const,
+  settings: ['settings'] as const,
+  blacklist: ['blacklists'] as const,
+  templates: ['templates'] as const,
+  syncStatus: ['integrations', 'sync-status'] as const,
 } as const;

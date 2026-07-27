@@ -17,13 +17,15 @@ import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AddRecordDialog } from './components/AddRecordDialog';
 import { EditApplicantDialog } from './components/EditApplicantDialog';
+import { CommunicationTab } from './components/CommunicationTab';
 import { EvidenceTab } from './components/EvidenceTab';
+import { CertificateTab, DispatchTab, PublicationsTab } from './components/FulfilmentTabs';
+import { PaymentTab } from './components/PaymentTab';
+import { TasksTab } from './components/TasksTab';
 import { NotesTab } from './components/NotesTab';
 import { SmartActionPanel } from './components/SmartActionPanel';
 import { TimelineFeed } from './components/TimelineFeed';
 import type { ApplicantProfile, AttachmentItem, SmartActionPanel as PanelData } from './types';
-
-const PHASE_2_TABS = new Set(['payment', 'certificate', 'publications', 'dispatch', 'communication', 'tasks']);
 
 const TABS = [
   { value: 'overview', label: 'Overview' },
@@ -263,27 +265,24 @@ export default function ApplicantProfilePage() {
           <Card padded={false}>
             <Tabs.Root value={activeTab} onValueChange={setTab}>
               <Tabs.List className="scrollbar-slim flex gap-0.5 overflow-x-auto border-b border-line px-2">
-                {TABS.map((tab) => {
-                  const soon = PHASE_2_TABS.has(tab.value);
-                  return (
-                    <Tabs.Trigger
-                      key={tab.value}
-                      value={tab.value}
-                      className={cn(
-                        'shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-xs font-medium transition-colors',
-                        'data-[state=active]:border-brand data-[state=active]:text-brand',
-                        soon ? 'text-ink-4' : 'text-ink-2 hover:text-ink',
-                      )}
-                    >
-                      {tab.label}
-                      {tab.value === 'evidence' && activeRecord?.evidenceCount ? (
-                        <span className="tabular ml-1 rounded bg-slate2-tint px-1 text-[9px] font-semibold text-ink-2">
-                          {activeRecord.evidenceCount}
-                        </span>
-                      ) : null}
-                    </Tabs.Trigger>
-                  );
-                })}
+                {TABS.map((tab) => (
+                  <Tabs.Trigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={cn(
+                      'shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-xs font-medium transition-colors',
+                      'text-ink-2 hover:text-ink',
+                      'data-[state=active]:border-brand data-[state=active]:text-brand',
+                    )}
+                  >
+                    {tab.label}
+                    {tab.value === 'evidence' && activeRecord?.evidenceCount ? (
+                      <span className="tabular ml-1 rounded bg-slate2-tint px-1 text-[9px] font-semibold text-ink-2">
+                        {activeRecord.evidenceCount}
+                      </span>
+                    ) : null}
+                  </Tabs.Trigger>
+                ))}
               </Tabs.List>
 
               <div className="p-4">
@@ -341,17 +340,44 @@ export default function ApplicantProfilePage() {
                   <AttachmentsTab applicantId={applicant.id} />
                 </Tabs.Content>
 
-                {/* Phase 2 surfaces — shown as planned rather than hidden, so
-                    the shape of the finished product is legible. */}
-                {[...PHASE_2_TABS].map((value) => (
-                  <Tabs.Content key={value} value={value}>
-                    <EmptyState
-                      icon={Icons.Clock}
-                      title={`${TABS.find((tab) => tab.value === value)?.label} is a Phase 2 module`}
-                      description="The database schema and API contracts are in place; the screen is scheduled for Phase 2."
+                <Tabs.Content value="payment">
+                  {activeRecord ? (
+                    <PaymentTab recordId={activeRecord.id} applicantId={applicant.id} />
+                  ) : null}
+                </Tabs.Content>
+
+                <Tabs.Content value="certificate">
+                  {activeRecord ? (
+                    <CertificateTab recordId={activeRecord.id} applicantId={applicant.id} />
+                  ) : null}
+                </Tabs.Content>
+
+                <Tabs.Content value="publications">
+                  {activeRecord ? (
+                    <PublicationsTab recordId={activeRecord.id} applicantId={applicant.id} />
+                  ) : null}
+                </Tabs.Content>
+
+                <Tabs.Content value="dispatch">
+                  {activeRecord ? (
+                    <DispatchTab recordId={activeRecord.id} applicantId={applicant.id} />
+                  ) : null}
+                </Tabs.Content>
+
+                <Tabs.Content value="tasks">
+                  <TasksTab applicantId={applicant.id} recordId={activeRecord?.id} />
+                </Tabs.Content>
+
+                <Tabs.Content value="communication">
+                  {activeRecord ? (
+                    <CommunicationTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      // Enforced server-side too; this only hides the buttons.
+                      doNotContact={flags.some((flag) => flag.flag === 'do_not_contact')}
                     />
-                  </Tabs.Content>
-                ))}
+                  ) : null}
+                </Tabs.Content>
               </div>
             </Tabs.Root>
           </Card>
