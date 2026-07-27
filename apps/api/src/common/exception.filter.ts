@@ -105,6 +105,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (translated) return translated;
     }
 
+    // Fastify plugins and content-type parsers signal client errors by setting
+    // `statusCode` on a plain Error. Without this, a malformed request body
+    // surfaces as a 500 and looks like a server fault in monitoring.
+    const fastifyStatus = (exception as { statusCode?: number } | null)?.statusCode;
+    if (
+      typeof fastifyStatus === 'number' &&
+      fastifyStatus >= 400 &&
+      fastifyStatus < 500 &&
+      exception instanceof Error
+    ) {
+      return {
+        status: fastifyStatus,
+        code: httpStatusToCode(fastifyStatus),
+        message: exception.message,
+      };
+    }
+
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'INTERNAL_ERROR',

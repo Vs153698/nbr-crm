@@ -8,7 +8,11 @@ import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
-import { registerCsrf, registerRequestContext } from './common/security.plugins';
+import {
+  registerCsrf,
+  registerJsonBodyParser,
+  registerRequestContext,
+} from './common/security.plugins';
 import { loadEnv } from './config/env';
 
 const API_PREFIX = 'api';
@@ -33,14 +37,17 @@ async function bootstrap(): Promise<void> {
       ? ['error', 'warn', 'log']
       : ['error', 'warn', 'log', 'debug', 'verbose'],
     bufferLogs: true,
-    // Keeps the exact bytes of the request body on `request.rawBody`.
-    // The inbound NBR-website webhook verifies an HMAC over those bytes —
-    // re-serialising the parsed JSON would reorder keys and break every
-    // signature the sender produces.
-    rawBody: true,
+    // Nest's built-in JSON parser rejects an empty body outright, which breaks
+    // every action endpoint that legitimately takes no payload
+    // (`POST /payments/:id/invoice`, `POST /users/:id/revoke-sessions`…).
+    // We register our own parser below instead — it tolerates an empty body
+    // and keeps the raw bytes for HMAC verification.
+    bodyParser: false,
   });
 
   const fastify = app.getHttpAdapter().getInstance();
+
+  registerJsonBodyParser(fastify);
 
   // ── Security headers ─────────────────────────────────────────────────────
   await app.register(helmet, {

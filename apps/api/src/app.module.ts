@@ -9,6 +9,8 @@ import { AuthModule } from './auth/auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { NotesModule } from './notes/notes.module';
+import { PaymentsModule } from './payments/payments.module';
+import { StorageModule } from './storage/storage.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { TimelineModule } from './timeline/timeline.module';
 import { VaultModule } from './vault/vault.module';
@@ -42,11 +44,13 @@ import { RedisModule } from './redis/redis.module';
     HealthModule,
     TimelineModule,
     PrivacyModule,
+    StorageModule,
     ApplicantsModule,
     DashboardModule,
     LookupsModule,
     VaultModule,
     NotesModule,
+    PaymentsModule,
     AdminModule,
     ScheduleModule.forRoot(),
   ],

@@ -9,7 +9,7 @@ import {
 } from '@nbr/shared';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
-import { StorageService, type UploadScope } from '../storage/storage.service';
+import type { UploadScope } from '../storage/storage.service';
 import { VaultService, type EvidenceItem } from './vault.service';
 
 @Controller('uploads')
@@ -117,7 +117,7 @@ class AttachmentsController {
 
 @Module({
   controllers: [UploadsController, EvidenceController, AttachmentsController],
-  providers: [VaultService, StorageService],
-  exports: [VaultService, StorageService],
+  providers: [VaultService],
+  exports: [VaultService],
 })
 export class VaultModule {}

@@ -2,7 +2,7 @@
   "name": "nbr-crm",
   "version": "1.0.0",
   "private": true,
-  "description": "National Book of Records — Backend CRM (Phase 1 & 2)",
+  "description": "National Book of Records \u2014 Backend CRM (Phase 1 & 2)",
   "packageManager": "pnpm@11.15.1",
   "engines": {
     "node": ">=22"
@@ -21,9 +21,12 @@
     "db:migrate": "pnpm --filter @nbr/api db:migrate",
     "db:seed": "pnpm --filter @nbr/api db:seed",
     "db:studio": "pnpm --filter @nbr/api db:studio",
-    "infra:up": "docker compose up -d postgres redis",
+    "infra:up": "docker compose up -d postgres redis minio mailpit && node scripts/wait-for-infra.mjs",
     "infra:down": "docker compose down",
-    "infra:logs": "docker compose logs -f"
+    "infra:logs": "docker compose logs -f",
+    "infra:reset": "docker compose down -v && pnpm infra:up && pnpm db:migrate && pnpm db:seed",
+    "setup": "pnpm install && pnpm --filter @nbr/shared build && pnpm infra:up && pnpm db:migrate && pnpm db:seed",
+    "db:reset-admin": "pnpm --filter @nbr/api db:reset-admin"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBR CRM — Connecting your existing NBR website</title>
+<style>
+  :root {
+    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
+    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
+    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
+    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
+    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
+    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
+    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  header.top{
+    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
+               linear-gradient(160deg,var(--navy),var(--navy-soft));
+    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand .mark{width:38px;height:38px;border-radius:9px;background:linear-gradient(145deg,#F0C64E,var(--gold));
+    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
+  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
+  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
+  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
+  header.top .lede{margin:0;color:#B6C4E2;max-width:70ch}
+
+  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
+    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
+  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+
+  section{margin-bottom:44px;scroll-margin-top:16px}
+  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
+  h4{font-size:14.5px;margin:22px 0 8px}
+  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
+  p{max-width:78ch}
+
+  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
+    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.65;margin:12px 0}
+  pre .c{color:#7B8DB5;font-style:italic}
+  pre .k{color:#7FB3FF}
+  pre .s{color:#9EE6A6}
+  pre .f{color:#F0C64E}
+  code{font-family:var(--mono);font-size:.9em;background:var(--slate-tint);
+    padding:1px 5px;border-radius:4px;color:var(--ink-2)}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  th{text-align:left;padding:9px 13px;background:#FAFBFD;border-bottom:1px solid var(--line);
+    font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  td{padding:9px 13px;border-bottom:1px solid #EEF2F8;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .table-wrap{overflow-x:auto}
+  td code{white-space:nowrap}
+
+  .box{border-radius:var(--radius);padding:14px 17px;margin:16px 0;border:1px solid;border-left-width:3px}
+  .box p{margin:0 0 7px}
+  .box p:last-child{margin-bottom:0}
+  .box h5{margin:0 0 6px;font-size:13.5px}
+  .info{background:var(--blue-tint);border-color:#C9DAFA;border-left-color:var(--blue)}
+  .info h5{color:var(--navy)} .info p{color:#2C3E63}
+  .warn{background:var(--amber-tint);border-color:#F0DCB8;border-left-color:var(--amber)}
+  .warn h5{color:#7A4A00} .warn p,.warn li{color:#6B4A14}
+  .danger{background:var(--red-tint);border-color:#F2BFBC;border-left-color:var(--red)}
+  .danger h5{color:#8E2721} .danger p,.danger li{color:#7A2A25}
+  .ok{background:var(--green-tint);border-color:#B7E3C6;border-left-color:var(--green)}
+  .ok h5{color:#0B6B31} .ok p,.ok li{color:#14612F}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:650;
+    letter-spacing:.01em;vertical-align:middle}
+  .pill.built{background:var(--green-tint);color:var(--green)}
+  .pill.pending{background:var(--amber-tint);color:var(--amber)}
+  .pill.post{background:var(--purple-tint);color:var(--purple);font-family:var(--mono)}
+  .pill.get{background:var(--blue-tint);color:var(--blue);font-family:var(--mono)}
+
+  .steps{counter-reset:step;list-style:none;padding:0;margin:16px 0}
+  .steps li{counter-increment:step;position:relative;padding-left:38px;margin-bottom:16px}
+  .steps li::before{content:counter(step);position:absolute;left:0;top:0;width:25px;height:25px;
+    border-radius:7px;background:var(--navy);color:#fff;display:grid;place-items:center;
+    font-size:12px;font-weight:700}
+  .steps li b{display:block;margin-bottom:2px}
+
+  .tabs{display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:8px 13px;
+    font:inherit;font-size:13px;font-weight:600;color:var(--ink-3);cursor:pointer}
+  .tabs button[aria-selected=true]{color:var(--blue);border-bottom-color:var(--blue)}
+  .panel[hidden]{display:none}
+
+  .flow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:18px 0}
+  .flow .node{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:13px 15px;box-shadow:var(--shadow);position:relative}
+  .flow .node .n{font-family:var(--mono);font-size:10px;color:var(--blue);font-weight:700}
+  .flow .node b{display:block;font-size:13px;margin:3px 0 3px}
+  .flow .node span{font-size:12px;color:var(--ink-2)}
+
+  footer{border-top:1px solid var(--line);background:#fff;padding:22px clamp(18px,4vw,48px);
+    text-align:center;color:var(--ink-3);font-size:12px}
+  @media(max-width:640px){pre{font-size:11.5px}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">★</div>
+      <div>
+        <h1>National Book of Records</h1>
+        <p>Backend CRM · Integration Guide</p>
+      </div>
+    </div>
+    <h2>Connecting your existing NBR website to the CRM</h2>
+    <p class="lede">
+      When an application is approved in your current NBR admin panel, it should appear in the CRM
+      automatically — master applicant created or merged, record opened, evidence copied across,
+      team notified. No re-typing. This document is the contract your developer builds against.
+    </p>
+  </div>
+</header>
+
+<main>
+  <nav class="toc">
+    <a href="#how">1 · How it works</a>
+    <a href="#status">2 · Build status</a>
+    <a href="#endpoint">3 · The endpoint</a>
+    <a href="#signing">4 · Signing requests</a>
+    <a href="#payload">5 · Payload</a>
+    <a href="#examples">6 · Code examples</a>
+    <a href="#mapping">7 · Field mapping</a>
+    <a href="#responses">8 · Responses &amp; retries</a>
+    <a href="#polling">9 · Polling fallback</a>
+    <a href="#testing">10 · Testing</a>
+    <a href="#checklist">11 · Go-live checklist</a>
+  </nav>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="how">
+    <h3><span class="num">01</span> How it works</h3>
+    <p class="sub">
+      Your website pushes; the CRM pulls only as a fallback. Push is preferred because it is
+      immediate and costs nothing when nothing is happening.
+    </p>
+
+    <div class="flow">
+      <div class="node">
+        <span class="n">STEP 1</span>
+        <b>Approval on your site</b>
+        <span>A staff member approves an application in the existing NBR admin panel.</span>
+      </div>
+      <div class="node">
+        <span class="n">STEP 2</span>
+        <b>Your site POSTs to the CRM</b>
+        <span>One signed HTTPS request carrying the applicant, achievement, evidence links and consent.</span>
+      </div>
+      <div class="node">
+        <span class="n">STEP 3</span>
+        <b>CRM verifies &amp; queues</b>
+        <span>Signature and timestamp checked, payload stored, <code>202 Accepted</code> returned in under 50 ms.</span>
+      </div>
+      <div class="node">
+        <span class="n">STEP 4</span>
+        <b>CRM imports</b>
+        <span>Duplicate and blacklist checks run, applicant created or merged, record opened, timeline written.</span>
+      </div>
+    </div>
+
+    <div class="box info">
+      <h5>Why the CRM answers before it finishes importing</h5>
+      <p>
+        The import copies evidence files, runs fuzzy duplicate matching and writes several tables.
+        Doing that inside the HTTP request would make your admin panel wait seconds on every
+        approval, and a slow CRM would start failing approvals on your side. Instead the CRM
+        durably stores the payload, answers <code>202</code>, and processes it on a queue. Your
+        site's only job is to get a <code>2xx</code>.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="status">
+    <h3><span class="num">02</span> Build status — read this first</h3>
+    <p class="sub">
+      So your developer knows exactly what they can test against today.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Piece</th><th style="width:120px">Status</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Payload contract &amp; validation schema</td>
+            <td><span class="pill built">Built</span></td>
+            <td>Fully specified in §5. Safe to build the sending side against now.</td>
+          </tr>
+          <tr>
+            <td>HMAC signature verification</td>
+            <td><span class="pill built">Built</span></td>
+            <td>Constant-time comparison with replay protection. §4 is the exact algorithm.</td>
+          </tr>
+          <tr>
+            <td>Idempotent event log</td>
+            <td><span class="pill built">Built</span></td>
+            <td><code>integration_events</code> table — unique on <code>(source, externalId)</code>, so retries cannot double-import.</td>
+          </tr>
+          <tr>
+            <td>Duplicate &amp; blacklist checks on arrival</td>
+            <td><span class="pill built">Built</span></td>
+            <td>Same engine the manual Add Applicant form uses.</td>
+          </tr>
+          <tr>
+            <td>Receiving endpoint + import worker</td>
+            <td><span class="pill pending">Phase 2</span></td>
+            <td>Task P2-14. Needs one sample approved-application payload from your panel to finalise the mapping.</td>
+          </tr>
+          <tr>
+            <td>Polling fallback</td>
+            <td><span class="pill pending">Phase 2</span></td>
+            <td>Only needed if your panel cannot make outbound HTTPS calls. See §9.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box warn">
+      <h5>What we need from you to finish this</h5>
+      <p>
+        <b>One real approved-application payload</b> — a JSON dump, or even a screenshot of the
+        approval record with every field visible. Field names on your side almost certainly differ
+        from ours, and guessing the mapping is how a name lands in the wrong column and nobody
+        notices for a month. Send it and the mapping in §7 gets finalised against reality.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="endpoint">
+    <h3><span class="num">03</span> The endpoint</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:70px">Method</th><th>URL</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill post">POST</span></td>
+            <td><code>/api/v1/integrations/nbr-website/applications</code></td>
+            <td>Send one approved application.</td>
+          </tr>
+          <tr>
+            <td><span class="pill get">GET</span></td>
+            <td><code>/api/v1/integrations/nbr-website/sync-status</code></td>
+            <td>Check what has arrived, what is queued and what failed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Base URLs</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:130px">Environment</th><th>Base URL</th><th>Use for</th></tr></thead>
+        <tbody>
+          <tr><td>Local</td><td><code>http://localhost:4100</code></td><td>Developer machine only.</td></tr>
+          <tr><td>Staging</td><td><code>https://staging.nbr-crm.in</code></td><td>Build and test against this.</td></tr>
+          <tr><td>Production</td><td><code>https://crm.nbr.in</code></td><td>Switch only after staging passes.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Required headers</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:210px">Header</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><code>Content-Type</code></td><td><code>application/json</code></td></tr>
+          <tr><td><code>X-NBR-Signature</code></td><td><code>t=&lt;unix seconds&gt;,v1=&lt;hex HMAC&gt;</code> — see §4</td></tr>
+          <tr><td><code>X-NBR-Idempotency-Key</code></td><td>Optional. Defaults to <code>externalId</code>. Keep it stable across retries of the same approval.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box danger">
+      <h5>The shared secret is a credential</h5>
+      <p>
+        We will send you a secret out of band. It goes in your server's environment
+        configuration — never in a Git repository, never in front-end JavaScript, never in a
+        WordPress post-meta field. Anyone holding it can create applicant records in your CRM.
+      </p>
+      <p>
+        If you think it has leaked, tell us and we will rotate it. Rotation is a two-minute change
+        on both sides.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="signing">
+    <h3><span class="num">04</span> Signing the request</h3>
+    <p class="sub">
+      The signature proves the request came from your website and that nobody altered it in
+      transit. It takes about six lines of code.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <b>Serialise the body once</b>
+        Build the JSON string and keep that exact string. Sign it and send it — do not re-encode
+        between the two, or the byte order changes and the signature stops matching.
+      </li>
+      <li>
+        <b>Take the current Unix timestamp</b>
+        In seconds, not milliseconds.
+      </li>
+      <li>
+        <b>Build the signing payload</b>
+        <code>&lt;timestamp&gt; + "." + &lt;raw JSON body&gt;</code>
+      </li>
+      <li>
+        <b>HMAC-SHA256 it with the shared secret</b>
+        Output as lowercase hex.
+      </li>
+      <li>
+        <b>Send both in the header</b>
+        <code>X-NBR-Signature: t=1785312000,v1=a3f5…</code>
+      </li>
+    </ol>
+
+    <div class="box info">
+      <h5>Why the timestamp is inside the signature</h5>
+      <p>
+        Without it, a captured request stays valid forever — anyone who records one could replay it
+        next month and create a duplicate record. Because the timestamp is signed, it cannot be
+        edited, and the CRM rejects anything more than <b>5 minutes</b> old.
+      </p>
+      <p>
+        This means <b>your server clock matters.</b> If it drifts more than five minutes, every
+        request will be rejected. Keep NTP running.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="payload">
+    <h3><span class="num">05</span> Payload</h3>
+    <p class="sub">
+      Only four things are strictly required: <code>externalId</code>, the applicant's
+      <code>fullName</code>, <code>mobile</code> and <code>email</code>, plus a
+      <code>recordTitle</code>. Everything else improves the record but will not fail the request.
+    </p>
+
+<pre><code><span class="c">// POST /api/v1/integrations/nbr-website/applications</span>
+{
+  <span class="c">// Your primary key for this application. This is the idempotency key —</span>
+  <span class="c">// send the same one on a retry and the CRM will not create a second record.</span>
+  <span class="f">"externalId"</span>: <span class="s">"APP-2026-004821"</span>,
+  <span class="f">"externalUrl"</span>: <span class="s">"https://nationalbookofrecords.in/admin/applications/4821"</span>,
+  <span class="f">"approvedAt"</span>: <span class="s">"2026-07-27T09:14:00Z"</span>,
+
+  <span class="f">"applicant"</span>: {
+    <span class="f">"fullName"</span>:    <span class="s">"Rahul Verma"</span>,        <span class="c">// required</span>
+    <span class="f">"fatherName"</span>:  <span class="s">"Suresh Verma"</span>,
+    <span class="f">"motherName"</span>:  <span class="s">"Anita Verma"</span>,
+    <span class="f">"dateOfBirth"</span>: <span class="s">"1998-01-12"</span>,         <span class="c">// YYYY-MM-DD</span>
+    <span class="f">"gender"</span>:      <span class="s">"male"</span>,
+    <span class="f">"mobile"</span>:      <span class="s">"9876543210"</span>,        <span class="c">// required — any format, we normalise</span>
+    <span class="f">"whatsapp"</span>:    <span class="s">"9876543210"</span>,
+    <span class="f">"email"</span>:       <span class="s">"rahul.verma@example.com"</span>, <span class="c">// required</span>
+    <span class="f">"addressLine"</span>: <span class="s">"12 MG Road"</span>,
+    <span class="f">"city"</span>:        <span class="s">"Indore"</span>,
+    <span class="f">"state"</span>:       <span class="s">"Madhya Pradesh"</span>,
+    <span class="f">"country"</span>:     <span class="s">"India"</span>,
+    <span class="f">"pincode"</span>:     <span class="s">"452001"</span>,
+    <span class="f">"nationality"</span>: <span class="s">"Indian"</span>
+  },
+
+  <span class="f">"achievement"</span>: {
+    <span class="f">"recordTitle"</span>:      <span class="s">"Longest Time Doing Push-ups"</span>,  <span class="c">// required</span>
+    <span class="f">"category"</span>:         <span class="s">"Physical Fitness"</span>,  <span class="c">// name, not an ID — see §7</span>
+    <span class="f">"recordType"</span>:       <span class="s">"individual"</span>,        <span class="c">// or "group"</span>
+    <span class="f">"description"</span>:      <span class="s">"Continuous single-take attempt, timer visible."</span>,
+    <span class="f">"achievementDate"</span>:  <span class="s">"2026-05-15"</span>,
+    <span class="f">"location"</span>:         <span class="s">"Indore, MP"</span>,
+    <span class="f">"participantCount"</span>: 1
+  },
+
+  <span class="c">// Files already collected by your site. The CRM downloads each one into its</span>
+  <span class="c">// own vault rather than hot-linking, so evidence survives your site changing.</span>
+  <span class="c">// URLs must stay reachable for at least 24 hours after you send them.</span>
+  <span class="f">"evidence"</span>: [
+    {
+      <span class="f">"url"</span>:         <span class="s">"https://nationalbookofrecords.in/uploads/4821/attempt.mp4"</span>,
+      <span class="f">"fileName"</span>:    <span class="s">"attempt.mp4"</span>,
+      <span class="f">"kind"</span>:        <span class="s">"video"</span>,     <span class="c">// photo | video | document | id_proof | consent_form</span>
+      <span class="f">"contentType"</span>: <span class="s">"video/mp4"</span>
+    }
+  ],
+
+  <span class="c">// Consent the applicant gave on your site. Carried across so the CRM's DPDP</span>
+  <span class="c">// ledger records the real acceptance time, not the import time.</span>
+  <span class="f">"consent"</span>: {
+    <span class="f">"acceptedAt"</span>:    <span class="s">"2026-05-18T06:32:11Z"</span>,   <span class="c">// required if consent present</span>
+    <span class="f">"noticeVersion"</span>: <span class="s">"1.0"</span>,
+    <span class="f">"purposes"</span>: [
+      <span class="s">"record_application"</span>, <span class="s">"identity_verification"</span>,
+      <span class="s">"achievement_verification"</span>, <span class="s">"service_communication"</span>,
+      <span class="s">"certificate_issuance"</span>, <span class="s">"publication_and_media"</span>
+    ],
+    <span class="f">"artefacts"</span>: [<span class="s">"terms_and_conditions"</span>, <span class="s">"privacy_notice"</span>],
+    <span class="f">"ipAddress"</span>: <span class="s">"203.0.113.42"</span>,
+    <span class="f">"userAgent"</span>: <span class="s">"Mozilla/5.0 …"</span>
+  },
+
+  <span class="c">// Anything else you want carried over verbatim. Stored as-is and visible</span>
+  <span class="c">// to staff — useful for fields we have not modelled yet.</span>
+  <span class="f">"extra"</span>: { <span class="f">"referralCode"</span>: <span class="s">"NBRWEB-22"</span> }
+}</code></pre>
+
+    <div class="box warn">
+      <h5>Please send consent if you have it</h5>
+      <p>
+        Under the DPDP Act, 2023, NBR must be able to show <em>when</em> and <em>for what</em> each
+        applicant consented. If your site captured that, sending it preserves the real timestamp.
+        If you omit it, the CRM records consent as given at import time by staff — which is
+        weaker evidence and means someone may have to chase the applicant again later.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="examples">
+    <h3><span class="num">06</span> Code examples</h3>
+    <p class="sub">Complete, copy-paste-able senders including the signature.</p>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-panel="php">PHP</button>
+      <button role="tab" aria-selected="false" data-panel="wp">WordPress</button>
+      <button role="tab" aria-selected="false" data-panel="laravel">Laravel</button>
+      <button role="tab" aria-selected="false" data-panel="node">Node.js</button>
+      <button role="tab" aria-selected="false" data-panel="python">Python</button>
+    </div>
+
+    <div class="panel" id="php">
+<pre><code><span class="c">&lt;?php</span>
+<span class="c">/**
+ * Send an approved application to the NBR CRM.
+ * Returns true on success. Never lets a CRM outage break your approval flow.
+ */</span>
+<span class="k">function</span> nbr_crm_send_application(<span class="k">array</span> $payload): <span class="k">bool</span> {
+    $baseUrl = getenv(<span class="s">'NBR_CRM_URL'</span>);      <span class="c">// https://crm.nbr.in</span>
+    $secret  = getenv(<span class="s">'NBR_CRM_SECRET'</span>);   <span class="c">// shared secret — env only</span>
+
+    <span class="c">// 1. Serialise ONCE and reuse the exact string. Re-encoding would change</span>
+    <span class="c">//    key order and break the signature.</span>
+    $body = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    <span class="c">// 2-4. Sign "&lt;timestamp&gt;.&lt;body&gt;" with HMAC-SHA256.</span>
+    $timestamp = time();
+    $signature = hash_hmac(<span class="s">'sha256'</span>, $timestamp . <span class="s">'.'</span> . $body, $secret);
+
+    $ch = curl_init($baseUrl . <span class="s">'/api/v1/integrations/nbr-website/applications'</span>);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           =&gt; <span class="k">true</span>,
+        CURLOPT_POSTFIELDS     =&gt; $body,
+        CURLOPT_RETURNTRANSFER =&gt; <span class="k">true</span>,
+        CURLOPT_TIMEOUT        =&gt; 15,
+        CURLOPT_HTTPHEADER     =&gt; [
+            <span class="s">'Content-Type: application/json'</span>,
+            <span class="s">"X-NBR-Signature: t={$timestamp},v1={$signature}"</span>,
+            <span class="s">"X-NBR-Idempotency-Key: {$payload['externalId']}"</span>,
+        ],
+    ]);
+
+    $response = curl_exec($ch);
+    $status   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    <span class="k">if</span> ($status &gt;= 200 &amp;&amp; $status &lt; 300) {
+        <span class="k">return</span> <span class="k">true</span>;
+    }
+
+    <span class="c">// Log and move on. The approval already succeeded on your side; a CRM</span>
+    <span class="c">// hiccup must not roll it back. Queue a retry — the same externalId is</span>
+    <span class="c">// safe to send again.</span>
+    error_log(<span class="s">"NBR CRM sync failed ({$status}): {$response}"</span>);
+    <span class="k">return</span> <span class="k">false</span>;
+}</code></pre>
+    </div>
+
+    <div class="panel" id="wp" hidden>
+<pre><code><span class="c">&lt;?php</span>
+<span class="c">/**
+ * WordPress: fire when an application post is marked approved.
+ * Drop this in your theme's functions.php or a small mu-plugin.
+ */</span>
+add_action(<span class="s">'nbr_application_approved'</span>, <span class="s">'nbr_push_to_crm'</span>, 10, 1);
+
+<span class="k">function</span> nbr_push_to_crm($application_id) {
+    $post = get_post($application_id);
+    $meta = get_post_meta($application_id);
+
+    $payload = [
+        <span class="s">'externalId'</span>  =&gt; (string) $application_id,
+        <span class="s">'externalUrl'</span> =&gt; get_edit_post_link($application_id, <span class="s">''</span>),
+        <span class="s">'approvedAt'</span>  =&gt; gmdate(<span class="s">'c'</span>),
+        <span class="s">'applicant'</span> =&gt; [
+            <span class="s">'fullName'</span> =&gt; $meta[<span class="s">'applicant_name'</span>][0] ?? <span class="s">''</span>,
+            <span class="s">'mobile'</span>   =&gt; $meta[<span class="s">'mobile'</span>][0] ?? <span class="s">''</span>,
+            <span class="s">'email'</span>    =&gt; $meta[<span class="s">'email'</span>][0] ?? <span class="s">''</span>,
+            <span class="s">'city'</span>     =&gt; $meta[<span class="s">'city'</span>][0] ?? <span class="k">null</span>,
+            <span class="s">'country'</span>  =&gt; <span class="s">'India'</span>,
+        ],
+        <span class="s">'achievement'</span> =&gt; [
+            <span class="s">'recordTitle'</span> =&gt; $post-&gt;post_title,
+            <span class="s">'category'</span>    =&gt; $meta[<span class="s">'category'</span>][0] ?? <span class="k">null</span>,
+            <span class="s">'description'</span> =&gt; wp_strip_all_tags($post-&gt;post_content),
+        ],
+        <span class="s">'evidence'</span> =&gt; array_map(<span class="k">fn</span>($id) =&gt; [
+            <span class="s">'url'</span>         =&gt; wp_get_attachment_url($id),
+            <span class="s">'fileName'</span>    =&gt; basename(get_attached_file($id)),
+            <span class="s">'contentType'</span> =&gt; get_post_mime_type($id),
+        ], get_attached_media(<span class="s">''</span>, $application_id)),
+    ];
+
+    $body      = wp_json_encode($payload);
+    $timestamp = time();
+    $signature = hash_hmac(<span class="s">'sha256'</span>, <span class="s">"$timestamp.$body"</span>, NBR_CRM_SECRET);
+
+    <span class="c">// Non-blocking so the editor never waits on the CRM.</span>
+    wp_remote_post(NBR_CRM_URL . <span class="s">'/api/v1/integrations/nbr-website/applications'</span>, [
+        <span class="s">'headers'</span>  =&gt; [
+            <span class="s">'Content-Type'</span>            =&gt; <span class="s">'application/json'</span>,
+            <span class="s">'X-NBR-Signature'</span>         =&gt; <span class="s">"t=$timestamp,v1=$signature"</span>,
+            <span class="s">'X-NBR-Idempotency-Key'</span>   =&gt; (string) $application_id,
+        ],
+        <span class="s">'body'</span>     =&gt; $body,
+        <span class="s">'timeout'</span>  =&gt; 15,
+        <span class="s">'blocking'</span> =&gt; <span class="k">false</span>,
+    ]);
+}</code></pre>
+    </div>
+
+    <div class="panel" id="laravel" hidden>
+<pre><code><span class="c">&lt;?php</span>
+<span class="k">namespace</span> App\Services;
+
+<span class="k">use</span> Illuminate\Support\Facades\Http;
+<span class="k">use</span> Illuminate\Support\Facades\Log;
+
+<span class="k">class</span> NbrCrmSync
+{
+    <span class="k">public function</span> send(<span class="k">array</span> $payload): <span class="k">bool</span>
+    {
+        $body      = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $timestamp = time();
+        $signature = hash_hmac(<span class="s">'sha256'</span>, <span class="s">"{$timestamp}.{$body}"</span>, config(<span class="s">'services.nbr_crm.secret'</span>));
+
+        $response = Http::withBody($body, <span class="s">'application/json'</span>)
+            -&gt;withHeaders([
+                <span class="s">'X-NBR-Signature'</span>       =&gt; <span class="s">"t={$timestamp},v1={$signature}"</span>,
+                <span class="s">'X-NBR-Idempotency-Key'</span> =&gt; $payload[<span class="s">'externalId'</span>],
+            ])
+            -&gt;timeout(15)
+            <span class="c">// Exponential backoff. The same externalId is always safe to resend.</span>
+            -&gt;retry(3, 2000, throw: <span class="k">false</span>)
+            -&gt;post(config(<span class="s">'services.nbr_crm.url'</span>) . <span class="s">'/api/v1/integrations/nbr-website/applications'</span>);
+
+        <span class="k">if</span> ($response-&gt;successful()) {
+            <span class="k">return</span> <span class="k">true</span>;
+        }
+
+        Log::error(<span class="s">'NBR CRM sync failed'</span>, [
+            <span class="s">'status'</span>     =&gt; $response-&gt;status(),
+            <span class="s">'body'</span>       =&gt; $response-&gt;body(),
+            <span class="s">'externalId'</span> =&gt; $payload[<span class="s">'externalId'</span>],
+        ]);
+
+        <span class="k">return</span> <span class="k">false</span>;
+    }
+}</code></pre>
+    </div>
+
+    <div class="panel" id="node" hidden>
+<pre><code><span class="k">import</span> { createHmac } <span class="k">from</span> <span class="s">'node:crypto'</span>;
+
+<span class="k">export async function</span> <span class="f">sendToNbrCrm</span>(payload) {
+  <span class="c">// Serialise once — sign and send the identical string.</span>
+  <span class="k">const</span> body = JSON.stringify(payload);
+  <span class="k">const</span> timestamp = Math.floor(Date.now() / 1000);
+
+  <span class="k">const</span> signature = createHmac(<span class="s">'sha256'</span>, process.env.NBR_CRM_SECRET)
+    .update(<span class="s">`${timestamp}.${body}`</span>)
+    .digest(<span class="s">'hex'</span>);
+
+  <span class="k">const</span> response = <span class="k">await</span> fetch(
+    <span class="s">`${process.env.NBR_CRM_URL}/api/v1/integrations/nbr-website/applications`</span>,
+    {
+      method: <span class="s">'POST'</span>,
+      headers: {
+        <span class="s">'content-type'</span>: <span class="s">'application/json'</span>,
+        <span class="s">'x-nbr-signature'</span>: <span class="s">`t=${timestamp},v1=${signature}`</span>,
+        <span class="s">'x-nbr-idempotency-key'</span>: payload.externalId,
+      },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+
+  <span class="k">if</span> (!response.ok) {
+    <span class="k">const</span> detail = <span class="k">await</span> response.text();
+    <span class="k">throw new</span> Error(<span class="s">`NBR CRM sync failed (${response.status}): ${detail}`</span>);
+  }
+
+  <span class="k">return</span> response.json();
+}</code></pre>
+    </div>
+
+    <div class="panel" id="python" hidden>
+<pre><code><span class="k">import</span> hashlib, hmac, json, os, time
+<span class="k">import</span> requests
+
+<span class="k">def</span> <span class="f">send_to_nbr_crm</span>(payload: dict) -&gt; dict:
+    <span class="s">"""Send one approved application. Raises on a non-2xx response."""</span>
+    <span class="c"># Serialise once; sign and send the identical bytes.</span>
+    body = json.dumps(payload, separators=(<span class="s">','</span>, <span class="s">':'</span>), ensure_ascii=<span class="k">False</span>)
+    timestamp = <span class="k">int</span>(time.time())
+
+    signature = hmac.new(
+        os.environ[<span class="s">'NBR_CRM_SECRET'</span>].encode(),
+        <span class="s">f'{timestamp}.{body}'</span>.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    response = requests.post(
+        <span class="s">f"{os.environ['NBR_CRM_URL']}/api/v1/integrations/nbr-website/applications"</span>,
+        data=body.encode(),
+        headers={
+            <span class="s">'Content-Type'</span>: <span class="s">'application/json'</span>,
+            <span class="s">'X-NBR-Signature'</span>: <span class="s">f't={timestamp},v1={signature}'</span>,
+            <span class="s">'X-NBR-Idempotency-Key'</span>: payload[<span class="s">'externalId'</span>],
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    <span class="k">return</span> response.json()</code></pre>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="mapping">
+    <h3><span class="num">07</span> Field mapping</h3>
+    <p class="sub">
+      Fill the middle column with your field names and send this table back — that is the
+      workshop the plan budgets for, and it takes about twenty minutes.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:30%">CRM field</th><th style="width:30%">Your field</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>externalId</code></td><td>_______________</td><td><b>Required.</b> Your application's primary key. Must be stable.</td></tr>
+          <tr><td><code>applicant.fullName</code></td><td>_______________</td><td><b>Required.</b> If you store first/last separately, join them.</td></tr>
+          <tr><td><code>applicant.mobile</code></td><td>_______________</td><td><b>Required.</b> Any format — we strip <code>+91</code>, spaces and dashes.</td></tr>
+          <tr><td><code>applicant.email</code></td><td>_______________</td><td><b>Required.</b> Used for duplicate matching.</td></tr>
+          <tr><td><code>applicant.dateOfBirth</code></td><td>_______________</td><td>Strongly recommended — it sharpens duplicate detection, and it is how we detect applicants under 18.</td></tr>
+          <tr><td><code>achievement.recordTitle</code></td><td>_______________</td><td><b>Required.</b></td></tr>
+          <tr><td><code>achievement.category</code></td><td>_______________</td><td>Send the category <em>name</em>. We match it to ours; an unmatched name lands in "Other" and flags the record for review rather than failing the import.</td></tr>
+          <tr><td><code>evidence[].url</code></td><td>_______________</td><td>Must be reachable by our server for 24 hours. If your uploads are behind a login, tell us — we will need signed URLs or a token.</td></tr>
+          <tr><td><code>consent.acceptedAt</code></td><td>_______________</td><td>The real timestamp from your terms checkbox, if you have it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box info">
+      <h5>What happens to a returning applicant</h5>
+      <p>
+        If the mobile, email or name+DOB matches someone already in the CRM, the import <b>adds a
+        new record to their existing profile</b> rather than creating a second one. That is the
+        core rule of the system — one person, one permanent profile, however many records they
+        hold. You do not need to do anything to make this work.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="responses">
+    <h3><span class="num">08</span> Responses &amp; retries</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:80px">Code</th><th style="width:190px">Meaning</th><th>What your site should do</th></tr></thead>
+        <tbody>
+          <tr><td><code>202</code></td><td>Accepted, queued</td><td>Done. Mark it synced.</td></tr>
+          <tr><td><code>200</code></td><td>Already imported</td><td>A duplicate of a previous send. Also success — mark it synced.</td></tr>
+          <tr><td><code>400</code></td><td>Malformed JSON</td><td>Bug on the sending side. Do not retry; fix and resend.</td></tr>
+          <tr><td><code>401</code></td><td>Bad signature</td><td>Wrong secret, or a clock more than 5 minutes out. Do not retry blindly.</td></tr>
+          <tr><td><code>422</code></td><td>Validation failed</td><td>The response names the offending fields. Fix the mapping, then resend.</td></tr>
+          <tr><td><code>429</code></td><td>Rate limited</td><td>Back off and retry after the <code>Retry-After</code> header.</td></tr>
+          <tr><td><code>5xx</code></td><td>CRM problem</td><td>Retry with exponential backoff. Same <code>externalId</code> — retries are safe.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box ok">
+      <h5>Retrying is always safe</h5>
+      <p>
+        Every request is keyed on <code>externalId</code> with a database-level unique constraint.
+        Send the same approval fifty times and exactly one applicant record exists. Build your
+        retry loop without worrying about duplicates.
+      </p>
+    </div>
+
+    <h4>A sensible retry schedule</h4>
+    <p>
+      Immediate, then 1 min, 5 min, 30 min, 2 h, then give up and raise an alert. Anything still
+      failing after two hours needs a human, not another retry.
+    </p>
+
+    <h4>Checking what arrived</h4>
+<pre><code>GET /api/v1/integrations/nbr-website/sync-status
+
+{
+  <span class="f">"lastWebhookAt"</span>:  <span class="s">"2026-07-27T09:14:02Z"</span>,
+  <span class="f">"pending"</span>:        0,
+  <span class="f">"importedToday"</span>:  14,
+  <span class="f">"failedToday"</span>:    1,
+  <span class="f">"recentFailures"</span>: [
+    { <span class="f">"externalId"</span>: <span class="s">"APP-2026-004799"</span>,
+      <span class="f">"error"</span>: <span class="s">"evidence url returned 404"</span>,
+      <span class="f">"at"</span>: <span class="s">"2026-07-27T08:41:00Z"</span> }
+  ]
+}</code></pre>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="polling">
+    <h3><span class="num">09</span> Polling fallback</h3>
+    <p class="sub">
+      Only needed if your admin panel genuinely cannot make outbound HTTPS calls — some shared
+      hosting blocks it.
+    </p>
+
+    <p>
+      In that case you expose a read-only endpoint and the CRM polls it every 5 minutes. You would
+      provide:
+    </p>
+
+<pre><code>GET https://nationalbookofrecords.in/api/approved-applications?since=&lt;ISO timestamp&gt;
+Authorization: Bearer &lt;token you issue to us&gt;
+
+{ <span class="f">"applications"</span>: [ <span class="c">/* same shape as §5, newest last */</span> ] }</code></pre>
+
+    <div class="box warn">
+      <h5>Push is better where you have the choice</h5>
+      <p>
+        Polling means an approval can sit up to five minutes before staff see it, and the CRM
+        queries your server 288 times a day whether or not anything changed. Use it only as a
+        fallback.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="testing">
+    <h3><span class="num">10</span> Testing</h3>
+
+    <h4>Verify your signature before sending anything</h4>
+    <p>
+      This is where nearly every integration stalls. Confirm your code produces the same digest as
+      ours, using a fixed timestamp and body:
+    </p>
+
+<pre><code><span class="c"># Both of these must print the identical hex string.</span>
+
+<span class="c"># Shell</span>
+printf <span class="s">'1785312000.{"externalId":"TEST-1"}'</span> \
+  | openssl dgst -sha256 -hmac <span class="s">"your-shared-secret"</span> -r
+
+<span class="c"># PHP</span>
+php -r <span class="s">'echo hash_hmac("sha256", "1785312000." . "{\"externalId\":\"TEST-1\"}", "your-shared-secret");'</span></code></pre>
+
+    <h4>Then send a real test payload to staging</h4>
+<pre><code>SECRET=<span class="s">"your-shared-secret"</span>
+BODY=<span class="s">'{"externalId":"TEST-001","applicant":{"fullName":"Test Applicant","mobile":"9000000001","email":"test@example.com","country":"India"},"achievement":{"recordTitle":"Integration test record"}}'</span>
+TS=$(date +%s)
+SIG=$(printf <span class="s">"%s.%s"</span> <span class="s">"$TS"</span> <span class="s">"$BODY"</span> | openssl dgst -sha256 -hmac <span class="s">"$SECRET"</span> -r | cut -d<span class="s">' '</span> -f1)
+
+curl -i -X POST https://staging.nbr-crm.in/api/v1/integrations/nbr-website/applications \
+  -H <span class="s">"content-type: application/json"</span> \
+  -H <span class="s">"x-nbr-signature: t=$TS,v1=$SIG"</span> \
+  -d <span class="s">"$BODY"</span></code></pre>
+
+    <ol class="steps">
+      <li><b>Signature matches</b> — the two commands above print the same hex.</li>
+      <li><b>Staging accepts it</b> — you get <code>202</code>.</li>
+      <li><b>It appears in the CRM</b> — we confirm the applicant shows up with the right fields.</li>
+      <li><b>Resend the same payload</b> — you get <code>200</code>, and still exactly one record.</li>
+      <li><b>Send a deliberately bad signature</b> — you get <code>401</code>. Confirms the guard works.</li>
+      <li><b>Send a returning applicant</b> — same mobile, different record title. It should attach to the existing profile.</li>
+      <li><b>Approve one real application end to end</b> on staging, with real evidence files.</li>
+    </ol>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────── -->
+  <section id="checklist">
+    <h3><span class="num">11</span> Go-live checklist</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:56%">Item</th><th style="width:22%">Owner</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Sample approved-application payload shared</td><td>NBR website team</td><td>☐</td></tr>
+          <tr><td>Field mapping table (§7) completed</td><td>Both</td><td>☐</td></tr>
+          <tr><td>Shared secret issued and stored in env config</td><td>CRM team → you</td><td>☐</td></tr>
+          <tr><td>Evidence URLs reachable by our server</td><td>NBR website team</td><td>☐</td></tr>
+          <tr><td>Server clock synced via NTP</td><td>NBR website team</td><td>☐</td></tr>
+          <tr><td>Receiving endpoint + import worker built (P2-14)</td><td>CRM team</td><td>☐</td></tr>
+          <tr><td>All seven staging tests in §10 pass</td><td>Both</td><td>☐</td></tr>
+          <tr><td>Retry queue and failure alerting in place</td><td>NBR website team</td><td>☐</td></tr>
+          <tr><td>Production secret issued (different from staging)</td><td>CRM team</td><td>☐</td></tr>
+          <tr><td>First week monitored via <code>/sync-status</code></td><td>Both</td><td>☐</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box info">
+      <h5>Questions</h5>
+      <p>
+        Anything ambiguous in this document is a mapping bug waiting to happen — please ask rather
+        than guess. Send the sample payload and the completed §7 table, and we will finalise the
+        import against your real data.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  NBR Backend CRM · Integration guide for the existing NBR website ·
+  Contract is stable; receiving endpoint is Phase 2 task P2-14.
+</footer>
+
+<script>
+  // Language tabs for the code examples.
+  const tabs = document.querySelectorAll('.tabs button');
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((other) => {
+        const selected = other === tab;
+        other.setAttribute('aria-selected', String(selected));
+        document.getElementById(other.dataset.panel).hidden = !selected;
+      });
+    });
+  });
+</script>
+</body>
+</html>

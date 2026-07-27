@@ -129,3 +129,51 @@ export function registerCsrf(app: FastifyInstance, options: { secure: boolean })
 }
 
 export { CSRF_COOKIE, CSRF_HEADER };
+
+/**
+ * JSON body parser.
+ *
+ * Replaces Nest's built-in parser for two reasons:
+ *
+ *  1. **An empty body is valid.** Nest's parser throws
+ *     "Body cannot be empty when content-type is set to 'application/json'",
+ *     which breaks every action endpoint that takes no payload — issuing an
+ *     invoice, revoking sessions, generating an export. Those are legitimate
+ *     POSTs and a client should not have to send `{}` to satisfy a parser.
+ *
+ *  2. **The raw bytes must survive.** The inbound NBR-website webhook verifies
+ *     an HMAC computed over the exact body the sender signed. Re-serialising
+ *     the parsed object would reorder keys and invalidate every signature, so
+ *     the original string is preserved on `request.rawBody`.
+ */
+export function registerJsonBodyParser(app: FastifyInstance): void {
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'string' },
+    (request: FastifyRequest & { rawBody?: string }, body: string | Buffer, done) => {
+      const raw = typeof body === 'string' ? body : body.toString('utf8');
+      request.rawBody = raw;
+
+      if (raw.trim().length === 0) {
+        // A bodyless POST is an action, not a malformed request.
+        done(null, {});
+        return;
+      }
+
+      try {
+        done(null, JSON.parse(raw) as unknown);
+      } catch {
+        const error = new Error('Request body is not valid JSON') as Error & { statusCode: number };
+        error.statusCode = 400;
+        done(error, undefined);
+      }
+    },
+  );
+}
+
+/** Fastify augmentation so `request.rawBody` type-checks. */
+declare module 'fastify' {
+  interface FastifyRequest {
+    rawBody?: string;
+  }
+}
