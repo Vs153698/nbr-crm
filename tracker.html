@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBR Backend CRM — Build Tracker</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────────────
+     Design tokens — same palette as the approved NBR CRM design system
+     (navy sidebar #0E1B3D, primary blue #2557D6, canvas #F2F5FA).
+     ───────────────────────────────────────────────────────────────────── */
+  :root {
+    --navy:        #0E1B3D;
+    --navy-soft:   #1B2C55;
+    --blue:        #2557D6;
+    --blue-tint:   #EAF0FD;
+    --canvas:      #F2F5FA;
+    --card:        #FFFFFF;
+    --ink:         #10182B;
+    --ink-2:       #47536B;
+    --ink-3:       #7A869E;
+    --line:        #E1E7F0;
+
+    --green:       #10893E;
+    --green-tint:  #E7F5EC;
+    --amber:       #B36A00;
+    --amber-tint:  #FDF2E2;
+    --red:         #C7362F;
+    --red-tint:    #FCEDEC;
+    --slate:       #64748B;
+    --slate-tint:  #EEF1F6;
+    --purple:      #6D3BD1;
+    --teal:        #0E7C86;
+    --gold:        #C08A2E;
+
+    --radius:      10px;
+    --radius-lg:   14px;
+    --shadow-sm:   0 1px 2px rgba(16,24,43,.06), 0 1px 3px rgba(16,24,43,.05);
+    --shadow-md:   0 4px 12px rgba(16,24,43,.07), 0 1px 3px rgba(16,24,43,.05);
+    --shadow-lg:   0 12px 32px rgba(16,24,43,.10);
+
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background: var(--canvas);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Masthead ──────────────────────────────────────────────────────── */
+  header.masthead {
+    background:
+      radial-gradient(1200px 400px at 88% -30%, rgba(37,87,214,.42), transparent 60%),
+      linear-gradient(160deg, var(--navy) 0%, var(--navy-soft) 100%);
+    color: #fff;
+    padding: 34px clamp(18px, 4vw, 48px) 30px;
+  }
+  .masthead-inner { max-width: 1280px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; }
+  .brand .mark {
+    width: 38px; height: 38px; border-radius: 9px; flex: none;
+    background: linear-gradient(145deg, #F0C64E, var(--gold));
+    display: grid; place-items: center;
+    font-size: 19px; color: var(--navy); font-weight: 800;
+    box-shadow: 0 3px 12px rgba(192,138,46,.42);
+  }
+  .brand h1 { font-size: 15px; margin: 0; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; }
+  .brand p  { margin: 1px 0 0; font-size: 11.5px; color: #A9B8DA; letter-spacing: .1em; text-transform: uppercase; }
+
+  .headline { font-size: clamp(24px, 3.4vw, 36px); margin: 0 0 8px; font-weight: 700; letter-spacing: -.02em; }
+  .subhead  { margin: 0; color: #B6C4E2; max-width: 68ch; font-size: 14.5px; }
+
+  /* Overall progress bar */
+  .overall { margin-top: 28px; }
+  .overall-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; flex-wrap: wrap; gap: 8px; }
+  .overall-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #A9B8DA; }
+  .overall-pct { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .track { height: 9px; border-radius: 99px; background: rgba(255,255,255,.14); overflow: hidden; display: flex; }
+  .track > span { display: block; height: 100%; transition: width .7s cubic-bezier(.16,1,.3,1); }
+  .seg-done    { background: linear-gradient(90deg, #21A85A, #46C97B); }
+  .seg-partial { background: linear-gradient(90deg, #D98A12, #F0B44B); }
+  .legend { display: flex; gap: 18px; margin-top: 11px; flex-wrap: wrap; font-size: 12px; color: #B6C4E2; }
+  .legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+
+  /* ── Layout ────────────────────────────────────────────────────────── */
+  main { max-width: 1280px; margin: 0 auto; padding: 0 clamp(18px, 4vw, 48px) 72px; }
+
+  .stats {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    margin: -22px 0 34px;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 15px 17px; box-shadow: var(--shadow-md);
+  }
+  .stat .k { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  .stat .v { font-size: 26px; font-weight: 700; margin-top: 4px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .stat .n { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+  .stat.accent { border-left: 3px solid var(--blue); }
+
+  section { margin-bottom: 40px; scroll-margin-top: 18px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .sec-head h2 { font-size: 19px; margin: 0; letter-spacing: -.01em; }
+  .sec-head .count { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .sec-desc { margin: 0 0 16px; color: var(--ink-2); max-width: 78ch; font-size: 13.5px; }
+
+  /* ── Phase progress rail ───────────────────────────────────────────── */
+  .phase-rail {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 15px 18px; margin-bottom: 18px; box-shadow: var(--shadow-sm);
+  }
+  .phase-rail-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 9px; }
+  .phase-rail-top b { font-size: 13px; }
+  .phase-rail-top span { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rail { height: 7px; border-radius: 99px; background: var(--slate-tint); overflow: hidden; display: flex; }
+  .rail > span { height: 100%; transition: width .7s cubic-bezier(.16,1,.3,1); }
+
+  /* ── Task table ────────────────────────────────────────────────────── */
+  .table-wrap {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow-x: auto; box-shadow: var(--shadow-sm);
+  }
+  table { width: 100%; border-collapse: collapse; min-width: 780px; }
+  thead th {
+    text-align: left; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600; padding: 11px 15px;
+    border-bottom: 1px solid var(--line); background: #FAFBFD;
+    position: sticky; top: 0; z-index: 1;
+  }
+  tbody td { padding: 13px 15px; border-bottom: 1px solid #EEF2F8; vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background .13s ease; }
+  tbody tr:hover { background: #FAFBFE; }
+
+  .tid { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); white-space: nowrap; font-weight: 500; }
+  .ttitle { font-weight: 600; }
+  .tnote { color: var(--ink-2); font-size: 12.5px; margin-top: 3px; max-width: 62ch; }
+
+  /* Status pills — one colour = one meaning, everywhere */
+  .pill {
+    display: inline-block; padding: 3px 9px; border-radius: 99px;
+    font-size: 11px; font-weight: 650; white-space: nowrap; letter-spacing: .01em;
+  }
+  .pill.done    { background: var(--green-tint); color: var(--green); }
+  .pill.partial { background: var(--amber-tint); color: var(--amber); }
+  .pill.todo    { background: var(--slate-tint); color: var(--slate); }
+
+  .bar { width: 92px; height: 6px; border-radius: 99px; background: var(--slate-tint); overflow: hidden; margin-top: 6px; }
+  .bar > span { display: block; height: 100%; border-radius: 99px; }
+  .pctnum { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  /* ── Verified-evidence cards ───────────────────────────────────────── */
+  .proof-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
+  .proof {
+    background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--green);
+    border-radius: var(--radius); padding: 15px 17px; box-shadow: var(--shadow-sm);
+  }
+  .proof h4 { margin: 0 0 5px; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+  .proof h4::before { content: "✓"; color: var(--green); font-weight: 800; }
+  .proof p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+  .proof code {
+    display: block; margin-top: 9px; padding: 8px 10px; background: #F7F9FC;
+    border: 1px solid var(--line); border-radius: 7px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    white-space: pre-wrap; word-break: break-word;
+  }
+
+  /* ── DPDP compliance grid ──────────────────────────────────────────── */
+  .dpdp-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); }
+  .dpdp {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow-sm);
+  }
+  .dpdp .sec { font-family: var(--mono); font-size: 10.5px; color: var(--purple); font-weight: 700; letter-spacing: .04em; }
+  .dpdp h4 { margin: 3px 0 5px; font-size: 13.5px; }
+  .dpdp p { margin: 0 0 9px; color: var(--ink-2); font-size: 12.5px; }
+
+  /* ── Notes / callout ───────────────────────────────────────────────── */
+  .callout {
+    background: var(--blue-tint); border: 1px solid #C9DAFA; border-left: 3px solid var(--blue);
+    border-radius: var(--radius); padding: 15px 18px; margin-bottom: 18px;
+  }
+  .callout h4 { margin: 0 0 6px; font-size: 13.5px; color: var(--navy); }
+  .callout p  { margin: 0 0 7px; color: #2C3E63; font-size: 13px; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout ul { margin: 6px 0 0; padding-left: 19px; color: #2C3E63; font-size: 13px; }
+  .callout li { margin-bottom: 4px; }
+
+  .callout.warn { background: var(--amber-tint); border-color: #F0DCB8; border-left-color: var(--amber); }
+  .callout.warn h4 { color: #7A4A00; }
+  .callout.warn p, .callout.warn ul { color: #6B4A14; }
+
+  /* ── Next-up list ──────────────────────────────────────────────────── */
+  .next { display: grid; gap: 10px; }
+  .next-item {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 13px 16px; display: flex; gap: 13px; align-items: flex-start; box-shadow: var(--shadow-sm);
+  }
+  .next-item .num {
+    width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--navy); color: #fff;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  }
+  .next-item b { display: block; font-size: 13.5px; }
+  .next-item span { color: var(--ink-2); font-size: 12.5px; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 22px clamp(18px,4vw,48px);
+    color: var(--ink-3); font-size: 12px; text-align: center; background: #fff;
+  }
+  footer b { color: var(--ink-2); }
+
+  @media (max-width: 640px) {
+    .stat .v { font-size: 22px; }
+    .overall-pct { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <div class="mark">★</div>
+      <div>
+        <h1>National Book of Records</h1>
+        <p>Backend CRM · Internal System</p>
+      </div>
+    </div>
+
+    <h2 class="headline">Phase 1 &amp; 2 Build Tracker</h2>
+    <p class="subhead">
+      Live status of every task in the production plan. Percentages are assessed against
+      working, verified code in this repository — not against intent. A task counts as
+      <b>Done</b> only when it has been executed end-to-end against the running stack.
+    </p>
+
+    <div class="overall">
+      <div class="overall-top">
+        <span class="overall-label">Overall — Phase 1 &amp; 2 combined</span>
+        <span class="overall-pct" id="overallPct">—</span>
+      </div>
+      <div class="track">
+        <span class="seg-done"    id="segDone"    style="width:0"></span>
+        <span class="seg-partial" id="segPartial" style="width:0"></span>
+      </div>
+      <div class="legend">
+        <span><i style="background:#46C97B"></i>Complete &amp; verified</span>
+        <span><i style="background:#F0B44B"></i>In progress</span>
+        <span><i style="background:rgba(255,255,255,.25)"></i>Not started</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="stats" id="stats"></div>
+
+  <div class="callout">
+    <h4>How to read this tracker</h4>
+    <p>
+      The plan's 31 delivery tasks (P1-01…P1-15, P2-01…P2-16) are listed verbatim below, plus a
+      DPDP Act compliance track that the requirement documents imply but do not enumerate.
+      Everything marked <b>Done</b> has been exercised against a live Postgres + Redis stack —
+      the evidence section lists what was actually run.
+    </p>
+    <p>
+      The current shape of the build is deliberate: <b>the foundation is deep rather than wide.</b>
+      Database, security, workflow engine and privacy layer are production-grade; the screens on
+      top of them are the remaining work. Building it the other way round produces a demo that
+      cannot be hardened later without a rewrite.
+    </p>
+  </div>
+
+  <section id="phase1">
+    <div class="sec-head">
+      <h2>Phase 1 · Foundation &amp; Core Applicant System</h2>
+      <span class="count" id="p1count"></span>
+    </div>
+    <p class="sec-desc">
+      Login and RBAC, dashboard, applicant list and profile, evidence vault, and the status
+      workflow with its automatic timeline. Weeks 1–3.5 of the plan.
+    </p>
+    <div class="phase-rail">
+      <div class="phase-rail-top"><b>Phase 1 progress</b><span id="p1pct">—</span></div>
+      <div class="rail"><span class="seg-done" id="p1done"></span><span class="seg-partial" id="p1partial"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:74px">ID</th><th>Task</th><th style="width:118px">Status</th><th style="width:112px">Progress</th></tr></thead>
+        <tbody id="p1body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="phase2">
+    <div class="sec-head">
+      <h2>Phase 2 · Operations, Automation &amp; Reporting</h2>
+      <span class="count" id="p2count"></span>
+    </div>
+    <p class="sec-desc">
+      Payments, certificates, publications, dispatch, tasks, templates and communication,
+      blacklist, the Smart Workflow Engine, notifications, reports, audit, settings and the
+      inbound NBR-website integration. Weeks 4–8.
+    </p>
+    <div class="phase-rail">
+      <div class="phase-rail-top"><b>Phase 2 progress</b><span id="p2pct">—</span></div>
+      <div class="rail"><span class="seg-done" id="p2done"></span><span class="seg-partial" id="p2partial"></span></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:74px">ID</th><th>Task</th><th style="width:118px">Status</th><th style="width:112px">Progress</th></tr></thead>
+        <tbody id="p2body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="dpdp">
+    <div class="sec-head">
+      <h2>India DPDP Act, 2023 — Compliance Track</h2>
+      <span class="count" id="dpcount"></span>
+    </div>
+    <p class="sec-desc">
+      NBR is the Data Fiduciary; applicants are Data Principals. This track is not in the
+      original plan — it was added because the system stores Aadhaar numbers, minors' data and
+      permanent personal history, which brings it squarely inside the Act.
+      <b>These are engineering controls, not legal advice — a lawyer should review before go-live.</b>
+    </p>
+    <div class="phase-rail">
+      <div class="phase-rail-top"><b>DPDP compliance progress</b><span id="dppct">—</span></div>
+      <div class="rail"><span class="seg-done" id="dpdone"></span><span class="seg-partial" id="dppartial"></span></div>
+    </div>
+    <div class="dpdp-grid" id="dpdpGrid"></div>
+  </section>
+
+  <section id="verified">
+    <div class="sec-head"><h2>Verified against the running stack</h2></div>
+    <p class="sec-desc">
+      Each item below was executed end-to-end, not merely written. Anything not listed here
+      is code that compiles but has not yet been proven.
+    </p>
+    <div class="proof-grid" id="proofGrid"></div>
+  </section>
+
+  <section id="next">
+    <div class="sec-head"><h2>Next up, in order</h2></div>
+    <p class="sec-desc">
+      Sequenced so each step unblocks the next. The applicant list and dashboard endpoints come
+      first because every screen depends on them.
+    </p>
+    <div class="next" id="nextList"></div>
+  </section>
+
+  <section id="risks">
+    <div class="sec-head"><h2>Open items &amp; decisions needed</h2></div>
+    <div class="callout warn">
+      <h4>Needs a decision from NBR before those parts can be finished</h4>
+      <ul>
+        <li><b>Package names and pricing</b> — four placeholder packages are seeded (₹2,500 / ₹5,000 / ₹10,000 / ₹15,000 at 18% GST). Real figures are needed before any invoice is issued.</li>
+        <li><b>Category list</b> — twelve placeholders are seeded; NBR's actual record categories should replace them.</li>
+        <li><b>NBR website integration</b> — the webhook contract is built and HMAC-signed, but the field mapping needs one sample approved-application payload from the existing admin panel.</li>
+        <li><b>Retention periods</b> — currently 8 years for personal data, 8 years for financial (tax-driven), 2 years for Aadhaar/passport. These are defensible defaults, not legal advice; NBR should confirm.</li>
+        <li><b>Email templates</b> — seven drafted and seeded; wording needs sign-off before they reach an applicant.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  NBR Backend CRM · Build tracker · <b id="genDate">—</b> · Generated from the repository state, not from plan intent.
+</footer>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────────
+   Single source of truth for this tracker.
+   `pct` is an honest assessment of working code, not effort spent.
+   status: 'done' (verified end-to-end) | 'partial' | 'todo'
+   ───────────────────────────────────────────────────────────────────────── */
+const PHASE1 = [
+  { id:'P1-01', title:'Project setup & CI/CD', pct:70, status:'partial',
+    note:'pnpm monorepo (api + web + shared), Docker Compose with Postgres 16, Redis 7, MinIO and Mailpit, env schema that refuses to boot on a bad or placeholder secret. GitHub Actions pipeline and staging/production deploy not yet written.' },
+  { id:'P1-02', title:'Database schema v1', pct:100, status:'done',
+    note:'48 tables, 192 indexes. Append-only enforced by database trigger on timeline, audit, consent, PII-access and certificate versions. CHECK constraints make an incorrect invoice total impossible to store. Idempotent seed provisions the Super Admin, 7 roles, 72 permissions, 17 statuses, 31 transitions.' },
+  { id:'P1-03', title:'Authentication', pct:100, status:'done',
+    note:'argon2id at OWASP parameters, HttpOnly + SameSite=strict cookies, refresh-token rotation with reuse detection, per-account lockout after 5 failures, per-IP throttle, idle timeout, forced password change on first login, timing-safe response on unknown accounts.' },
+  { id:'P1-04', title:'Configurable RBAC — roles & permissions', pct:60, status:'partial',
+    note:'Database-driven permission resolution with Redis caching, global fail-closed guard (a new route is private unless explicitly marked public), 72 permission codes across 23 modules. The Users & Roles admin API and its permission-grid screen are still to build.' },
+  { id:'P1-05', title:'App shell & navigation', pct:0, status:'todo',
+    note:'Sidebar, topbar, global Ctrl+K search, notification bell. Not started.' },
+  { id:'P1-06', title:'Dashboard', pct:15, status:'partial',
+    note:'Redis cache layer with tag-based invalidation is built and the timeline feed that powers Recent Activities works. The 11 stat-card aggregation endpoint is not written.' },
+  { id:'P1-07', title:'Applicant list', pct:20, status:'partial',
+    note:'Query schema, composite and partial indexes, and a covering index for the default sort are in place. The cursor-paginated list endpoint itself is not yet written.' },
+  { id:'P1-08', title:'Add / Edit applicant + record', pct:75, status:'partial',
+    note:'API complete and verified: applicant, record, achievement, consent and timeline entries all created in one transaction, with NBRAP/NBRR IDs allocated from Postgres sequences. The form UI is not built.' },
+  { id:'P1-09', title:'Duplicate detection', pct:100, status:'done',
+    note:'Verified live: exact match on mobile, email and keyed Aadhaar fingerprint, plus pg_trgm fuzzy name matching weighted by date of birth. Blocking matches refuse the save; blacklisted matches require an Admin override that is audited.' },
+  { id:'P1-10', title:'Applicant profile shell', pct:45, status:'partial',
+    note:'The GET /applicants/:id/full endpoint returns profile, records, flags, blacklists and masked identifiers in one round trip. The 13-tab UI shell is not built.' },
+  { id:'P1-11', title:'Tabs: Overview + Application + Achievement', pct:25, status:'partial',
+    note:'Data model and the read endpoint exist. Tab UI and the application PDF export do not.' },
+  { id:'P1-12', title:'Evidence vault', pct:30, status:'partial',
+    note:'Schema enforces the "never overwrite, never delete" rule with a delete-blocking trigger, checksum-based idempotency and a sensitivity flag that gates downloads. Presigned upload endpoints and the thumbnailing job are not written.' },
+  { id:'P1-13', title:'Notes + Attachments tabs', pct:25, status:'partial',
+    note:'Notes carry an append-only revision history and cannot be deleted, enforced by trigger. API endpoints and UI not written.' },
+  { id:'P1-14', title:'Status workflow + auto timeline', pct:100, status:'done',
+    note:'Verified live: 17-status state machine with 31 declared transitions, per-transition permission checks, six data guards, optimistic locking, terminal-status workflow lock with audited Admin override, and an automatic read-only timeline entry for every change.' },
+  { id:'P1-15', title:'Phase 1 demo, fixes, mid-payment gate', pct:0, status:'todo',
+    note:'Depends on the Phase 1 screens.' },
+];
+
+const PHASE2 = [
+  { id:'P2-01', title:'Payment module', pct:35, status:'partial',
+    note:'Money maths runs in integer paise and is shared byte-identically between browser and server. Database CHECK constraints make a wrong total unstorable and cap paid at the final amount. Partial payments, reversals and financial-year invoice numbering are modelled. Endpoints not written.' },
+  { id:'P2-02', title:'Certificate module', pct:30, status:'partial',
+    note:'Immutable version history enforced by trigger — old certificates genuinely cannot be deleted or edited. Upload and re-download endpoints not written.' },
+  { id:'P2-03', title:'Publications module', pct:25, status:'partial', note:'Schema and validation complete. Endpoints and screen not written.' },
+  { id:'P2-04', title:'Dispatch module', pct:25, status:'partial',
+    note:'Schema complete with POD, single-current-dispatch constraint and courier tracking-URL templates seeded for Delhivery, Blue Dart, DTDC and India Post. Endpoints not written.' },
+  { id:'P2-05', title:'Tasks & follow-ups', pct:25, status:'partial', note:'Schema and partial indexes for the dashboard queues are in place. Endpoints and board not written.' },
+  { id:'P2-06', title:'Email templates + sending', pct:35, status:'partial',
+    note:'Seven templates seeded with a validated placeholder vocabulary — a template referencing an unknown field fails at save time, not at send time. SMTP transport built. Queued sending and the send modal not written.' },
+  { id:'P2-07', title:'WhatsApp templates + sending', pct:35, status:'partial',
+    note:'Six templates seeded; wa.me click-to-chat link builder implemented. Mark-as-sent logging and UI not written.' },
+  { id:'P2-08', title:'Communication history', pct:25, status:'partial',
+    note:'Schema stores the rendered body, not just a template reference, so the log still shows what was actually sent after a template is reworded. Endpoints not written.' },
+  { id:'P2-09', title:'Blacklist & restriction flags', pct:45, status:'partial',
+    note:'Eight flags modelled with their behavioural effects (blocks new records / blocks outreach / blocks erasure). The blacklist hard-block on new applications is live and verified. Blacklist CRUD endpoints and the red banner UI are not written.' },
+  { id:'P2-10', title:'Smart Workflow Engine', pct:85, status:'partial',
+    note:'Verified live: server-computed next-step panel for all 17 stages, filtered by the caller’s permissions, by the Do Not Contact flag, and by whether each transition’s data guards are currently satisfied. Payment-stage context (due date, days remaining, reminder count) is computed. Only the rendering surface is missing.' },
+  { id:'P2-11', title:'Smart notifications', pct:20, status:'partial',
+    note:'Notifications table with a dedupe key so nightly generators cannot re-raise the same alert. Generators and the bell dropdown not written.' },
+  { id:'P2-12', title:'Reports & exports', pct:15, status:'partial',
+    note:'Export-job table with expiring artefacts (export files hold personal data, so they expire rather than living forever). Report queries and workers not written.' },
+  { id:'P2-13', title:'Audit logs & settings', pct:60, status:'partial',
+    note:'Audit trail is live and verified — every login, status change and PII reveal is recorded with actor, IP and request ID, and the table rejects UPDATE and DELETE. 17 settings keys seeded. The audit viewer and settings screens are not written.' },
+  { id:'P2-14', title:'Existing NBR system integration', pct:40, status:'partial',
+    note:'HMAC-SHA256 signature verification with replay protection (timestamp inside the signed payload) and constant-time comparison is implemented and unit-shaped. Inbound payload schema and the idempotent event log are modelled. The import worker and polling fallback are not written.' },
+  { id:'P2-15', title:'Performance hardening', pct:35, status:'partial',
+    note:'Built in from the start rather than retrofitted: keyset pagination, tagged Redis caching, trigram and covering indexes, partial indexes on hot queues, statement timeouts, connection pooling. The k6 load test against the stated p95 budget has not been run.' },
+  { id:'P2-16', title:'QA, UAT, go-live & handover', pct:5, status:'todo',
+    note:'A lifecycle smoke test exists and passes. The automated Vitest/Supertest/Playwright suites and the role-by-action permission matrix test are not written.' },
+];
+
+const DPDP = [
+  { sec:'§5', title:'Notice to Data Principals', pct:100, status:'done',
+    note:'Versioned notice seeded in English, listing every purpose, the retention position and the Grievance Officer. Old versions are never overwritten, so a 2026 consent always traces to the wording actually shown.' },
+  { sec:'§6', title:'Consent ledger', pct:85, status:'partial',
+    note:'Append-only, per-purpose, with the notice version, channel, IP and timestamp. Verified live on applicant creation. Trigger-enforced immutability. The withdrawal endpoint is modelled but not wired.' },
+  { sec:'§8(4)', title:'Security safeguards', pct:100, status:'done',
+    note:'Aadhaar, passport and PAN are AES-256-GCM encrypted before insert, stored in a separate table so an accidental SELECT * cannot leak them, masked everywhere by default, and revealed only with a permission plus a written reason.' },
+  { sec:'§8(4)', title:'PII access log', pct:100, status:'done',
+    note:'Verified live: the log write happens before the value is returned, and it throws on failure — an unlogged decryption cannot happen. Append-only.' },
+  { sec:'§8(5)', title:'Breach register & 72-hour notification', pct:45, status:'partial',
+    note:'Register modelled with a notify-by deadline computed from detection, and a CHECK constraint preventing closure without either a Board notification or a written reason why none was required. Workflow endpoints not written.' },
+  { sec:'§8(7)', title:'Retention & erasure', pct:50, status:'partial',
+    note:'Six retention policies seeded per data class with their legal basis, and an erasure log that survives the data it describes. Erasure anonymises rather than hard-deletes so financial history survives as tax law requires. The scheduled job is not written.' },
+  { sec:'§9', title:'Children’s data', pct:80, status:'partial',
+    note:'Age is computed at intake; a minor without a named guardian is refused at the API, and the database independently rejects a child consent row with no guardian. Verified by constraint. Guardian re-verification flow not built.' },
+  { sec:'§11–§14', title:'Data-principal rights', pct:40, status:'partial',
+    note:'Request register with reference codes, identity-verification gate, and a due date that drives an overdue alert. Access, correction, erasure, nomination and grievance types are modelled. The handling endpoints and console are not written.' },
+];
+
+const PROOFS = [
+  { t:'Authentication & forced rotation', d:'Login issues HttpOnly cookies; the seeded Super Admin is blocked from every other route until the bootstrap password is changed; changing it revokes all live sessions.',
+    c:'changed= {"ok": true}\nFORBIDDEN | Set a new password before continuing.' },
+  { t:'CSRF double-submit', d:'A state-changing request without the CSRF header is rejected; with it, it succeeds.',
+    c:'POST /auth/logout  → CSRF_FAILED\nPOST /auth/logout + header → {"ok": true}' },
+  { t:'Atomic applicant creation', d:'Applicant, record, achievement, five consent rows and four timeline entries written in one transaction, with sequential business IDs.',
+    c:'applicantCode: "NBRAP00001"\nrecordCode:    "NBRR00001"' },
+  { t:'Duplicate detection', d:'A differently-spelled name on the same mobile number is caught by both exact and fuzzy signals, and creating a second profile is refused.',
+    c:'reasons=[mobile, fuzzy_name] conf=1.0\nDUPLICATE_APPLICANT | Possible existing applicant found.' },
+  { t:'Workflow state machine', d:'An illegal jump is rejected with the legal options named; a legal transition succeeds.',
+    c:'INVALID_TRANSITION | From Application Submitted, a record\ncan only move to: Under Review, On Hold, Closed.' },
+  { t:'Transition data guards', d:'Approving a record with no evidence on file is refused by the has_evidence guard.',
+    c:'GUARD_NOT_SATISFIED | Upload at least one piece of\nevidence before approving this record.' },
+  { t:'Smart Workflow panel', d:'Server-computed next steps for the current stage, filtered by permission and by guard state.',
+    c:'status= Application Submitted\nactions= [Review application, Upload missing documents,\n          Assign verification team]' },
+  { t:'Append-only history', d:'Postgres itself refuses to rewrite the audit trail — not the application, the database.',
+    c:'UPDATE audit_logs …\nERROR: audit_logs is append-only: UPDATE is not permitted' },
+  { t:'Money invariants', d:'An invoice whose total does not match its line items is rejected by a CHECK constraint.',
+    c:'final_amount 9999.00 (should be 1180.00)\nERROR: violates check constraint\n       "payments_final_amount_correct"' },
+  { t:'Aadhaar encryption & masked reads', d:'Stored encrypted, returned masked by default, revealed only with permission and a reason — and the reveal is logged.',
+    c:'profile → "XXXX XXXX 0123"\nreveal  → "234567890123"\npii_access_log → Platform Super Admin | aadhaar | reveal' },
+  { t:'Automatic timeline', d:'Every lifecycle action produced a read-only timeline entry attributed to the actor, with no application code asking for it.',
+    c:'Status changed: Application Submitted → Under Review\nRecord opened — "Longest Time Doing Push-ups"\nApplicant profile created — Rahul Verma\nConsent recorded for 5 purpose(s) — notice v1.0' },
+  { t:'DPDP §9 child guard', d:'A minor without a named guardian is refused at the API, and independently by a database constraint.',
+    c:'CHECK consent_child_requires_guardian\n(is_child_consent = false OR guardian_name IS NOT NULL)' },
+];
+
+const NEXT = [
+  { t:'Applicant list + dashboard endpoints', d:'Every screen depends on these two. Cursor-paginated list with the filter set from §3, and the 11 Redis-cached stat cards.' },
+  { t:'Evidence vault upload path', d:'Presigned direct-to-R2 uploads, confirm endpoint, checksum idempotency. Unblocks the has_evidence guard in the real workflow.' },
+  { t:'Web design system + app shell', d:'Tailwind tokens from the approved palette, the lucide-react icon map, and the component kit — built once so every later screen inherits it.' },
+  { t:'Phase 1 screens', d:'Login, dashboard, applicant list, add/edit form, profile shell with its 13 tabs. This is what makes the 14 August demo real.' },
+  { t:'Payments, certificates, dispatch endpoints', d:'The money and fulfilment half of Phase 2, on top of the constraints already in the database.' },
+  { t:'Test suites', d:'Vitest for the state machine and payment maths, Supertest for the 7-role × action permission matrix, Playwright for the full lifecycle.' },
+  { t:'DPDP console + scheduled jobs', d:'Data-principal request handling, breach workflow, and the retention/erasure job.' },
+  { t:'NBR website import worker', d:'Needs one sample approved-application payload from the existing admin panel before the field mapping can be finalised.' },
+];
+
+const STATS = [
+  { k:'Delivery tasks',     v:'31',     n:'P1-01…P1-15 · P2-01…P2-16', accent:true },
+  { k:'Database tables',    v:'48',     n:'192 indexes' },
+  { k:'TypeScript files',   v:'68',     n:'~10,800 lines' },
+  { k:'Permission codes',   v:'72',     n:'23 modules · 7 seeded roles' },
+  { k:'Workflow states',    v:'17',     n:'31 declared transitions' },
+  { k:'Append-only tables', v:'8',      n:'trigger-enforced' },
+];
+
+/* ── Render ─────────────────────────────────────────────────────────────── */
+const barColour = (s) => s === 'done' ? '#21A85A' : s === 'partial' ? '#D98A12' : '#C3CBD9';
+const pillLabel = (s) => s === 'done' ? 'Done' : s === 'partial' ? 'In progress' : 'Not started';
+
+function rows(list, tbody) {
+  tbody.innerHTML = list.map((t) => `
+    <tr>
+      <td class="tid">${t.id}</td>
+      <td>
+        <div class="ttitle">${t.title}</div>
+        <div class="tnote">${t.note}</div>
+      </td>
+      <td><span class="pill ${t.status}">${pillLabel(t.status)}</span></td>
+      <td>
+        <span class="pctnum">${t.pct}%</span>
+        <span class="bar"><span style="width:${t.pct}%;background:${barColour(t.status)}"></span></span>
+      </td>
+    </tr>`).join('');
+}
+
+/** Weighted mean of task completion — every task counts equally. */
+const avg = (list) => list.reduce((sum, t) => sum + t.pct, 0) / list.length;
+
+function fillRail(list, doneEl, partialEl, pctEl) {
+  const done = (list.filter((t) => t.status === 'done').length / list.length) * 100;
+  const partialShare = avg(list) - done > 0 ? avg(list) - done : 0;
+  doneEl.style.width = done.toFixed(1) + '%';
+  partialEl.style.width = partialShare.toFixed(1) + '%';
+  pctEl.textContent = Math.round(avg(list)) + '%';
+}
+
+document.getElementById('stats').innerHTML = STATS.map((s) => `
+  <div class="stat${s.accent ? ' accent' : ''}">
+    <div class="k">${s.k}</div>
+    <div class="v">${s.v}</div>
+    <div class="n">${s.n}</div>
+  </div>`).join('');
+
+rows(PHASE1, document.getElementById('p1body'));
+rows(PHASE2, document.getElementById('p2body'));
+
+document.getElementById('dpdpGrid').innerHTML = DPDP.map((d) => `
+  <div class="dpdp">
+    <div class="sec">DPDP ${d.sec}</div>
+    <h4>${d.title}</h4>
+    <p>${d.note}</p>
+    <span class="pill ${d.status}">${pillLabel(d.status)} · ${d.pct}%</span>
+    <span class="bar" style="width:100%"><span style="width:${d.pct}%;background:${barColour(d.status)}"></span></span>
+  </div>`).join('');
+
+document.getElementById('proofGrid').innerHTML = PROOFS.map((p) => `
+  <div class="proof">
+    <h4>${p.t}</h4>
+    <p>${p.d}</p>
+    <code>${p.c.replace(/</g, '&lt;')}</code>
+  </div>`).join('');
+
+document.getElementById('nextList').innerHTML = NEXT.map((n, i) => `
+  <div class="next-item">
+    <div class="num">${i + 1}</div>
+    <div><b>${n.t}</b><span>${n.d}</span></div>
+  </div>`).join('');
+
+const ALL = [...PHASE1, ...PHASE2];
+fillRail(PHASE1, document.getElementById('p1done'), document.getElementById('p1partial'), document.getElementById('p1pct'));
+fillRail(PHASE2, document.getElementById('p2done'), document.getElementById('p2partial'), document.getElementById('p2pct'));
+fillRail(DPDP,   document.getElementById('dpdone'), document.getElementById('dppartial'), document.getElementById('dppct'));
+
+const overall = avg(ALL);
+const overallDone = (ALL.filter((t) => t.status === 'done').length / ALL.length) * 100;
+document.getElementById('overallPct').textContent = Math.round(overall) + '%';
+// Animate in after paint so the bar visibly fills rather than appearing done.
+requestAnimationFrame(() => {
+  document.getElementById('segDone').style.width = overallDone.toFixed(1) + '%';
+  document.getElementById('segPartial').style.width = Math.max(overall - overallDone, 0).toFixed(1) + '%';
+});
+
+const counts = (list) => {
+  const d = list.filter((t) => t.status === 'done').length;
+  const p = list.filter((t) => t.status === 'partial').length;
+  return `${d} done · ${p} in progress · ${list.length - d - p} not started`;
+};
+document.getElementById('p1count').textContent = counts(PHASE1);
+document.getElementById('p2count').textContent = counts(PHASE2);
+document.getElementById('dpcount').textContent = counts(DPDP);
+
+document.getElementById('genDate').textContent = new Date().toLocaleDateString('en-IN', {
+  day: 'numeric', month: 'long', year: 'numeric',
+});
+</script>
+</body>
+</html>

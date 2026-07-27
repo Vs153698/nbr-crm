@@ -1,0 +1,99 @@
+name: nbr-crm
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nbr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nbr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nbr_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-nbr_crm}
+      # Deterministic collation so ORDER BY is stable across environments
+      POSTGRES_INITDB_ARGS: '--locale-provider=icu --icu-locale=en-IN --encoding=UTF8'
+    ports:
+      - '${POSTGRES_PORT:-5434}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=200
+      - -c
+      - track_io_timing=on
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-nbr} -d ${POSTGRES_DB:-nbr_crm}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: nbr-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6380}:6379'
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Local SMTP trap so no real email leaves a dev/staging box.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: nbr-mailpit
+    restart: unless-stopped
+    ports:
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  # S3-compatible object storage standing in for Cloudflare R2 in local dev.
+  minio:
+    image: minio/minio:latest
+    container_name: nbr-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-nbr_minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-nbr_minio_password}
+    ports:
+      - '${MINIO_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

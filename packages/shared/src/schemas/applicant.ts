@@ -1,0 +1,205 @@
+import { z } from 'zod';
+import {
+  APPLICATION_SOURCE,
+  GENDER,
+  RECORD_TYPE,
+} from '../constants/catalog';
+import { CONSENT_ARTEFACT, CONSENT_CHANNEL, PROCESSING_PURPOSE } from '../constants/dpdp';
+import { RECORD_STATUS } from '../constants/statuses';
+import {
+  cursorQuerySchema,
+  emailSchema,
+  indianMobileSchema,
+  optionalTrimmedString,
+  phoneSchema,
+  pincodeSchema,
+  sortQuerySchema,
+  trimmedString,
+  uuidSchema,
+} from './common';
+
+/**
+ * Master applicant profile (§4). One person = one profile, forever. Repeat
+ * applicants get a new *record*, never a new applicant row.
+ */
+export const applicantCoreSchema = z.object({
+  fullName: trimmedString(150),
+  fatherName: optionalTrimmedString(150),
+  motherName: optionalTrimmedString(150),
+  dateOfBirth: z.coerce
+    .date()
+    .refine((d) => d <= new Date(), { message: 'Date of birth cannot be in the future' })
+    .refine((d) => d.getFullYear() >= 1900, { message: 'Enter a valid date of birth' })
+    .optional(),
+  gender: z.nativeEnum(GENDER).optional(),
+  mobile: indianMobileSchema,
+  whatsapp: phoneSchema.optional(),
+  email: emailSchema,
+  addressLine: optionalTrimmedString(300),
+  city: optionalTrimmedString(100),
+  state: optionalTrimmedString(100),
+  country: trimmedString(100).default('India'),
+  pincode: pincodeSchema.optional(),
+  nationality: optionalTrimmedString(100),
+  photoKey: optionalTrimmedString(500),
+});
+
+/**
+ * Government identifiers live behind their own schema because they are
+ * encrypted at rest, masked in every list, and only readable with `pii:reveal`
+ * (DPDP §8(4) reasonable security safeguards).
+ */
+export const applicantIdentifiersSchema = z.object({
+  aadhaarNumber: z
+    .string()
+    .transform((v) => v.replace(/\s/g, ''))
+    .pipe(z.string().regex(/^[2-9]\d{11}$/, 'Aadhaar must be 12 digits'))
+    .optional(),
+  passportNumber: z
+    .string()
+    .transform((v) => v.trim().toUpperCase())
+    .pipe(z.string().min(6).max(20))
+    .optional(),
+  panNumber: z
+    .string()
+    .transform((v) => v.trim().toUpperCase())
+    .pipe(z.string().regex(/^[A-Z]{5}\d{4}[A-Z]$/, 'Enter a valid PAN'))
+    .optional(),
+});
+
+/** §6 Achievement details, captured with the record. */
+export const achievementSchema = z.object({
+  recordTitle: trimmedString(250),
+  categoryId: uuidSchema,
+  recordType: z.nativeEnum(RECORD_TYPE).default(RECORD_TYPE.INDIVIDUAL),
+  description: optionalTrimmedString(5000),
+  /** Set by the verification team; what actually gets printed. */
+  approvedDescription: optionalTrimmedString(5000),
+  achievementDate: z.coerce.date().optional(),
+  location: optionalTrimmedString(250),
+  participantCount: z.coerce.number().int().min(1).max(1_000_000).default(1),
+});
+
+/**
+ * DPDP §6 consent block. Captured at intake for every purpose, with the notice
+ * version the applicant actually saw. Essential purposes must be accepted for
+ * the application to proceed; optional ones (publicity, dispatch) are free to
+ * decline and can be withdrawn later without breaking the record.
+ */
+export const consentBlockSchema = z.object({
+  purposes: z
+    .array(z.nativeEnum(PROCESSING_PURPOSE))
+    .min(1, 'At least the essential purposes must be accepted'),
+  artefacts: z.array(z.nativeEnum(CONSENT_ARTEFACT)).default([]),
+  channel: z.nativeEnum(CONSENT_CHANNEL),
+  noticeVersion: trimmedString(20),
+  /** Required when the applicant is under 18 (DPDP §9). */
+  guardianName: optionalTrimmedString(150),
+  guardianRelationship: optionalTrimmedString(60),
+  guardianContact: phoneSchema.optional(),
+  /** R2 key of the signed consent form, when one exists. */
+  evidenceKey: optionalTrimmedString(500),
+});
+
+/** Payload for the Add Applicant screen (W-05): person + first record in one go. */
+export const createApplicantSchema = z.object({
+  applicant: applicantCoreSchema,
+  identifiers: applicantIdentifiersSchema.optional(),
+  record: z.object({
+    source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
+    assignedToUserId: uuidSchema.optional(),
+    initialStatus: z
+      .nativeEnum(RECORD_STATUS)
+      .default(RECORD_STATUS.NEW_LEAD)
+      .refine(
+        (s) =>
+          (
+            [
+              RECORD_STATUS.NEW_LEAD,
+              RECORD_STATUS.APPLICATION_SUBMITTED,
+              RECORD_STATUS.UNDER_REVIEW,
+            ] as string[]
+          ).includes(s),
+        { message: 'A new record can only start at lead, submitted or under-review' },
+      ),
+    internalRemarks: optionalTrimmedString(2000),
+    achievement: achievementSchema,
+  }),
+  consent: consentBlockSchema.optional(),
+  /** Set by an Admin to proceed past a duplicate or blacklist warning (§18, §19). */
+  overrideDuplicate: z.boolean().default(false),
+  overrideReason: optionalTrimmedString(500),
+});
+
+export type CreateApplicantInput = z.infer<typeof createApplicantSchema>;
+
+export const updateApplicantSchema = z.object({
+  applicant: applicantCoreSchema.partial(),
+  identifiers: applicantIdentifiersSchema.partial().optional(),
+  /** Optimistic lock — rejects the write if someone else saved in the meantime. */
+  expectedUpdatedAt: z.coerce.date().optional(),
+});
+
+/** §18 Duplicate Detection — runs while the user types. */
+export const duplicateCheckSchema = z
+  .object({
+    mobile: z.string().optional(),
+    email: z.string().optional(),
+    fullName: z.string().optional(),
+    dateOfBirth: z.coerce.date().optional(),
+    aadhaarNumber: z.string().optional(),
+    passportNumber: z.string().optional(),
+    /** Exclude this applicant from the results when editing an existing profile. */
+    excludeApplicantId: uuidSchema.optional(),
+  })
+  .refine(
+    (v) => Boolean(v.mobile || v.email || v.fullName || v.aadhaarNumber || v.passportNumber),
+    { message: 'Provide at least one identifier to check' },
+  );
+
+export type DuplicateCheckInput = z.infer<typeof duplicateCheckSchema>;
+
+export const DUPLICATE_MATCH_REASON = {
+  MOBILE: 'mobile',
+  EMAIL: 'email',
+  AADHAAR: 'aadhaar',
+  PASSPORT: 'passport',
+  NAME_DOB: 'name_dob',
+  FUZZY_NAME: 'fuzzy_name',
+} as const;
+
+export type DuplicateMatchReason =
+  (typeof DUPLICATE_MATCH_REASON)[keyof typeof DUPLICATE_MATCH_REASON];
+
+export interface DuplicateMatch {
+  readonly applicantId: string;
+  readonly applicantCode: string;
+  readonly fullName: string;
+  readonly maskedMobile: string;
+  readonly maskedEmail: string;
+  readonly city: string | null;
+  readonly recordCount: number;
+  readonly reasons: readonly DuplicateMatchReason[];
+  /** 0–1. Exact identifier hits score 1; trigram name matches score similarity. */
+  readonly confidence: number;
+  readonly isBlacklisted: boolean;
+}
+
+/** Applicant list query (§3) — server-side search, filter, sort, cursor page. */
+export const applicantListQuerySchema = cursorQuerySchema.merge(sortQuerySchema).extend({
+  q: optionalTrimmedString(200),
+  status: z.array(z.nativeEnum(RECORD_STATUS)).optional(),
+  assignedToUserId: z.array(uuidSchema).optional(),
+  categoryId: z.array(uuidSchema).optional(),
+  source: z.array(z.nativeEnum(APPLICATION_SOURCE)).optional(),
+  paymentStatus: z.array(z.string().max(30)).optional(),
+  deliveryStatus: z.array(z.string().max(30)).optional(),
+  flag: z.array(z.string().max(30)).optional(),
+  createdFrom: z.coerce.date().optional(),
+  createdTo: z.coerce.date().optional(),
+  updatedFrom: z.coerce.date().optional(),
+  updatedTo: z.coerce.date().optional(),
+  includeBlacklisted: z.coerce.boolean().default(true),
+});
+
+export type ApplicantListQuery = z.infer<typeof applicantListQuerySchema>;
