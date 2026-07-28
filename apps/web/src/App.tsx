@@ -1,5 +1,5 @@
 import type { PermissionCode } from '@nbr/shared';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { EmptyState } from '@/components/ui/Card';
@@ -17,6 +17,23 @@ const ApplicantListPage = lazy(() => import('@/routes/applicants/ApplicantListPa
 const ApplicantFormPage = lazy(() => import('@/routes/applicants/ApplicantFormPage'));
 const ApplicantProfilePage = lazy(() => import('@/routes/applicants/ApplicantProfilePage'));
 const UsersRolesPage = lazy(() => import('@/routes/admin/UsersRolesPage'));
+const TasksBoardPage = lazy(() => import('@/routes/modules/TasksBoardPage'));
+const ReportsPage = lazy(() => import('@/routes/modules/ReportsPage'));
+
+// The five queues share one module chunk — they are the same component with
+// different props, so splitting them further would only add round-trips.
+const queues = () => import('@/routes/modules/QueuePage');
+const VerificationQueuePage = lazy(async () => ({ default: (await queues()).VerificationQueuePage }));
+const PaymentsQueuePage = lazy(async () => ({ default: (await queues()).PaymentsQueuePage }));
+const CertificatesQueuePage = lazy(async () => ({ default: (await queues()).CertificatesQueuePage }));
+const PublicationsQueuePage = lazy(async () => ({ default: (await queues()).PublicationsQueuePage }));
+const DispatchQueuePage = lazy(async () => ({ default: (await queues()).DispatchQueuePage }));
+
+const admin = () => import('@/routes/modules/AdminPages');
+const BlacklistPage = lazy(async () => ({ default: (await admin()).BlacklistPage }));
+const TemplatesPage = lazy(async () => ({ default: (await admin()).TemplatesPage }));
+const SettingsPage = lazy(async () => ({ default: (await admin()).SettingsPage }));
+const AuditLogPage = lazy(async () => ({ default: (await admin()).AuditLogPage }));
 
 function FullPageSpinner() {
   return (
@@ -85,6 +102,22 @@ function RequirePermission({
   return <>{children}</>;
 }
 
+/**
+ * Wraps a lazily-loaded screen in its permission gate and suspense boundary.
+ *
+ * Every authenticated route needs exactly this pair, and there are eighteen of
+ * them — spelling it out per route made it easy to ship one without a gate.
+ */
+function guarded(permission: PermissionCode, Screen: ComponentType) {
+  return (
+    <RequirePermission permission={permission}>
+      <Suspense fallback={<RouteFallback />}>
+        <Screen />
+      </Suspense>
+    </RequirePermission>
+  );
+}
+
 /** Sends an already-signed-in user away from the login screen. */
 function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
   const { status, user } = useAuth();
@@ -133,60 +166,27 @@ export function App() {
         >
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          <Route
-            path="/dashboard"
-            element={
-              <RequirePermission permission="dashboard:view">
-                <Suspense fallback={<RouteFallback />}>
-                  <DashboardPage />
-                </Suspense>
-              </RequirePermission>
-            }
-          />
+          <Route path="/dashboard" element={guarded('dashboard:view', DashboardPage)} />
 
-          <Route
-            path="/applicants"
-            element={
-              <RequirePermission permission="applicants:view">
-                <Suspense fallback={<RouteFallback />}>
-                  <ApplicantListPage />
-                </Suspense>
-              </RequirePermission>
-            }
-          />
+          <Route path="/applicants" element={guarded('applicants:view', ApplicantListPage)} />
+          <Route path="/applicants/new" element={guarded('applicants:create', ApplicantFormPage)} />
+          <Route path="/applicants/:id" element={guarded('applicants:view', ApplicantProfilePage)} />
 
-          <Route
-            path="/applicants/new"
-            element={
-              <RequirePermission permission="applicants:create">
-                <Suspense fallback={<RouteFallback />}>
-                  <ApplicantFormPage />
-                </Suspense>
-              </RequirePermission>
-            }
-          />
+          {/* Operational queues (§7, §12, §16, §17, §18) */}
+          <Route path="/verification" element={guarded('verification:view', VerificationQueuePage)} />
+          <Route path="/payments" element={guarded('payments:view', PaymentsQueuePage)} />
+          <Route path="/certificates" element={guarded('certificates:view', CertificatesQueuePage)} />
+          <Route path="/publications" element={guarded('publications:view', PublicationsQueuePage)} />
+          <Route path="/dispatch" element={guarded('dispatch:view', DispatchQueuePage)} />
 
-          <Route
-            path="/applicants/:id"
-            element={
-              <RequirePermission permission="applicants:view">
-                <Suspense fallback={<RouteFallback />}>
-                  <ApplicantProfilePage />
-                </Suspense>
-              </RequirePermission>
-            }
-          />
+          <Route path="/tasks" element={guarded('tasks:view', TasksBoardPage)} />
+          <Route path="/blacklist" element={guarded('blacklist:view', BlacklistPage)} />
+          <Route path="/reports" element={guarded('reports:view', ReportsPage)} />
 
-          <Route
-            path="/admin/users"
-            element={
-              <RequirePermission permission="users:view">
-                <Suspense fallback={<RouteFallback />}>
-                  <UsersRolesPage />
-                </Suspense>
-              </RequirePermission>
-            }
-          />
+          <Route path="/admin/users" element={guarded('users:view', UsersRolesPage)} />
+          <Route path="/admin/templates" element={guarded('templates:view', TemplatesPage)} />
+          <Route path="/admin/settings" element={guarded('settings:view', SettingsPage)} />
+          <Route path="/admin/audit" element={guarded('audit:view', AuditLogPage)} />
         </Route>
 
         <Route

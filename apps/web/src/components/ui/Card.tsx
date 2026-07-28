@@ -153,6 +153,42 @@ export function EmptyState({
   );
 }
 
+/**
+ * Failed-query state.
+ *
+ * Distinct from `EmptyState` on purpose: rendering "nothing here" when the
+ * request actually failed tells an operator a queue is clear when it may be
+ * full, which is the worst possible lie for this product to tell.
+ */
+export function QueryError({
+  title = "Couldn't load this",
+  description = 'The server did not respond as expected.',
+  onRetry,
+}: {
+  title?: string;
+  description?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <EmptyState
+      icon={Icons.ShieldAlert}
+      title={title}
+      description={description}
+      action={
+        onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-xs font-semibold text-brand hover:underline"
+          >
+            Try again
+          </button>
+        ) : undefined
+      }
+    />
+  );
+}
+
 /** Label/value row used across every summary card on the profile. */
 export function DetailRow({
   label,

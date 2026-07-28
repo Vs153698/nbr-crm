@@ -10,28 +10,26 @@ interface NavItem {
   icon: LucideIcon;
   /** Hidden unless the user holds this permission. */
   permission?: PermissionCode;
-  /** Phase 2 surfaces are shown disabled so the shape of the product is
-   *  visible without pretending the screens exist yet. */
-  comingSoon?: boolean;
 }
 
 const PRIMARY_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: Icons.LayoutDashboard, permission: 'dashboard:view' },
   { to: '/applicants', label: 'Applicants', icon: Icons.Users, permission: 'applicants:view' },
-  { to: '/verification', label: 'Verification', icon: Icons.ShieldCheck, permission: 'verification:view', comingSoon: true },
-  { to: '/payments', label: 'Payments', icon: Icons.IndianRupee, permission: 'payments:view', comingSoon: true },
-  { to: '/certificates', label: 'Certificates', icon: Icons.Award, permission: 'certificates:view', comingSoon: true },
-  { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view', comingSoon: true },
-  { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view', comingSoon: true },
-  { to: '/tasks', label: 'Tasks & Follow-ups', icon: Icons.ClipboardCheck, permission: 'tasks:view', comingSoon: true },
-  { to: '/blacklist', label: 'Blacklist', icon: Icons.Ban, permission: 'blacklist:view', comingSoon: true },
-  { to: '/reports', label: 'Reports', icon: Icons.TrendingUp, permission: 'reports:view', comingSoon: true },
+  { to: '/verification', label: 'Verification', icon: Icons.ShieldCheck, permission: 'verification:view' },
+  { to: '/payments', label: 'Payments', icon: Icons.IndianRupee, permission: 'payments:view' },
+  { to: '/certificates', label: 'Certificates', icon: Icons.Award, permission: 'certificates:view' },
+  { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view' },
+  { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view' },
+  { to: '/tasks', label: 'Tasks & Follow-ups', icon: Icons.ClipboardCheck, permission: 'tasks:view' },
+  { to: '/blacklist', label: 'Blacklist', icon: Icons.Ban, permission: 'blacklist:view' },
+  { to: '/reports', label: 'Reports', icon: Icons.TrendingUp, permission: 'reports:view' },
 ];
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: 'Users & Roles', icon: Icons.Shield, permission: 'users:view' },
-  { to: '/admin/settings', label: 'Settings', icon: Icons.Settings, permission: 'settings:view', comingSoon: true },
-  { to: '/admin/audit', label: 'Audit Logs', icon: Icons.FileText, permission: 'audit:view', comingSoon: true },
+  { to: '/admin/templates', label: 'Templates', icon: Icons.Mail, permission: 'templates:view' },
+  { to: '/admin/settings', label: 'Settings', icon: Icons.Settings, permission: 'settings:view' },
+  { to: '/admin/audit', label: 'Audit Logs', icon: Icons.FileText, permission: 'audit:view' },
 ];
 
 function NavSection({ title, items, onNavigate }: { title?: string; items: NavItem[]; onNavigate?: () => void }) {
@@ -51,34 +49,21 @@ function NavSection({ title, items, onNavigate }: { title?: string; items: NavIt
       <ul className="space-y-0.5">
         {visible.map((item) => (
           <li key={item.to}>
-            {item.comingSoon ? (
-              <span
-                title="Phase 2 — not built yet"
-                className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-white/25"
-              >
-                <item.icon size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0" />
-                <span className="truncate">{item.label}</span>
-                <span className="ml-auto rounded bg-white/8 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-white/40">
-                  Soon
-                </span>
-              </span>
-            ) : (
-              <NavLink
-                to={item.to}
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150',
-                    isActive
-                      ? 'bg-brand font-semibold text-white shadow-sm'
-                      : 'text-white/70 hover:bg-white/8 hover:text-white',
-                  )
-                }
-              >
-                <item.icon size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </NavLink>
-            )}
+            <NavLink
+              to={item.to}
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150',
+                  isActive
+                    ? 'bg-brand font-semibold text-white shadow-sm'
+                    : 'text-white/70 hover:bg-white/8 hover:text-white',
+                )
+              }
+            >
+              <item.icon size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </NavLink>
           </li>
         ))}
       </ul>

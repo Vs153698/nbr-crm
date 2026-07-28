@@ -7,6 +7,7 @@ import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { GlobalSearch } from './GlobalSearch';
+import { NotificationsBell } from './NotificationsBell';
 import { Sidebar } from './Sidebar';
 
 /**
@@ -76,14 +77,7 @@ export function AppShell() {
             </Button>
           ) : null}
 
-          <button
-            type="button"
-            aria-label="Notifications"
-            title="Notifications — Phase 2"
-            className="relative grid h-9 w-9 shrink-0 cursor-not-allowed place-items-center rounded-lg text-ink-4"
-          >
-            <Icons.BellRing size={ICON_SIZE.md} strokeWidth={ICON_STROKE} />
-          </button>
+          <NotificationsBell />
 
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

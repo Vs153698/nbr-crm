@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrivacyModule } from '../privacy/privacy.module';
+import { QueuesController } from '../records/queues.controller';
+import { QueuesService } from '../records/queues.service';
 import { RecordsController } from '../records/records.controller';
 import { WorkflowService } from '../records/workflow.service';
 import { TimelineModule } from '../timeline/timeline.module';
@@ -17,8 +19,15 @@ import { DuplicateService } from './duplicate.service';
  */
 @Module({
   imports: [TimelineModule, PrivacyModule],
-  controllers: [ApplicantsController, RecordsController],
-  providers: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],
+  controllers: [ApplicantsController, RecordsController, QueuesController],
+  providers: [
+    ApplicantsService,
+    ApplicantListService,
+    AddRecordService,
+    DuplicateService,
+    WorkflowService,
+    QueuesService,
+  ],
   exports: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],
 })
 export class ApplicantsModule {}

@@ -13,7 +13,11 @@ import * as schema from '../schema';
  * credential. That is correct, but it leaves no way back in if the bootstrap
  * password is lost, so this is the explicit escape hatch.
  *
- * Every live session is revoked, and a password change is forced on next login.
+ * Every live session is revoked. Rotation is deliberately *not* forced: the
+ * whole point is to make the `.env` password true again, and demanding a
+ * different one at the next login would immediately make it stale — which is
+ * the loop this tool exists to break. The production guard below, not a forced
+ * rotation, is what keeps this safe.
  */
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -42,7 +46,7 @@ async function main(): Promise<void> {
       .update(schema.users)
       .set({
         passwordHash,
-        mustChangePassword: true,
+        mustChangePassword: false,
         passwordChangedAt: new Date(),
         failedLoginCount: 0,
         lockedUntil: null,
@@ -70,8 +74,8 @@ async function main(): Promise<void> {
 
     process.stdout.write(
       `✓ Password reset for ${updated[0]!.email}\n` +
-        `  Sign in with SUPER_ADMIN_PASSWORD from .env\n` +
-        `  You will be asked to set a new password immediately.\n`,
+        `  Sign in with SUPER_ADMIN_PASSWORD from .env — it is now live as-is.\n` +
+        `  Every existing session was revoked.\n`,
     );
   } finally {
     await sqlClient.end({ timeout: 5 });
