@@ -27,3 +27,6 @@ playwright-report/
 test-results/
 /apps/web/e2e/.auth/
 k6-results/
+
+# Generated API spec (`pnpm docs:spec`) — the live document is served at /api/docs
+openapi.json

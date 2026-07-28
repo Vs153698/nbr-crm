@@ -307,3 +307,34 @@ export const exportRequestSchema = reportQuerySchema.extend({
   format: z.nativeEnum(EXPORT_FORMAT),
   columns: z.array(trimmedString(60)).min(1).optional(),
 });
+
+/**
+ * ── Reference-data catalogue (§26) ───────────────────────────────────────────
+ * Categories, packages and couriers are Admin-editable rather than compiled in,
+ * so onboarding a new courier or price point needs no deployment. They live in
+ * the shared package because both the settings screen and the API validate
+ * against exactly these shapes.
+ */
+export const categorySchema = z.object({
+  id: uuidSchema.optional(),
+  name: trimmedString(150),
+  description: optionalTrimmedString(500),
+  isActive: z.boolean().default(true),
+});
+
+export const packageSchema = z.object({
+  id: uuidSchema.optional(),
+  name: trimmedString(120),
+  description: optionalTrimmedString(500),
+  amount: moneySchema,
+  gstPercent: moneySchema.default('18.00'),
+  isActive: z.boolean().default(true),
+});
+
+export const courierSchema = z.object({
+  id: uuidSchema.optional(),
+  name: trimmedString(120),
+  /** `{trackingNumber}` is substituted when building a tracking link. */
+  trackingUrlTemplate: optionalTrimmedString(500),
+  isActive: z.boolean().default(true),
+});

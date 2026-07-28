@@ -13,11 +13,11 @@ import {
 import {
   ACTIONS,
   MODULES,
+  categorySchema,
+  courierSchema,
   exportRequestSchema,
-  moneySchema,
-  optionalTrimmedString,
+  packageSchema,
   reportQuerySchema,
-  trimmedString,
   uuidSchema,
   WEBHOOK_SIGNATURE_HEADER,
   type ExportFormat,
@@ -34,29 +34,6 @@ import { ReportsService } from '../reports/reports.service';
 import { GovernanceService } from './governance.service';
 
 const settingSchema = z.object({ value: z.unknown() });
-
-const categorySchema = z.object({
-  id: uuidSchema.optional(),
-  name: trimmedString(150),
-  description: optionalTrimmedString(500),
-  isActive: z.boolean().default(true),
-});
-
-const packageSchema = z.object({
-  id: uuidSchema.optional(),
-  name: trimmedString(120),
-  description: optionalTrimmedString(500),
-  amount: moneySchema,
-  gstPercent: moneySchema.default('18.00'),
-  isActive: z.boolean().default(true),
-});
-
-const courierSchema = z.object({
-  id: uuidSchema.optional(),
-  name: trimmedString(120),
-  trackingUrlTemplate: optionalTrimmedString(500),
-  isActive: z.boolean().default(true),
-});
 
 @Controller('reports')
 class ReportsController {

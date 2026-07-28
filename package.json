@@ -26,7 +26,8 @@
     "infra:logs": "docker compose logs -f",
     "infra:reset": "docker compose down -v && pnpm infra:up && pnpm db:migrate && pnpm db:seed",
     "setup": "pnpm install && pnpm --filter @nbr/shared build && pnpm infra:up && pnpm db:migrate && pnpm db:seed",
-    "db:reset-admin": "pnpm --filter @nbr/api db:reset-admin"
+    "db:reset-admin": "pnpm --filter @nbr/api db:reset-admin",
+    "docs:spec": "pnpm --filter @nbr/api docs:spec"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

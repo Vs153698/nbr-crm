@@ -8,14 +8,14 @@ import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { API_PREFIX, DEFAULT_API_VERSION, DOCS_PATH } from './common/constants';
 import {
   registerCsrf,
   registerJsonBodyParser,
   registerRequestContext,
 } from './common/security.plugins';
 import { loadEnv } from './config/env';
-
-const API_PREFIX = 'api';
+import { setupDocs } from './docs/setup-docs';
 
 async function bootstrap(): Promise<void> {
   // Validated before anything else so a misconfiguration is a clear startup
@@ -123,8 +123,30 @@ async function bootstrap(): Promise<void> {
   });
 
   app.setGlobalPrefix(API_PREFIX, { exclude: ['health', 'health/live'] });
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: DEFAULT_API_VERSION });
   app.enableShutdownHooks();
+
+  // After versioning and the global prefix are configured — the document reads
+  // both, so mounting earlier would document the wrong paths.
+  if (env.DOCS_ENABLED ?? !isProduction) {
+    // The API-wide `default-src 'none'` is right for a JSON endpoint and fatal
+    // for Swagger UI, which is a real page with its own scripts and styles.
+    // Relaxed on the docs path only, rather than globally, so every actual API
+    // response keeps the strict policy.
+    fastify.addHook('onSend', (request, reply, payload, done) => {
+      if (request.url.startsWith(`/${DOCS_PATH}`)) {
+        void reply.header(
+          'content-security-policy',
+          "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; " +
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+        );
+      }
+      done(null, payload);
+    });
+
+    setupDocs(app, { serverUrl: env.API_URL, isProduction });
+  }
 
   await app.listen(env.API_PORT, '0.0.0.0');
 

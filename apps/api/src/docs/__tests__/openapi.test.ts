@@ -1,0 +1,130 @@
+import { VersioningType, type INestApplication } from '@nestjs/common';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AppModule } from '../../app.module';
+import { API_PREFIX, DEFAULT_API_VERSION } from '../../common/constants';
+import { buildOpenApiDocument, reconcileDocs } from '../openapi.builder';
+
+/**
+ * The API reference is generated from the running application, so these tests
+ * are what stop it becoming confidently wrong: an endpoint added without a
+ * registry entry, or a permission line that no longer matches the guard.
+ */
+describe('OpenAPI document', () => {
+  let app: INestApplication;
+  let document: ReturnType<typeof buildOpenApiDocument>;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    // Fastify, matching production: the adapter decides how routes are
+    // registered, and this document is built from those routes.
+    app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+
+    // Mirror bootstrap, or the generated paths will not match what is served.
+    app.setGlobalPrefix(API_PREFIX, { exclude: ['health', 'health/live'] });
+    app.enableVersioning({ type: VersioningType.URI, defaultVersion: DEFAULT_API_VERSION });
+    await app.init();
+
+    document = buildOpenApiDocument(app, { serverUrl: 'http://localhost:4000' });
+  }, 60_000);
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('documents every route the router serves, and no routes it does not', () => {
+    const { undocumented, orphaned } = reconcileDocs(app);
+
+    expect(undocumented).toEqual([]);
+    expect(orphaned).toEqual([]);
+  });
+
+  it('gives every operation a summary, description and tag', () => {
+    const missing = operations(document)
+      .filter(({ operation }) => !operation.summary || !operation.description || !operation.tags?.length)
+      .map(({ id }) => id);
+
+    expect(missing).toEqual([]);
+  });
+
+  it('requires the CSRF header on every non-public mutating route', () => {
+    // The double-submit token is the only thing standing between a cookie
+    // session and a cross-site write, so a mutating route documented without it
+    // is either a doc bug or a real hole.
+    const mutating = new Set(['post', 'put', 'patch', 'delete']);
+
+    const wrong = operations(document)
+      .filter(({ verb, operation }) => {
+        if (!mutating.has(verb)) return false;
+        const security = operation.security ?? [];
+        if (security.length === 0) return false; // public by design; asserted below
+        return !security.some((scheme) => 'csrfToken' in scheme);
+      })
+      .map(({ id }) => id);
+
+    expect(wrong).toEqual([]);
+  });
+
+  it('marks exactly the intended endpoints as reachable without a session', () => {
+    const publicOps = operations(document)
+      .filter(({ operation }) => (operation.security ?? []).length === 0)
+      .map(({ id }) => id)
+      .sort();
+
+    // Anything new appearing here is an endpoint that ships unauthenticated.
+    expect(publicOps).toEqual([
+      'get /health',
+      'get /health/live',
+      'post /api/v1/auth/forgot-password',
+      'post /api/v1/auth/login',
+      'post /api/v1/auth/refresh',
+      'post /api/v1/auth/reset-password',
+      'post /api/v1/integrations/nbr-website/applications',
+    ]);
+  });
+
+  it('resolves every documented request body to a real schema', () => {
+    const empty = operations(document)
+      .filter(({ operation }) => {
+        const schema = operation.requestBody?.content?.['application/json']?.schema as
+          | { properties?: Record<string, unknown> }
+          | undefined;
+        return operation.requestBody !== undefined && !schema?.properties;
+      })
+      .map(({ id }) => id);
+
+    // A body documented as `{}` is worse than none — it tells an integrator the
+    // endpoint takes nothing.
+    expect(empty).toEqual([]);
+  });
+
+  it('describes the permission each route actually enforces', () => {
+    const reveal = document.paths['/api/v1/applicants/{id}/reveal-identifier']?.post;
+
+    expect(reveal?.description).toContain('`pii:reveal`');
+    expect(reveal?.description).toContain('pii.revealed');
+  });
+});
+
+interface FlatOperation {
+  id: string;
+  verb: string;
+  operation: {
+    summary?: string;
+    description?: string;
+    tags?: string[];
+    security?: Array<Record<string, unknown>>;
+    requestBody?: { content?: Record<string, { schema?: unknown }> };
+  };
+}
+
+function operations(document: ReturnType<typeof buildOpenApiDocument>): FlatOperation[] {
+  return Object.entries(document.paths).flatMap(([path, item]) =>
+    Object.entries(item as Record<string, FlatOperation['operation']>).map(([verb, operation]) => ({
+      id: `${verb} ${path}`,
+      verb,
+      operation,
+    })),
+  );
+}

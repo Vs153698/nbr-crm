@@ -49,6 +49,18 @@ export const envSchema = z
     WEB_URL: z.string().url().default('http://localhost:5173'),
     CORS_ORIGINS: csv(),
 
+    /**
+     * Serve the interactive API reference at `/api/docs`.
+     *
+     * Unset means "on outside production". The reference enumerates every
+     * endpoint and the permission it requires, which is a map of the system
+     * worth handing an attacker, so production has to opt in deliberately.
+     */
+    DOCS_ENABLED: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => (value === undefined ? undefined : value === 'true')),
+
     DATABASE_URL: z.string().url(),
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(200).default(20),
 

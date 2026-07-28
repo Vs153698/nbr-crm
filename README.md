@@ -56,6 +56,33 @@ later on the first request that needs it.
 
 Health check: `GET /health` · API base: `/api/v1`
 
+## API reference
+
+Interactive documentation for all 104 endpoints is served by the running API:
+
+| URL | What |
+|---|---|
+| `/api/docs` | Swagger UI, grouped by module, with try-it-out |
+| `/api/docs/json` | OpenAPI 3.0 document |
+| `/api/docs/yaml` | The same document as YAML |
+
+`pnpm docs:spec` writes `openapi.json` to the repository root for client generators and
+contract tests. The file is gitignored — regenerate it rather than reading a stale copy.
+
+The document is **generated from the running application**, not hand-maintained. Paths,
+verbs, versions and the required permission for each route are read out of Nest's own
+route metadata and the `@Can(...)` guards, so the reference cannot claim a permission the
+server does not enforce. Request bodies are rendered from the same Zod schemas the server
+validates against. Prose lives in `apps/api/src/docs/openapi.registry.ts`, keyed by
+controller method; if that map and the router disagree the API refuses to start outside
+production, and `apps/api/src/docs/__tests__/openapi.test.ts` fails in CI.
+
+That test also pins the list of endpoints reachable without a session, so an endpoint
+cannot become public without someone changing an assertion that says so.
+
+Set `DOCS_ENABLED=false` to turn the reference off; it is off by default in production,
+because a complete map of every endpoint and its permission is worth having as an attacker.
+
 ## Repository layout
 
 ```
@@ -147,6 +174,8 @@ The plan requires that future phases plug in without a rebuild. Concretely:
 | `pnpm db:migrate` | Apply migrations |
 | `pnpm db:seed` | Idempotent seed — safe to re-run on every deploy |
 | `pnpm db:studio` | Drizzle Studio |
+| `pnpm db:reset-admin` | Reset the Super Admin password to the `.env` value (non-production) |
+| `pnpm docs:spec` | Write `openapi.json` from the live route table |
 | `pnpm typecheck` | Typecheck every package |
 | `pnpm infra:up` / `infra:down` | Local dependencies |
 
