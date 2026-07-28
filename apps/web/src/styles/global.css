@@ -22,9 +22,15 @@
 
   /* A visible, consistent focus ring everywhere — keyboard users must always
      be able to see where they are. Only shown for keyboard focus so mouse
-     clicks don't leave rings behind. */
+     clicks don't leave rings behind.
+
+     No offset by default. An offset assumes it knows the colour behind the
+     element, and it doesn't: the same rule runs on the white workspace, the
+     navy sidebar and the sign-in card, where a white gap reads as a defect.
+     Controls that genuinely need separation — a focused orange button on an
+     orange surface — declare their own offset and its colour. */
   :focus-visible {
-    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-white;
+    @apply outline-none ring-2 ring-nbr-orange;
   }
 
   /* Numbers in tables and stat cards must not jitter as they change. */

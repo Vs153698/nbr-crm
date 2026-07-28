@@ -15,11 +15,17 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: Icons.LayoutDashboard, permission: 'dashboard:view' },
   { to: '/applicants', label: 'Applicants', icon: Icons.Users, permission: 'applicants:view' },
+];
+
+const PIPELINE_NAV: NavItem[] = [
   { to: '/verification', label: 'Verification', icon: Icons.ShieldCheck, permission: 'verification:view' },
   { to: '/payments', label: 'Payments', icon: Icons.IndianRupee, permission: 'payments:view' },
   { to: '/certificates', label: 'Certificates', icon: Icons.Award, permission: 'certificates:view' },
   { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view' },
   { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view' },
+];
+
+const WORK_NAV: NavItem[] = [
   { to: '/tasks', label: 'Tasks & Follow-ups', icon: Icons.ClipboardCheck, permission: 'tasks:view' },
   { to: '/blacklist', label: 'Blacklist', icon: Icons.Ban, permission: 'blacklist:view' },
   { to: '/reports', label: 'Reports', icon: Icons.TrendingUp, permission: 'reports:view' },
@@ -32,16 +38,31 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/audit', label: 'Audit Logs', icon: Icons.FileText, permission: 'audit:view' },
 ];
 
-function NavSection({ title, items, onNavigate }: { title?: string; items: NavItem[]; onNavigate?: () => void }) {
+/**
+ * One navigation group.
+ *
+ * The whole group disappears when the role can see none of its items, rather
+ * than leaving a heading over empty space — a Finance user should not be shown
+ * that an "Administration" section exists.
+ */
+function NavSection({
+  title,
+  items,
+  onNavigate,
+}: {
+  title?: string;
+  items: NavItem[];
+  onNavigate?: () => void;
+}) {
   const { can } = useAuth();
   const visible = items.filter((item) => !item.permission || can(item.permission));
 
   if (visible.length === 0) return null;
 
   return (
-    <div className="mb-5">
+    <div className="mb-1 px-3 py-2">
       {title ? (
-        <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
+        <p className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.15em] text-nbr-text-4">
           {title}
         </p>
       ) : null}
@@ -54,15 +75,37 @@ function NavSection({ title, items, onNavigate }: { title?: string; items: NavIt
               onClick={onNavigate}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150',
+                  'group relative flex items-center gap-2.5 rounded-lg py-2 pl-3 pr-2.5',
+                  'text-[13px] transition-colors duration-150',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring',
                   isActive
-                    ? 'bg-brand font-semibold text-white shadow-sm'
-                    : 'text-white/70 hover:bg-white/8 hover:text-white',
+                    ? 'bg-nbr-orange/10 font-semibold text-white'
+                    : 'text-nbr-text-2 hover:bg-white/[0.055] hover:text-white',
                 )
               }
             >
-              <item.icon size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0" />
-              <span className="truncate">{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  {/* Active marker. A filled bar reads at a glance from the
+                      corner of the eye; a background tint alone does not. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full transition-colors',
+                      isActive ? 'bg-nbr-orange' : 'bg-transparent',
+                    )}
+                  />
+                  <item.icon
+                    size={ICON_SIZE.md}
+                    strokeWidth={isActive ? 2.3 : ICON_STROKE}
+                    className={cn(
+                      'shrink-0 transition-colors',
+                      isActive ? 'text-nbr-orange' : 'text-nbr-text-3 group-hover:text-nbr-text-2',
+                    )}
+                  />
+                  <span className="truncate">{item.label}</span>
+                </>
+              )}
             </NavLink>
           </li>
         ))}
@@ -75,28 +118,47 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <nav
       aria-label="Main navigation"
-      className="flex h-full w-[236px] shrink-0 flex-col bg-navy text-white"
+      className="flex h-full w-[248px] shrink-0 flex-col border-r border-nbr-line bg-nbr-bg text-white"
     >
-      <div className="flex items-center gap-2.5 px-4 py-4">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#F0C64E] to-gold text-lg font-bold text-navy shadow-[0_3px_12px_rgba(192,138,46,.4)]">
-          ★
-        </span>
+      {/* Brand */}
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-nbr-line px-4 py-3.5">
+        <img
+          src="/nbr-logo.png"
+          alt=""
+          width={34}
+          height={34}
+          className="h-[34px] w-[34px] shrink-0"
+        />
         <div className="min-w-0">
-          <p className="truncate text-xs font-bold uppercase tracking-[0.12em]">National Book</p>
-          <p className="truncate text-[10px] uppercase tracking-[0.14em] text-white/45">of Records</p>
+          <p className="truncate text-[11px] font-bold uppercase leading-tight tracking-[0.11em] text-white">
+            National Book
+            <br />
+            of Records
+          </p>
         </div>
       </div>
 
-      <div className="scrollbar-slim flex-1 overflow-y-auto px-2.5 py-2">
+      <div className="scrollbar-slim flex-1 overflow-y-auto py-2">
         <NavSection items={PRIMARY_NAV} onNavigate={onNavigate} />
+        <SectionRule />
+        <NavSection title="Pipeline" items={PIPELINE_NAV} onNavigate={onNavigate} />
+        <SectionRule />
+        <NavSection title="Workspace" items={WORK_NAV} onNavigate={onNavigate} />
+        <SectionRule />
         <NavSection title="Administration" items={ADMIN_NAV} onNavigate={onNavigate} />
       </div>
 
-      <div className="border-t border-white/10 px-4 py-3">
-        <p className="text-[10px] leading-relaxed text-white/35">
+      <div className="shrink-0 border-t border-nbr-line px-4 py-3">
+        <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-nbr-text-4">
+          <Icons.Lock size={11} strokeWidth={ICON_STROKE} className="mt-px shrink-0" />
           Internal system. All activity is logged.
         </p>
       </div>
     </nav>
   );
+}
+
+/** Hairline between groups. Inset so it reads as a divider, not a page edge. */
+function SectionRule() {
+  return <div aria-hidden className="mx-5 h-px bg-nbr-line" />;
 }

@@ -5,7 +5,6 @@ import { cn } from '@/lib/cn';
 import { initials } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/Button';
 import { GlobalSearch } from './GlobalSearch';
 import { NotificationsBell } from './NotificationsBell';
 import { Sidebar } from './Sidebar';
@@ -52,7 +51,7 @@ export function AppShell() {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-white px-3 sm:px-4">
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white px-3 sm:gap-3 sm:px-5">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
@@ -67,15 +66,24 @@ export function AppShell() {
           </div>
 
           {can('applicants:create') ? (
-            <Button
-              variant="primary"
-              icon={Icons.Plus}
+            <button
+              type="button"
               onClick={() => navigate('/applicants/new')}
-              className="hidden sm:inline-flex"
+              className={cn(
+                'hidden h-9 shrink-0 items-center gap-1.5 rounded-lg px-3.5 sm:inline-flex',
+                'bg-nbr-orange text-[13px] font-semibold text-white',
+                'transition-colors duration-150 hover:bg-nbr-orange-hover',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange/50 focus-visible:ring-offset-2',
+              )}
             >
+              <Icons.Plus size={ICON_SIZE.md} strokeWidth={2.4} />
               New Applicant
-            </Button>
+            </button>
           ) : null}
+
+          {/* Separates the action cluster from the account cluster. Without it
+              the bell reads as part of the button group beside it. */}
+          <span aria-hidden className="hidden h-6 w-px shrink-0 bg-line sm:block" />
 
           <NotificationsBell />
 
@@ -83,30 +91,43 @@ export function AppShell() {
             <DropdownMenu.Trigger asChild>
               <button
                 type="button"
-                className="flex shrink-0 items-center gap-2 rounded-lg py-1 pl-1 pr-1.5 transition-colors hover:bg-canvas"
+                className="flex shrink-0 items-center gap-2 rounded-lg p-1 transition-colors hover:bg-canvas focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange/50"
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-navy text-2xs font-bold text-white">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-nbr-bg text-2xs font-bold text-white">
                   {initials(user?.fullName ?? '?')}
                 </span>
-                <span className="hidden min-w-0 text-left md:block">
-                  <span className="block truncate text-xs font-semibold text-ink">
+                <span className="hidden min-w-0 pr-0.5 text-left md:block">
+                  <span className="block truncate text-xs font-semibold leading-tight text-ink">
                     {user?.fullName}
                   </span>
-                  <span className="block truncate text-[10px] text-ink-3">{user?.role.name}</span>
+                  <span className="block truncate text-[10px] leading-tight text-ink-3">
+                    {user?.role.name}
+                  </span>
                 </span>
-                <Icons.ChevronDown size={14} strokeWidth={ICON_STROKE} className="hidden text-ink-3 md:block" />
+                <Icons.ChevronDown
+                  size={14}
+                  strokeWidth={ICON_STROKE}
+                  className="hidden shrink-0 text-ink-3 md:block"
+                />
               </button>
             </DropdownMenu.Trigger>
 
             <DropdownMenu.Portal>
               <DropdownMenu.Content
                 align="end"
-                sideOffset={6}
-                className="z-50 w-56 rounded-card border border-line bg-white p-1 shadow-pop animate-scale-in"
+                sideOffset={8}
+                className="z-50 w-60 overflow-hidden rounded-card border border-line bg-white p-1 shadow-pop animate-scale-in"
               >
-                <div className="border-b border-line px-3 py-2">
-                  <p className="truncate text-xs font-semibold text-ink">{user?.fullName}</p>
-                  <p className="truncate text-[10px] text-ink-3">{user?.email}</p>
+                <div className="mb-1 flex items-center gap-2.5 border-b border-line px-3 py-2.5">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-nbr-bg text-2xs font-bold text-white">
+                    {initials(user?.fullName ?? '?')}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-ink">
+                      {user?.fullName}
+                    </span>
+                    <span className="block truncate text-[10px] text-ink-3">{user?.email}</span>
+                  </span>
                 </div>
 
                 <DropdownMenu.Item asChild>
@@ -123,7 +144,7 @@ export function AppShell() {
 
                 <DropdownMenu.Item
                   onSelect={() => void handleLogout()}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-xs text-danger outline-none transition-colors hover:bg-danger-tint data-[highlighted]:bg-danger-tint"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-danger outline-none transition-colors hover:bg-danger-tint data-[highlighted]:bg-danger-tint"
                 >
                   <Icons.LogOut size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
                   Sign out

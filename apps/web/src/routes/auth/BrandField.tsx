@@ -59,7 +59,7 @@ export const BrandInput = forwardRef<HTMLInputElement, BrandInputProps>(function
           className={cn(
             'h-11 w-full rounded-lg border bg-nbr-bg text-sm text-white',
             'placeholder:text-nbr-text-4 transition-colors duration-150',
-            'focus:outline-none focus-visible:border-nbr-orange focus-visible:ring-2 focus-visible:ring-nbr-orange-ring',
+            'focus:outline-none focus-visible:border-nbr-orange focus-visible:ring-2 focus-visible:ring-nbr-orange/30',
             'autofill:shadow-[inset_0_0_0_1000px_#0D1B2A] autofill:[-webkit-text-fill-color:#fff]',
             error ? 'border-danger' : 'border-nbr-line hover:border-nbr-edge',
             prefix ? 'pl-10' : 'pl-3.5',
@@ -105,7 +105,7 @@ export function BrandCheckbox({
           aria-hidden
           className={cn(
             'grid h-[17px] w-[17px] place-items-center rounded border transition-colors duration-150',
-            'peer-focus-visible:ring-2 peer-focus-visible:ring-nbr-orange-ring',
+            'peer-focus-visible:ring-2 peer-focus-visible:ring-nbr-orange/40',
             checked
               ? 'border-nbr-orange bg-nbr-orange text-white'
               : 'border-nbr-edge bg-nbr-bg group-hover:border-nbr-text-4',
@@ -142,7 +142,9 @@ export function BrandButton({
         'inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg',
         'bg-nbr-orange text-sm font-bold tracking-wide text-white',
         'transition-colors duration-150 hover:bg-nbr-orange-hover',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring focus-visible:ring-offset-2 focus-visible:ring-offset-nbr-surface',
+        // White ring, dark offset: an orange ring on an orange button is
+        // invisible, which is the one place a focus indicator must not be.
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-nbr-surface',
         'disabled:cursor-not-allowed disabled:opacity-60',
       )}
       {...props}
@@ -174,7 +176,7 @@ export function BrandButtonSecondary({
         'inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg',
         'border border-nbr-edge bg-transparent text-sm font-semibold text-nbr-text-2',
         'transition-colors duration-150 hover:border-nbr-text-4 hover:text-white',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange/30',
       )}
       {...props}
     >
