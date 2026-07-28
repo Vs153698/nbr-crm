@@ -1,11 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/Button';
-import { Checkbox, Input } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthLayout } from './AuthLayout';
+import { AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { BrandButton, BrandCheckbox, BrandInput } from './BrandField';
 
 /**
  * W-01 Login.
@@ -51,88 +50,79 @@ export default function LoginPage() {
     }
   }
 
-  const isLockout = error?.code === 'RATE_LIMITED';
+  const isLockout = error?.code === 'RATE_LIMITED' || error?.code === 'ACCOUNT_LOCKED';
 
   return (
-    <AuthLayout title="Sign in" subtitle="Use your work email or employee ID.">
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        {error ? (
-          <div
-            role="alert"
-            className={`flex gap-2.5 rounded-lg border p-3 ${
-              isLockout
-                ? 'border-warn-ring bg-warn-tint text-warn'
-                : 'border-danger-ring bg-danger-tint text-danger'
-            }`}
-          >
-            <Icons.ShieldAlert
-              size={ICON_SIZE.md}
-              strokeWidth={ICON_STROKE}
-              className="mt-0.5 shrink-0"
+    <AuthShell
+      footer={
+        <p className="text-[11px] leading-relaxed text-nbr-text-4">
+          Authorised staff only. All access is logged and audited under the
+          <br className="hidden sm:block" /> Digital Personal Data Protection Act, 2023.
+        </p>
+      }
+    >
+      <BrandMark />
+
+      <AuthCard
+        title="Sign in"
+        subtitle="Use your work email or employee ID."
+        note="Five failed attempts lock the account for 15 minutes. Sessions end after 30 minutes of inactivity."
+      >
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            {error ? (
+              <AuthNotice tone={isLockout ? 'warn' : 'danger'}>{error.message}</AuthNotice>
+            ) : null}
+
+            <BrandInput
+              label="Email or employee ID"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              placeholder="you@nationalbookofrecords.in"
+              autoComplete="username"
+              autoFocus
+              required
+              prefix={<Icons.User size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
             />
-            <p className="text-xs leading-relaxed">{error.message}</p>
-          </div>
-        ) : null}
 
-        <Input
-          label="Email or employee ID"
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
-          placeholder="you@nationalbookofrecords.in"
-          autoComplete="username"
-          autoFocus
-          required
-          prefix={<Icons.User size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-        />
+            <BrandInput
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
+              suffix={
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="rounded p-1 text-nbr-text-4 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+                >
+                  {showPassword ? (
+                    <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  ) : (
+                    <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  )}
+                </button>
+              }
+            />
 
-        <Input
-          label="Password"
-          type={showPassword ? 'text' : 'password'}
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          autoComplete="current-password"
-          required
-          prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-          suffix={
-            <button
-              type="button"
-              onClick={() => setShowPassword((value) => !value)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="text-ink-3 transition-colors hover:text-ink"
-            >
-              {showPassword ? (
-                <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-              ) : (
-                <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-              )}
-            </button>
-          }
-        />
+            <div className="flex items-center justify-between pt-0.5">
+              <BrandCheckbox label="Remember me" checked={rememberMe} onChange={setRememberMe} />
+              <Link
+                to="/forgot-password"
+                className="rounded text-xs font-semibold text-nbr-orange transition-colors hover:text-nbr-orange-hover hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+              >
+                Forgot password?
+              </Link>
+            </div>
 
-        <div className="flex items-center justify-between">
-          <Checkbox
-            label="Remember me"
-            checked={rememberMe}
-            onChange={(event) => setRememberMe(event.target.checked)}
-          />
-          <Link
-            to="/forgot-password"
-            className="text-xs font-medium text-brand transition-colors hover:underline"
-          >
-            Forgot password?
-          </Link>
-        </div>
-
-        <Button type="submit" variant="primary" size="lg" block loading={submitting}>
-          Sign in
-        </Button>
-      </form>
-
-      <p className="mt-5 flex items-start gap-1.5 text-[11px] leading-relaxed text-ink-3">
-        <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
-        Five failed attempts lock the account for 15 minutes. Sessions end after 30 minutes of
-        inactivity.
-      </p>
-    </AuthLayout>
+            <div className="pt-1.5">
+              <BrandButton loading={submitting}>Sign In</BrandButton>
+            </div>
+          </form>
+      </AuthCard>
+    </AuthShell>
   );
 }

@@ -7,6 +7,7 @@
  * resolves through `iconByName` — without shipping all 1,500 lucide icons.
  */
 import {
+  ArrowRight,
   Award,
   Ban,
   BellOff,
@@ -82,6 +83,7 @@ import {
 } from 'lucide-react';
 
 export const Icons = {
+  ArrowRight,
   Award,
   Ban,
   BellOff,

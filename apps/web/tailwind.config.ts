@@ -38,6 +38,41 @@ export default {
         teal: { DEFAULT: '#0E7C86', tint: '#E4F4F5', ring: '#A9DDE1' },
         gold: { DEFAULT: '#C08A2E', tint: '#FBF3E2', ring: '#EAD3A0' },
         slate2: { DEFAULT: '#64748B', tint: '#EEF1F6', ring: '#CBD4E1' },
+
+        /**
+         * NBR brand palette, taken from the public site and the logo artwork
+         * rather than invented here: the deep navy and the orange are the two
+         * colours the organisation already uses in public.
+         *
+         * Flat values only — the brand does not use gradients, so none are
+         * defined. Being applied page by page; the login screen is the first.
+         */
+        nbr: {
+          // Page background, and the dot grid that sits on it.
+          bg: '#0D1B2A',
+          dot: '#1B2C3D',
+          // Panel surfaces, lightest last.
+          surface: '#10202F',
+          raised: '#16293A',
+          // Hairlines. `edge` is for focus and hover, where a border must read.
+          line: '#1E3549',
+          edge: '#2B4763',
+          orange: {
+            DEFAULT: '#E8823C',
+            hover: '#D4712C',
+            // For tinted fills and focus rings on dark surfaces.
+            soft: '#3A2418',
+            ring: '#7A4A22',
+          },
+          // The seal's navy, for artwork sitting on light backgrounds.
+          seal: '#1E2F4B',
+          text: {
+            DEFAULT: '#FFFFFF',
+            2: '#B4C4D4',
+            3: '#8098B0',
+            4: '#5C7188',
+          },
+        },
       },
       fontFamily: {
         sans: [

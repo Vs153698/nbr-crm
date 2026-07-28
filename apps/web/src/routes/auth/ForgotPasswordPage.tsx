@@ -1,10 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Field';
 import { api } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthLayout } from './AuthLayout';
+import { AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { BrandBackLink, BrandButton, BrandInput } from './BrandField';
 
 /**
  * W-02 step 1 — request a reset link.
@@ -33,65 +32,93 @@ export default function ForgotPasswordPage() {
     }
   }
 
+  const footer = (
+    <p className="text-[11px] leading-relaxed text-nbr-text-4">
+      Authorised staff only. All access is logged and audited under the
+      <br className="hidden sm:block" /> Digital Personal Data Protection Act, 2023.
+    </p>
+  );
+
   if (sent) {
     return (
-      <AuthLayout title="Check your email">
-        <div className="rounded-lg border border-ok-ring bg-ok-tint p-4">
-          <div className="flex gap-2.5">
-            <Icons.CheckCircle2
-              size={ICON_SIZE.lg}
-              strokeWidth={ICON_STROKE}
-              className="mt-0.5 shrink-0 text-ok"
-            />
-            <div className="text-xs leading-relaxed text-ok">
-              <p className="font-semibold">If that email is registered, a reset link is on its way.</p>
-              <p className="mt-1 opacity-80">
-                The link is valid for 30 minutes. Check your spam folder if it hasn't arrived in a
-                few minutes.
-              </p>
-            </div>
-          </div>
-        </div>
+      <AuthShell footer={footer}>
+        <BrandMark />
 
-        <Link to="/login" className="mt-5 block">
-          <Button variant="secondary" block icon={Icons.ChevronLeft}>
-            Back to sign in
-          </Button>
-        </Link>
-      </AuthLayout>
+        <AuthCard title="Check your email">
+          <AuthNotice tone="ok">
+            <p className="font-semibold">
+              If that email is registered, a reset link is on its way.
+            </p>
+            <p className="mt-1 opacity-80">
+              The link is valid for 30 minutes. Check your spam folder if it hasn't arrived in a few
+              minutes.
+            </p>
+          </AuthNotice>
+
+          {/* The address is echoed so a typo is obvious without revealing
+              whether it matched an account. */}
+          {email ? (
+            <p className="mt-4 truncate text-center text-xs text-nbr-text-3">
+              Sent to <span className="font-semibold text-nbr-text-2">{email}</span>
+            </p>
+          ) : null}
+
+          <div className="mt-5 flex flex-col gap-3">
+            <Link to="/login" className="block">
+              <span className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-nbr-edge text-sm font-semibold text-nbr-text-2 transition-colors hover:border-nbr-text-4 hover:text-white">
+                <Icons.ChevronLeft size={15} strokeWidth={2.4} />
+                Back to sign in
+              </span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              className="rounded text-xs font-semibold text-nbr-orange transition-colors hover:text-nbr-orange-hover hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+            >
+              Use a different email address
+            </button>
+          </div>
+        </AuthCard>
+      </AuthShell>
     );
   }
 
   return (
-    <AuthLayout
-      title="Reset your password"
-      subtitle="We'll email you a link to set a new one."
-    >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <Input
-          label="Registered email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="you@nationalbookofrecords.in"
-          autoComplete="email"
-          autoFocus
-          required
-          prefix={<Icons.Mail size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-        />
+    <AuthShell footer={footer}>
+      <BrandMark />
 
-        <Button type="submit" variant="primary" size="lg" block loading={submitting}>
-          Send reset link
-        </Button>
+      <AuthCard
+        title="Reset your password"
+        subtitle="We'll email you a link to set a new one."
+        note="For security, we send the same confirmation whether or not the address is registered."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <BrandInput
+            label="Registered email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@nationalbookofrecords.in"
+            autoComplete="email"
+            autoFocus
+            required
+            prefix={<Icons.Mail size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
+          />
 
-        <Link
-          to="/login"
-          className="flex items-center justify-center gap-1 text-xs font-medium text-ink-3 transition-colors hover:text-brand"
-        >
-          <Icons.ChevronLeft size={14} strokeWidth={ICON_STROKE} />
-          Back to sign in
-        </Link>
-      </form>
-    </AuthLayout>
+          <div className="pt-1.5">
+            <BrandButton loading={submitting} loadingLabel="Sending…">
+              Send Reset Link
+            </BrandButton>
+          </div>
+
+          <div className="pt-0.5 text-center">
+            <Link to="/login" className="group inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring">
+              <BrandBackLink>Back to sign in</BrandBackLink>
+            </Link>
+          </div>
+        </form>
+      </AuthCard>
+    </AuthShell>
   );
 }
