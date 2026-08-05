@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
 import { CertificatesService } from '../fulfilment/certificates.service';
+import { GovernanceModule } from '../governance/governance.module';
 import { DispatchService } from '../fulfilment/dispatch.service';
 import { PaymentsService, type PaymentSummary } from './payments.service';
 
@@ -225,6 +226,9 @@ class DispatchController {
  * share the vault, timeline and cache-invalidation plumbing.
  */
 @Module({
+  // Payments, certificates and dispatch each push their change back to the
+  // public NBR website when the record originated there.
+  imports: [GovernanceModule],
   controllers: [
     PaymentsController,
     CertificatesController,

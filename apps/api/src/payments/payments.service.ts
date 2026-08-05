@@ -17,6 +17,7 @@ import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 
@@ -78,6 +79,7 @@ export class PaymentsService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly legacy: LegacyPushService,
   ) {}
 
   /** §11 stage 4 — "Set Payment Deadline". Creates or replaces the plan. */
@@ -271,6 +273,19 @@ export class PaymentsService {
     });
 
     await this.bust(payment.recordId, payment.applicantId);
+
+    // Mirror the receipt onto the public site so its applicant portal, its
+    // invoice and its dispatch queue agree with ours. A no-op for records that
+    // only exist here, and for a receipt that came from there in the first
+    // place. Detached: the operator has already been answered.
+    this.legacy.pushPayment(payment.recordId, {
+      plan: payment.packageName,
+      amountPaise: toPaise(input.amount),
+      method: input.mode,
+      referenceNumber: input.transactionRef ?? `CRM-${result.transactionId}`,
+      notes: input.remarks,
+    });
+
     return result;
   }
 

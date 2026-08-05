@@ -1,7 +1,59 @@
 import { z } from 'zod';
 import { RECORD_TYPE } from '../constants/catalog';
 import { CONSENT_ARTEFACT, PROCESSING_PURPOSE } from '../constants/dpdp';
+import { RECORD_STATUS, type RecordStatus } from '../constants/statuses';
 import { emailSchema, optionalTrimmedString, phoneSchema, trimmedString } from './common';
+
+/**
+ * How far through its own lifecycle the legacy system has taken an application.
+ *
+ * Deliberately a short, stable vocabulary rather than the legacy status column
+ * verbatim: that column stays at `paid` for the whole of fulfilment and so
+ * cannot say whether a certificate has been issued or a parcel has shipped.
+ */
+export const LEGACY_STAGE = {
+  APPROVED: 'approved',
+  PAYMENT_RECEIVED: 'payment_received',
+  CERTIFICATE_ISSUED: 'certificate_issued',
+  DISPATCH_PENDING: 'dispatch_pending',
+  DISPATCHED: 'dispatched',
+  DELIVERED: 'delivered',
+} as const;
+
+export type LegacyStage = (typeof LEGACY_STAGE)[keyof typeof LEGACY_STAGE];
+
+/**
+ * Where each legacy stage lands in the CRM's own workflow.
+ *
+ * `approved` maps to Selected rather than Payment Pending because Payment
+ * Pending presupposes a payment plan, and the legacy system raises its own
+ * invoice without telling us a package. Selected is the honest equivalent of
+ * "approved, awaiting money".
+ */
+export const LEGACY_STAGE_TO_STATUS: Readonly<Record<LegacyStage, RecordStatus>> = {
+  [LEGACY_STAGE.APPROVED]: RECORD_STATUS.SELECTED,
+  [LEGACY_STAGE.PAYMENT_RECEIVED]: RECORD_STATUS.PAYMENT_RECEIVED,
+  [LEGACY_STAGE.CERTIFICATE_ISSUED]: RECORD_STATUS.CERTIFICATE_UPLOADED,
+  [LEGACY_STAGE.DISPATCH_PENDING]: RECORD_STATUS.DISPATCH_PENDING,
+  [LEGACY_STAGE.DISPATCHED]: RECORD_STATUS.DISPATCHED,
+  [LEGACY_STAGE.DELIVERED]: RECORD_STATUS.DELIVERED,
+};
+
+/**
+ * Rank used to decide whether an incoming snapshot moves a record forward.
+ *
+ * A snapshot that describes an *earlier* stage than the CRM already holds is
+ * a late or replayed delivery; its lifecycle blocks are still merged, but the
+ * record's status is left where it is rather than being dragged backwards.
+ */
+export const LEGACY_STAGE_RANK: Readonly<Record<LegacyStage, number>> = {
+  [LEGACY_STAGE.APPROVED]: 0,
+  [LEGACY_STAGE.PAYMENT_RECEIVED]: 1,
+  [LEGACY_STAGE.CERTIFICATE_ISSUED]: 2,
+  [LEGACY_STAGE.DISPATCH_PENDING]: 3,
+  [LEGACY_STAGE.DISPATCHED]: 4,
+  [LEGACY_STAGE.DELIVERED]: 5,
+};
 
 /**
  * Inbound webhook from the existing NBR website admin panel (P2-14).
@@ -82,6 +134,87 @@ export const nbrWebhookApplicationSchema = z.object({
       ipAddress: optionalTrimmedString(45),
       userAgent: optionalTrimmedString(500),
     })
+    .optional(),
+
+  /**
+   * ── Lifecycle mirror ───────────────────────────────────────────────────────
+   *
+   * The legacy system sends a *full snapshot* on every event rather than a
+   * delta, so the four blocks below describe where the application actually
+   * stands right now. Two consequences worth stating:
+   *
+   *  • A push that gets lost costs nothing — the next one carries the same
+   *    state plus whatever changed since.
+   *  • Replaying an old event cannot roll the CRM backwards, because the
+   *    importer compares the snapshot to what it already holds.
+   *
+   * All optional: an installation that only ever sends approvals keeps working
+   * exactly as it did before these fields existed.
+   */
+  stage: z.nativeEnum(LEGACY_STAGE).optional(),
+
+  payment: z
+    .object({
+      externalId: optionalTrimmedString(120),
+      plan: optionalTrimmedString(60),
+      /** Rupees as a decimal string — the CRM never holds money as a float. */
+      amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+      amountPaise: z.coerce.number().int().nonnegative().optional(),
+      currency: optionalTrimmedString(3),
+      status: optionalTrimmedString(20),
+      method: optionalTrimmedString(40).nullable().optional(),
+      referenceNumber: optionalTrimmedString(120).nullable().optional(),
+      invoiceUrl: z.string().url().max(1000).nullable().optional(),
+      notes: optionalTrimmedString(2000).nullable().optional(),
+      paidAt: z.coerce.date().nullable().optional(),
+      deadline: z.coerce.date().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+
+  certificate: z
+    .object({
+      certificateId: trimmedString(80),
+      holderName: optionalTrimmedString(150),
+      recordTitle: optionalTrimmedString(250),
+      category: optionalTrimmedString(120),
+      issuedAt: z.coerce.date().optional(),
+      revoked: z.boolean().default(false),
+      revokeReason: optionalTrimmedString(500).nullable().optional(),
+      /** Public verification page on the customer site. The CRM links to it
+       *  rather than hosting a second copy of the certificate. */
+      verificationUrl: z.string().url().max(1000).optional(),
+    })
+    .nullable()
+    .optional(),
+
+  dispatch: z
+    .object({
+      externalId: optionalTrimmedString(120),
+      status: optionalTrimmedString(30),
+      courierName: optionalTrimmedString(150).nullable().optional(),
+      trackingNumber: optionalTrimmedString(150).nullable().optional(),
+      trackingUrl: z.string().url().max(1000).nullable().optional(),
+      address: z.record(z.unknown()).nullable().optional(),
+      notes: optionalTrimmedString(2000).nullable().optional(),
+      dispatchedAt: z.coerce.date().nullable().optional(),
+      deliveredAt: z.coerce.date().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+
+  /**
+   * Awardee page on the customer site. Read-only in the CRM: those pages are
+   * created and published on the public site, and this is the link across.
+   */
+  awardee: z
+    .object({
+      slug: trimmedString(200),
+      isPublished: z.boolean().default(false),
+      coverImageUrl: z.string().url().max(1000).nullable().optional(),
+      publicUrl: z.string().url().max(1000).nullable().optional(),
+    })
+    .nullable()
     .optional(),
 
   /** Anything the legacy system wants to hand over verbatim. Stored as JSONB. */

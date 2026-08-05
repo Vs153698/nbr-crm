@@ -28,12 +28,17 @@ import { z } from 'zod';
 import { ApplicantsModule } from '../applicants/applicants.module';
 import { Can, Public } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
+import { ValidationError } from '../common/errors';
+import { LegacyLifecycleService } from '../integrations/legacy-lifecycle.service';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
+import { MailService } from '../mail/mail.service';
 import { ExportsService } from '../reports/exports.service';
 import { ReportsService } from '../reports/reports.service';
 import { GovernanceService } from './governance.service';
 
 const settingSchema = z.object({ value: z.unknown() });
+const mailTestSchema = z.object({ to: z.string().email() });
 
 @Controller('reports')
 class ReportsController {
@@ -134,7 +139,31 @@ class AuditController {
 
 @Controller('settings')
 class SettingsController {
-  constructor(private readonly governance: GovernanceService) {}
+  constructor(
+    private readonly governance: GovernanceService,
+    private readonly mail: MailService,
+  ) {}
+
+  /**
+   * Send one real message with the currently saved SMTP settings.
+   *
+   * A real send rather than a connection check: authentication can succeed
+   * while the From address is rejected by the relay, and the operator needs to
+   * know that now rather than the first time a certificate email silently
+   * fails.
+   */
+  @Post('mail/test')
+  @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async testMail(@Body(zodBody(mailTestSchema)) body: { to: string }) {
+    try {
+      return await this.mail.testConnection(body.to);
+    } catch (error: unknown) {
+      throw new ValidationError({
+        smtp: [error instanceof Error ? error.message : 'The SMTP test failed.'],
+      });
+    }
+  }
 
   @Get()
   @Can(MODULES.SETTINGS, ACTIONS.VIEW)
@@ -190,7 +219,20 @@ class SettingsController {
 
 @Controller('integrations/nbr-website')
 class IntegrationsController {
-  constructor(private readonly nbr: NbrWebsiteService) {}
+  constructor(
+    private readonly nbr: NbrWebsiteService,
+    private readonly legacyPush: LegacyPushService,
+  ) {}
+
+  /**
+   * The return leg: whether pushes back to the website are configured, how
+   * many records are mirrored, and which of them last failed to push.
+   */
+  @Get('push-status')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
+  async pushStatus() {
+    return this.legacyPush.status();
+  }
 
   /**
    * Inbound webhook from the existing NBR admin panel (P2-14).
@@ -247,7 +289,22 @@ class IntegrationsController {
     SettingsController,
     IntegrationsController,
   ],
-  providers: [GovernanceService, ReportsService, ExportsService, NbrWebsiteService],
-  exports: [GovernanceService, ReportsService, ExportsService, NbrWebsiteService],
+  providers: [
+    GovernanceService,
+    ReportsService,
+    ExportsService,
+    NbrWebsiteService,
+    LegacyLifecycleService,
+    LegacyPushService,
+  ],
+  exports: [
+    GovernanceService,
+    ReportsService,
+    ExportsService,
+    NbrWebsiteService,
+    // Payments, certificates and dispatch inject this to push their changes
+    // back to the public site.
+    LegacyPushService,
+  ],
 })
 export class GovernanceModule {}

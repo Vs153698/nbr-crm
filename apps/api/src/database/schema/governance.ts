@@ -101,6 +101,66 @@ export const integrationEvents = pgTable(
 );
 
 /**
+ * ── Legacy mirror ────────────────────────────────────────────────────────────
+ *
+ * One row per record that also exists in the public NBR website's own admin
+ * system. Holds three things the CRM cannot derive on its own:
+ *
+ *  • **Links across.** The certificate's public verification page, the invoice
+ *    PDF, the awardee page — all served by the customer site. The CRM shows
+ *    them rather than hosting second copies.
+ *  • **The last snapshot applied.** Compared against each new delivery so a
+ *    replayed or unchanged push is recognised and skipped.
+ *  • **The last state pushed back.** Without it, applying an inbound update
+ *    would immediately push that same update back out, and the two systems
+ *    would volley one change between them indefinitely.
+ */
+export const legacyMirror = pgTable(
+  'legacy_mirror',
+  {
+    id: primaryId(),
+    recordId: uuid('record_id').notNull(),
+    applicantId: uuid('applicant_id').notNull(),
+
+    /** The legacy application's primary key. */
+    externalId: varchar('external_id', { length: 120 }).notNull(),
+    /** Human-facing code on the legacy side, e.g. NBR-2026-00481. */
+    legacyAppCode: varchar('legacy_app_code', { length: 60 }),
+    legacyStatus: varchar('legacy_status', { length: 40 }),
+    legacyStage: varchar('legacy_stage', { length: 40 }),
+    /** Deep link into the legacy admin panel. */
+    legacyUrl: varchar('legacy_url', { length: 1000 }),
+
+    certificateNumber: varchar('certificate_number', { length: 80 }),
+    certificateUrl: varchar('certificate_url', { length: 1000 }),
+    certificateRevoked: boolean('certificate_revoked').notNull().default(false),
+    invoiceUrl: varchar('invoice_url', { length: 1000 }),
+
+    awardeeSlug: varchar('awardee_slug', { length: 200 }),
+    awardeeUrl: varchar('awardee_url', { length: 1000 }),
+    awardeePublished: boolean('awardee_published').notNull().default(false),
+
+    /** The complete last-received payload, for diagnosing a bad mapping later. */
+    snapshot: jsonb('snapshot').$type<Record<string, unknown>>(),
+
+    /** SHA-256 of the last snapshot applied — an identical redelivery is a no-op. */
+    inboundHash: varchar('inbound_hash', { length: 64 }),
+    /** SHA-256 of the last state pushed back — suppresses the echo. */
+    outboundHash: varchar('outbound_hash', { length: 64 }),
+
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true, mode: 'date' }),
+    lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true, mode: 'date' }),
+    lastOutboundError: text('last_outbound_error'),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('legacy_mirror_record_uq').on(t.recordId),
+    uniqueIndex('legacy_mirror_external_uq').on(t.externalId),
+    index('legacy_mirror_applicant_idx').on(t.applicantId),
+  ],
+);
+
+/**
  * Queued report exports (§24). Large exports never block a request — the API
  * returns 202, a BullMQ worker builds the file, and the user gets a
  * notification with a download link.

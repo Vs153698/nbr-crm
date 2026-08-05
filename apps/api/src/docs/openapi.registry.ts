@@ -1157,6 +1157,40 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     response: OK,
     audited: 'setting.updated',
   },
+  'SettingsController.testMail': {
+    tag: 'Administration',
+    summary: 'Send a test email',
+    description:
+      'Sends one real message using the currently saved SMTP settings and reports the ' +
+      'configuration it used.',
+    body: { type: 'object', required: ['to'], properties: { to: { type: 'string', format: 'email' } } },
+    response: {
+      type: 'object',
+      properties: {
+        ok: { type: 'boolean' },
+        config: {
+          type: 'object',
+          properties: {
+            host: { type: 'string' },
+            port: { type: 'integer' },
+            secure: { type: 'boolean' },
+            user: { type: 'string' },
+            fromName: { type: 'string' },
+            fromAddress: { type: 'string' },
+            fromDatabase: { type: 'boolean' },
+          },
+        },
+      },
+    },
+    notes:
+      'A real send rather than a connection check: authentication can succeed while the ' +
+      'relay rejects the From address, and that failure would otherwise first appear when a ' +
+      'certificate email silently fails. The mail settings override the server environment ' +
+      'only where they are non-empty, so a blank field keeps the deployed value.',
+    errors: {
+      '422': { description: 'SMTP verification or the send itself failed; the reason is returned.' },
+    },
+  },
   'SettingsController.upsertCategory': {
     tag: 'Reference data',
     summary: 'Create or update a record category',
@@ -1286,6 +1320,31 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       ...CURSOR_QUERY,
     ],
     response: arrayOf({ id: UUID, externalId: { type: 'string' }, status: { type: 'string' }, error: { type: 'string', nullable: true }, receivedAt: ISO }),
+  },
+  'IntegrationsController.pushStatus': {
+    tag: 'Integration',
+    summary: 'Outbound push status',
+    description:
+      'The return leg of the mirror: whether pushing changes back to the NBR website is ' +
+      'configured, how many records are mirrored, and which of them last failed to push.',
+    response: {
+      type: 'object',
+      properties: {
+        configured: { type: 'boolean' },
+        baseUrl: { type: 'string' },
+        mirroredRecords: { type: 'integer' },
+        failing: arrayOf({
+          recordId: UUID,
+          externalId: { type: 'string' },
+          error: { type: 'string' },
+          at: { ...ISO, nullable: true },
+        }),
+      },
+    },
+    notes:
+      'Only records that arrived from the website are ever pushed back — a record created ' +
+      'in the CRM has no counterpart there. Pushes are also suppressed when the change ' +
+      'being sent is the echo of one that arrived from the website moments earlier.',
   },
   'IntegrationsController.replay': {
     tag: 'Integration',

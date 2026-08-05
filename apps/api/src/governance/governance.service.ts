@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, gte, ilike, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError } from '../common/errors';
 import { requireActor } from '../common/request-context';
@@ -185,6 +185,35 @@ export class GovernanceService {
   }
 
   // ── Settings (§26, W-29) ──────────────────────────────────────────────────
+
+  /**
+   * Read one setting's value, or `null` when the key does not exist.
+   *
+   * Deliberately does not throw on a missing key: callers are services asking
+   * whether an optional integration is configured, and a key that has not been
+   * seeded yet means exactly the same thing as one left blank.
+   */
+  async getSetting<T = unknown>(key: string): Promise<T | null> {
+    const [row] = await this.db
+      .select({ value: schema.settings.value })
+      .from(schema.settings)
+      .where(eq(schema.settings.key, key))
+      .limit(1);
+
+    return (row?.value as T) ?? null;
+  }
+
+  /** Read several settings in one round trip, keyed by setting key. */
+  async getSettings(keys: readonly string[]): Promise<Record<string, unknown>> {
+    if (keys.length === 0) return {};
+
+    const rows = await this.db
+      .select({ key: schema.settings.key, value: schema.settings.value })
+      .from(schema.settings)
+      .where(inArray(schema.settings.key, [...keys]));
+
+    return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+  }
 
   async listSettings() {
     const rows = await this.db

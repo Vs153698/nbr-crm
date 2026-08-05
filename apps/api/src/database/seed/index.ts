@@ -389,6 +389,50 @@ async function seedSettings(db: Database): Promise<void> {
       label: 'Active consent notice version',
       isEditable: false,
     },
+    // ── Legacy website connector ────────────────────────────────────────────
+    // The return leg of the mirror. Inbound webhooks need no configuration
+    // here (the sender holds the URL); these three describe how to push a
+    // CRM-side change back to the public site's admin system.
+    {
+      key: 'integrations.legacy.enabled',
+      value: false,
+      category: 'integrations',
+      label: 'Push changes back to the NBR website',
+      description:
+        'When on, payments, certificates and dispatch updates recorded here are sent to the public site so both systems agree. Records created only in the CRM are never pushed.',
+    },
+    {
+      key: 'integrations.legacy.base_url',
+      value: '',
+      category: 'integrations',
+      label: 'NBR website API base URL',
+      description: 'For example https://api.nationalbookofrecords.org — no trailing slash.',
+    },
+    {
+      key: 'integrations.legacy.secret',
+      value: '',
+      category: 'integrations',
+      label: 'Shared secret',
+      description:
+        'The same secret configured on the website. Signs every request in both directions.',
+    },
+    // ── SMTP ────────────────────────────────────────────────────────────────
+    // Empty means "use the values the process booted with". Filling these in
+    // overrides the environment without a redeploy, which is what an operator
+    // needs when a mail provider changes on a Friday afternoon.
+    {
+      key: 'mail.smtp_host',
+      value: '',
+      category: 'mail',
+      label: 'SMTP host',
+      description: 'Leave blank to keep using the host from the server environment.',
+    },
+    { key: 'mail.smtp_port', value: '', category: 'mail', label: 'SMTP port' },
+    { key: 'mail.smtp_secure', value: '', category: 'mail', label: 'Use TLS on connect (465)' },
+    { key: 'mail.smtp_user', value: '', category: 'mail', label: 'SMTP username' },
+    { key: 'mail.smtp_password', value: '', category: 'mail', label: 'SMTP password' },
+    { key: 'mail.from_name', value: '', category: 'mail', label: 'From name' },
+    { key: 'mail.from_address', value: '', category: 'mail', label: 'From address' },
   ];
 
   await db

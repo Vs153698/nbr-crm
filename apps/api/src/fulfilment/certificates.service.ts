@@ -7,6 +7,7 @@ import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { StorageService } from '../storage/storage.service';
 import { TimelineService } from '../timeline/timeline.service';
@@ -50,6 +51,7 @@ export class CertificatesService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly legacy: LegacyPushService,
   ) {}
 
   /**
@@ -167,6 +169,14 @@ export class CertificatesService {
       );
 
       await this.bust(input.recordId, record.applicantId);
+
+      // Register the number on the website so its public verification page
+      // recognises a certificate issued here. Only the number crosses over —
+      // the PDF stays in our vault, and the website mints nothing of its own.
+      this.legacy.pushCertificate(input.recordId, {
+        action: 'issue',
+        certificateId: certificateNumber,
+      });
 
       return { certificateId, version: nextVersion, certificateNumber };
     });

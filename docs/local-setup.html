@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBR — Running both systems locally</title>
+<style>
+  :root {
+    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
+    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
+    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
+    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
+    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
+    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
+    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
+    font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  header.top{
+    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
+               linear-gradient(160deg,var(--navy),var(--navy-soft));
+    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand .mark{width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(145deg,#F0C64E,var(--gold));
+    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
+  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
+  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
+  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
+  header.top .lede{margin:0;color:#B6C4E2;max-width:72ch}
+
+  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
+    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
+  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+
+  section{margin-bottom:44px;scroll-margin-top:16px}
+  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
+  h4{font-size:14.5px;margin:24px 0 8px}
+  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
+  p{max-width:78ch}
+
+  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
+    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.7;margin:12px 0;
+    position:relative}
+  pre .c{color:#7B8DB5;font-style:italic}
+  pre .k{color:#7FB3FF}
+  pre .s{color:#9EE6A6}
+  pre .f{color:#F0C64E}
+  code{font-family:var(--mono);font-size:.9em;background:var(--slate-tint);
+    padding:1px 5px;border-radius:4px;color:var(--ink-2)}
+  pre code{background:none;padding:0;color:inherit;font-size:inherit}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  th{text-align:left;padding:9px 13px;background:#FAFBFD;border-bottom:1px solid var(--line);
+    font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+  td{padding:9px 13px;border-bottom:1px solid #EEF2F8;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .table-wrap{overflow-x:auto}
+  td code{white-space:nowrap}
+
+  .box{border-radius:var(--radius);padding:14px 17px;margin:16px 0;border:1px solid;border-left-width:3px}
+  .box p{margin:0 0 7px}
+  .box p:last-child{margin-bottom:0}
+  .box h5{margin:0 0 6px;font-size:13.5px}
+  .info{background:var(--blue-tint);border-color:#C9DAFA;border-left-color:var(--blue)}
+  .info h5{color:var(--navy)} .info p,.info li{color:#2C3E63}
+  .warn{background:var(--amber-tint);border-color:#F0DCB8;border-left-color:var(--amber)}
+  .warn h5{color:#7A4A00} .warn p,.warn li{color:#6B4A14}
+  .danger{background:var(--red-tint);border-color:#F2BFBC;border-left-color:var(--red)}
+  .danger h5{color:#8E2721} .danger p,.danger li{color:#7A2A25}
+  .good{background:var(--green-tint);border-color:#BFE3CC;border-left-color:var(--green)}
+  .good h5{color:#0B5F2B} .good p,.good li{color:#14532B}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:18px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:var(--shadow)}
+  .card .step{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--blue);font-weight:700;margin-bottom:7px}
+  .card h6{margin:0 0 5px;font-size:14px}
+  .card p{margin:0;font-size:12.8px;color:var(--ink-2)}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:16px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding:0 0 20px 40px;
+    border-left:1px solid var(--line);margin-left:12px}
+  ol.steps>li:last-child{border-left-color:transparent;padding-bottom:0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:-13px;top:-2px;
+    width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;
+    display:grid;place-items:center;font-size:12px;font-weight:700;font-family:var(--mono)}
+  ol.steps>li h4{margin:2px 0 6px;font-size:14.5px}
+  ol.steps>li p{margin:0 0 8px;color:var(--ink-2);font-size:13.4px}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:10.5px;
+    font-weight:700;letter-spacing:.05em;text-transform:uppercase;vertical-align:middle}
+  .pill.a{background:var(--blue-tint);color:var(--blue)}
+  .pill.b{background:var(--purple-tint);color:var(--purple)}
+  .pill.ok{background:var(--green-tint);color:var(--green)}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:760px){.split{grid-template-columns:1fr}}
+
+  .flow{display:flex;align-items:stretch;gap:0;margin:20px 0;flex-wrap:wrap}
+  .flow .node{flex:1;min-width:200px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+  .flow .node h6{margin:0 0 4px;font-size:13.5px}
+  .flow .node p{margin:0;font-size:12.4px;color:var(--ink-2)}
+  .flow .arrow{display:grid;place-items:center;padding:0 12px;color:var(--ink-3);
+    font-size:20px;flex:none}
+  @media (max-width:760px){.flow .arrow{transform:rotate(90deg);padding:8px 0;width:100%}}
+
+  footer{border-top:1px solid var(--line);padding:24px 0 0;margin-top:12px;
+    color:var(--ink-3);font-size:12.5px}
+
+  @media (prefers-color-scheme:dark){
+    :root{--canvas:#0B1220;--card:#131C2E;--ink:#E8EDF6;--ink-2:#A8B4CA;--ink-3:#7E8CA6;
+      --line:#243147;--slate-tint:#1C2740;--blue-tint:#152444;--green-tint:#12301F;
+      --amber-tint:#312414;--red-tint:#331A19;--purple-tint:#221B3B}
+    th{background:#182136}
+    td{border-bottom-color:#1E293F}
+    .info{border-color:#274571}.warn{border-color:#4E3A16}.danger{border-color:#5A2825}
+    .good{border-color:#1E5133}
+    .info h5,.info p,.info li{color:#BBD0F5}
+    .warn h5,.warn p,.warn li{color:#E8C98F}
+    .danger h5,.danger p,.danger li{color:#F0B3AF}
+    .good h5,.good p,.good li{color:#A3DCB8}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">★</div>
+      <div>
+        <h1>National Book of Records</h1>
+        <p>Local development · Two-system setup</p>
+      </div>
+    </div>
+    <h2>Running both systems on your machine</h2>
+    <p class="lede">
+      There are two applications. The <strong>existing system</strong> runs the public website,
+      the applicant portal and the current admin panel — it is unchanged and still owns everything
+      customer-facing. The <strong>new CRM</strong> is the internal management tool. This guide gets
+      both running side by side and connects them.
+    </p>
+  </div>
+</header>
+
+<main>
+  <nav class="toc">
+    <a href="#overview">1 · How the two fit together</a>
+    <a href="#prereq">2 · Prerequisites</a>
+    <a href="#crm">3 · Start the new CRM</a>
+    <a href="#legacy">4 · Start the existing system</a>
+    <a href="#connect">5 · Connect them</a>
+    <a href="#return">6 · Enable the return path</a>
+    <a href="#verify">7 · Verify it works</a>
+    <a href="#ports">8 · Ports &amp; URLs</a>
+    <a href="#trouble">9 · Troubleshooting</a>
+  </nav>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="overview">
+    <h3><span class="num">01</span> How the two fit together</h3>
+    <p class="sub">
+      Read this first — it explains why the setup has the shape it does.
+    </p>
+
+    <div class="flow">
+      <div class="node">
+        <h6>Existing system <span class="pill a">unchanged</span></h6>
+        <p>Public site, applicant portal, applications, payments, certificates, awardee pages.
+           Remains the system of record for everything a customer sees.</p>
+      </div>
+      <div class="arrow">⇄</div>
+      <div class="node">
+        <h6>New CRM <span class="pill b">internal</span></h6>
+        <p>One applicant, one profile, every record. Approved applications appear here with their
+           payment, certificate and dispatch state — and can be managed from here.</p>
+      </div>
+    </div>
+
+    <p>
+      Nothing about the existing system's own behaviour changed. A set of <em>connectors</em> was
+      added to it: an outbound push that mirrors approved applications into the CRM, and a small
+      inbound API the CRM calls when something is updated on its side. With the connector switched
+      off — which is the default — the existing system behaves exactly as it did before.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>What</th><th>Existing → CRM</th><th>CRM → Existing</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Application (on approval)</td><td>✅ pushed</td><td>— records created only in the CRM stay there</td></tr>
+          <tr><td>Payment received</td><td>✅ pushed</td><td>✅ pushed back</td></tr>
+          <tr><td>Certificate issued</td><td>✅ pushed, with its verification link</td><td>✅ pushed back</td></tr>
+          <tr><td>Dispatch &amp; tracking</td><td>✅ pushed</td><td>✅ pushed back</td></tr>
+          <tr><td>Awardee page</td><td>✅ link shown in the CRM</td><td>— created and published on the site</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box info">
+      <h5>Approved and beyond</h5>
+      <p>
+        Only applications that reached <strong>approved</strong> are mirrored. Pending, rejected and
+        cancelled applications stay solely in the existing system, which is where that part of the
+        workflow lives.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="prereq">
+    <h3><span class="num">02</span> Prerequisites</h3>
+    <p class="sub">Install these once. Versions below are what the two projects are built against.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tool</th><th>Version</th><th>Used by</th></tr></thead>
+        <tbody>
+          <tr><td><code>node</code></td><td>22 LTS or newer</td><td>Both</td></tr>
+          <tr><td><code>pnpm</code></td><td>9 or newer</td><td>New CRM (it is a workspace monorepo)</td></tr>
+          <tr><td><code>npm</code></td><td>ships with Node</td><td>Existing system</td></tr>
+          <tr><td><code>docker</code> + Compose</td><td>current</td><td>New CRM's Postgres, Redis, MinIO, Mailpit</td></tr>
+          <tr><td><code>postgres</code></td><td>16</td><td>Existing system — its own database</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><span class="c"># Check what you have</span>
+node --version      <span class="c"># v22.x or newer</span>
+pnpm --version      <span class="c"># 9.x or newer — install with: npm i -g pnpm</span>
+docker --version</pre>
+
+    <div class="box warn">
+      <h5>The two systems need separate databases</h5>
+      <p>
+        They have completely different schemas. The new CRM brings its own Postgres in Docker on
+        port <code>5434</code>; the existing system needs a Postgres of its own (its default is
+        <code>5432</code>). Do not point them at the same database.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="crm">
+    <h3><span class="num">03</span> Start the new CRM <span class="pill b">nbr-crm</span></h3>
+    <p class="sub">
+      Roughly five minutes the first time. Everything it depends on runs in Docker.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <h4>Install dependencies</h4>
+        <pre>cd nbr-crm
+pnpm install</pre>
+      </li>
+
+      <li>
+        <h4>Create the environment file</h4>
+        <p>Copy the template, then fill in the secrets it asks for. The API refuses to start on a
+           missing or placeholder secret rather than failing later on the first request that needs it.</p>
+        <pre>cp .env.example .env</pre>
+        <p>Generate real values and paste them in:</p>
+        <pre>openssl rand -base64 48   <span class="c"># JWT_ACCESS_SECRET</span>
+openssl rand -base64 48   <span class="c"># JWT_REFRESH_SECRET  (must differ)</span>
+openssl rand -base64 32   <span class="c"># PII_ENCRYPTION_KEY</span>
+openssl rand -hex 32      <span class="c"># NBR_WEBHOOK_SECRET  ← keep this one, you need it in §5</span></pre>
+        <div class="box info">
+          <h5>NBR_WEBHOOK_SECRET is the link between the two systems</h5>
+          <p>
+            It signs every request in both directions. Write it down now — the same value goes into
+            the existing system's settings screen in step 5.
+          </p>
+        </div>
+      </li>
+
+      <li>
+        <h4>Build the shared package</h4>
+        <p>Both the API and the web app import <code>@nbr/shared</code>, and the migration scripts
+           will not run until it has been built once.</p>
+        <pre>pnpm --filter @nbr/shared build</pre>
+      </li>
+
+      <li>
+        <h4>Start Postgres, Redis, MinIO and Mailpit</h4>
+        <pre>pnpm infra:up</pre>
+        <p>The script waits for each service and tells you when they are ready.</p>
+      </li>
+
+      <li>
+        <h4>Create the file storage bucket</h4>
+        <p>Once only. Evidence uploads fail without it.</p>
+        <pre>docker run --rm --network nbr-crm_default --entrypoint sh minio/mc:latest -c \
+  "mc alias set local http://nbr-minio:9000 nbr_minio nbr_minio_password && \
+   mc mb --ignore-existing local/nbr-vault && mc anonymous set none local/nbr-vault"</pre>
+        <p>Or create a bucket named <code>nbr-vault</code> from the MinIO console at
+           <code>http://localhost:9001</code>.</p>
+      </li>
+
+      <li>
+        <h4>Apply migrations and seed</h4>
+        <p>The seed is idempotent — safe to re-run any time. It creates roles, permissions,
+           statuses, categories, packages, couriers, templates and the Super Admin.</p>
+        <pre>pnpm db:migrate
+pnpm db:seed</pre>
+      </li>
+
+      <li>
+        <h4>Run it</h4>
+        <pre>pnpm dev              <span class="c"># API on :4100, web on :5173</span></pre>
+        <p>Or one at a time: <code>pnpm dev:api</code> and <code>pnpm dev:web</code>.</p>
+        <div class="box danger">
+          <h5>Do not run the API with <code>tsx</code></h5>
+          <p>
+            esbuild does not emit decorator metadata, which NestJS dependency injection requires.
+            Use <code>pnpm dev:api</code>, or <code>nest build &amp;&amp; node dist/main.js</code>.
+            The migration and seed scripts have no decorators and run fine under <code>tsx</code>.
+          </p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="box good">
+      <h5>Working</h5>
+      <p>
+        Open <code>http://localhost:5173</code> and sign in with the Super Admin credentials from
+        your <code>.env</code>. The API reference is at <code>http://localhost:4100/api/docs</code>,
+        and any mail the CRM sends lands in Mailpit at <code>http://localhost:8025</code> instead
+        of a real inbox.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="legacy">
+    <h3><span class="num">04</span> Start the existing system <span class="pill a">nationalbookofrecord</span></h3>
+    <p class="sub">
+      Two processes: a Fastify API and a Vite frontend. Use the <code>connect-to-main-crm</code>
+      branch, which carries the connector.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <h4>Check out the connector branch</h4>
+        <pre>cd nationalbookofrecord
+git checkout connect-to-main-crm</pre>
+      </li>
+
+      <li>
+        <h4>Create its database</h4>
+        <p>Any Postgres 16 will do. If you would rather not install one, reuse the container the
+           CRM already started — just give it a separate database:</p>
+        <pre><span class="c"># Option A — reuse the CRM's Postgres container, separate database</span>
+docker exec nbr-postgres psql -U nbr -d postgres -c "CREATE DATABASE legacy_nbr;"
+docker exec nbr-postgres psql -U nbr -d legacy_nbr -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'</pre>
+        <pre><span class="c"># Option B — your own local Postgres on :5432</span>
+createdb nbr_db
+psql -d nbr_db -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'</pre>
+      </li>
+
+      <li>
+        <h4>Configure the backend</h4>
+        <pre>cd backend
+cp .env.example .env</pre>
+        <p>The minimum needed to boot locally:</p>
+        <pre><span class="k">PORT</span>=3001
+<span class="k">NODE_ENV</span>=development
+<span class="c"># Option A (CRM's container):</span>
+<span class="k">DATABASE_URL</span>=postgresql://nbr:nbr_dev_password@localhost:5434/legacy_nbr
+<span class="k">REDIS_URL</span>=redis://localhost:6380
+<span class="c"># Option B (your own Postgres/Redis):</span>
+<span class="c"># DATABASE_URL=postgresql://postgres:password@localhost:5432/nbr_db</span>
+<span class="c"># REDIS_URL=redis://localhost:6379</span>
+
+<span class="k">JWT_SECRET</span>=change-me-minimum-32-characters-long
+<span class="k">FRONTEND_URL</span>=http://localhost:3000
+<span class="k">MIGRATE_STORAGE_ON_BOOT</span>=false</pre>
+        <p>
+          R2, Razorpay, SMTP and WhatsApp keys can stay blank for local work — those features are
+          simply inert without them.
+        </p>
+      </li>
+
+      <li>
+        <h4>Run the backend</h4>
+        <p>It migrates its own schema on every start, so there is no separate migrate step.</p>
+        <pre>npm install
+npm run dev           <span class="c"># API on :3001</span></pre>
+      </li>
+
+      <li>
+        <h4>Run the frontend</h4>
+        <p>In a second terminal, from the repository root:</p>
+        <pre>npm install
+npm run dev           <span class="c"># site + admin on :3000, proxying /api → :3001</span></pre>
+      </li>
+
+      <li>
+        <h4>Create an admin account</h4>
+        <p>Seed the demo data, which includes a Super Admin:</p>
+        <pre>cd backend
+npm run db:seed</pre>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="connect">
+    <h3><span class="num">05</span> Connect them <span class="pill a">existing → CRM</span></h3>
+    <p class="sub">
+      Done entirely from the existing admin panel. No redeploy, no environment variable.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="step">Step 1</div>
+        <h6>Open the settings</h6>
+        <p>Sign in to the admin panel at <code>localhost:3000</code>, go to
+           <strong>Settings → Internal CRM</strong>.</p>
+      </div>
+      <div class="card">
+        <div class="step">Step 2</div>
+        <h6>Fill in the connection</h6>
+        <p><strong>Base URL</strong>: <code>http://localhost:4100</code> — no trailing slash.
+           <strong>Shared secret</strong>: the <code>NBR_WEBHOOK_SECRET</code> from §3.
+           Tick <strong>Enabled</strong>, then <strong>Save Changes</strong>.</p>
+      </div>
+      <div class="card">
+        <div class="step">Step 3</div>
+        <h6>Test the connection</h6>
+        <p>Press <strong>Test Connection</strong>. It pushes one real application and reports
+           what the CRM answered — not just a URL format check.</p>
+      </div>
+      <div class="card">
+        <div class="step">Step 4</div>
+        <h6>Sync everything across</h6>
+        <p>Press <strong>Sync All Existing Applications</strong>. Progress appears on the screen
+           as it runs. Safe to repeat — the CRM ignores anything it already has.</p>
+      </div>
+    </div>
+
+    <p>
+      From this point on, every application you approve in the existing admin panel appears in the
+      CRM within a second or two, carrying its evidence links, its payment, its certificate number
+      and its courier details.
+    </p>
+
+    <div class="box info">
+      <h5>What "Sync All" actually sends</h5>
+      <p>
+        Every approved application, oldest first, each as a complete snapshot of its current state.
+        An application that is already paid, certified and delivered arrives in the CRM at
+        <em>Delivered</em> — with its payment, certificate and courier row — rather than back at the
+        start of the workflow.
+      </p>
+    </div>
+
+    <div class="box warn">
+      <h5>Clock drift breaks signatures</h5>
+      <p>
+        Every request is signed with a timestamp, and anything more than five minutes old is
+        rejected as a replay. If pushes suddenly start failing with a 401, check the clock on both
+        machines before anything else.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="return">
+    <h3><span class="num">06</span> Enable the return path <span class="pill b">CRM → existing</span></h3>
+    <p class="sub">
+      So that a payment, certificate or dispatch recorded in the CRM also lands on the public site.
+      Configured from the CRM's own settings.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <h4>Open Settings in the CRM</h4>
+        <p>At <code>localhost:5173</code>, go to <strong>Settings</strong> and find the
+           <strong>Integrations</strong> section.</p>
+      </li>
+      <li>
+        <h4>Point it back at the existing system</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td><code>integrations.legacy.base_url</code></td><td><code>http://localhost:3001</code></td></tr>
+              <tr><td><code>integrations.legacy.secret</code></td><td>the same <code>NBR_WEBHOOK_SECRET</code></td></tr>
+              <tr><td><code>integrations.legacy.enabled</code></td><td><code>true</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </li>
+      <li>
+        <h4>That is all</h4>
+        <p>
+          Record a payment, upload a certificate or update a courier in the CRM, and it is written
+          into the existing system too. Check
+          <code>GET /api/v1/integrations/nbr-website/push-status</code> to see whether anything is
+          failing.
+        </p>
+      </li>
+    </ol>
+
+    <div class="box info">
+      <h5>Only records that came from the website are pushed back</h5>
+      <p>
+        A record created directly in the CRM has no counterpart on the public site, so nothing is
+        sent for it — which is the intended behaviour for the older data you are entering only in
+        the CRM.
+      </p>
+      <p>
+        Applicant-facing email for a CRM-recorded payment is sent by the CRM, not by the website, so
+        the applicant gets one message rather than two.
+      </p>
+    </div>
+
+    <h4>Mail from the CRM</h4>
+    <p>
+      SMTP can be set from the same Settings screen, under <strong>Mail</strong>. Any field left
+      blank keeps the value the server booted with, so you can override just the host or just the
+      From address. <strong>Send a test email</strong> sends a real message with the saved settings
+      rather than only opening a connection — a relay that authenticates but rejects your From
+      address fails here rather than silently on the first certificate email.
+    </p>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="verify">
+    <h3><span class="num">07</span> Verify it works</h3>
+    <p class="sub">
+      Five checks that together prove both directions. Each one is quick.
+    </p>
+
+    <ol class="steps">
+      <li>
+        <h4>Both systems answer</h4>
+        <pre>curl -s http://localhost:3001/health          <span class="c"># existing → {"status":"ok",…}</span>
+curl -s http://localhost:4100/health          <span class="c"># CRM      → {"status":"ok",…}</span></pre>
+      </li>
+      <li>
+        <h4>An approval reaches the CRM</h4>
+        <p>Approve an application in the existing admin panel. Within a couple of seconds it should
+           appear in the CRM's applicant list. If it does not, look at
+           <strong>Settings → Internal CRM → Recent Sync Activity</strong> — a failed push is
+           logged there with the HTTP status and the reason.</p>
+      </li>
+      <li>
+        <h4>The whole lifecycle carries across</h4>
+        <p>Record a payment on that application in the existing panel, then issue a certificate,
+           then add courier details. Each one should move the CRM record forward — Payment
+           Received, then Certificate Uploaded, then Dispatched — with a timeline entry attributed
+           to the integration.</p>
+      </li>
+      <li>
+        <h4>The return path writes back</h4>
+        <p>In the CRM, mark the dispatch delivered. Refresh the existing system's Dispatch screen —
+           the same order should now read <em>delivered</em>.</p>
+      </li>
+      <li>
+        <h4>Nothing is duplicated</h4>
+        <p>After all of the above, the CRM record should hold exactly one payment, one certificate
+           and one dispatch — not one per event. Every push is a full snapshot, and repeated or
+           replayed deliveries are recognised and skipped.</p>
+      </li>
+    </ol>
+
+    <div class="box good">
+      <h5>Verified end to end</h5>
+      <p>
+        This flow was driven against a live stack: five lifecycle pushes produced one record at
+        <em>Delivered</em> with exactly one payment, one certificate and one dispatch; an identical
+        redelivery was skipped; a stale snapshot did not roll the status back; and unsigned, wrongly
+        signed and replayed requests were all rejected with a 401.
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="ports">
+    <h3><span class="num">08</span> Ports &amp; URLs</h3>
+    <p class="sub">
+      The two systems were given non-overlapping ports so they can run at the same time.
+    </p>
+
+    <div class="split">
+      <div>
+        <h4>New CRM <span class="pill b">internal</span></h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Service</th><th>URL</th></tr></thead>
+            <tbody>
+              <tr><td>Web app</td><td><code>http://localhost:5173</code></td></tr>
+              <tr><td>API</td><td><code>http://localhost:4100/api/v1</code></td></tr>
+              <tr><td>API reference</td><td><code>http://localhost:4100/api/docs</code></td></tr>
+              <tr><td>Postgres</td><td><code>localhost:5434</code></td></tr>
+              <tr><td>Redis</td><td><code>localhost:6380</code></td></tr>
+              <tr><td>MinIO console</td><td><code>http://localhost:9001</code></td></tr>
+              <tr><td>Mailpit</td><td><code>http://localhost:8025</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h4>Existing system <span class="pill a">public</span></h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Service</th><th>URL</th></tr></thead>
+            <tbody>
+              <tr><td>Site + admin</td><td><code>http://localhost:3000</code></td></tr>
+              <tr><td>API</td><td><code>http://localhost:3001/api</code></td></tr>
+              <tr><td>Postgres</td><td><code>localhost:5432</code> (or the shared container)</td></tr>
+              <tr><td>Redis</td><td><code>localhost:6379</code> (or the shared container)</td></tr>
+              <tr><td>Connector in</td><td><code>/api/crm-connector/*</code></td></tr>
+              <tr><td>Connector admin</td><td><code>/api/admin/crm-sync/*</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <h4>Everyday commands</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Command</th><th>Where</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>pnpm dev</code></td><td>nbr-crm</td><td>API and web together</td></tr>
+          <tr><td><code>pnpm infra:up</code> / <code>infra:down</code></td><td>nbr-crm</td><td>Start / stop the containers</td></tr>
+          <tr><td><code>pnpm infra:reset</code></td><td>nbr-crm</td><td>Wipe the databases and re-seed from scratch</td></tr>
+          <tr><td><code>pnpm db:studio</code></td><td>nbr-crm</td><td>Browse the CRM database</td></tr>
+          <tr><td><code>pnpm typecheck</code></td><td>nbr-crm</td><td>Typecheck every package</td></tr>
+          <tr><td><code>npm run dev</code></td><td>nationalbookofrecord</td><td>Frontend on :3000</td></tr>
+          <tr><td><code>npm run dev</code></td><td>…/backend</td><td>API on :3001, migrates on start</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────────────────────────────────────────────── -->
+  <section id="trouble">
+    <h3><span class="num">09</span> Troubleshooting</h3>
+    <p class="sub">The failures you are most likely to hit, and what each one actually means.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>CRM API exits on start</strong> complaining about a secret</td>
+            <td>A value in <code>.env</code> is missing or still a placeholder. Generate real ones
+                with the <code>openssl</code> commands in §3. The API refuses to boot rather than
+                fail later on the first request that needs the key.</td>
+          </tr>
+          <tr>
+            <td><strong>Cannot find module <code>@nbr/shared</code></strong></td>
+            <td>Run <code>pnpm --filter @nbr/shared build</code>. Both apps import it and it is not
+                built automatically on install.</td>
+          </tr>
+          <tr>
+            <td><strong>Nest cannot resolve a dependency</strong></td>
+            <td>Almost always the API being run under <code>tsx</code>. Use <code>pnpm dev:api</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Test Connection returns 401</strong></td>
+            <td>The secret differs between the two systems, or a clock is more than five minutes
+                out. Re-paste the secret; check the time.</td>
+          </tr>
+          <tr>
+            <td><strong>Test Connection says there are no applications</strong></td>
+            <td>Nothing has reached <em>approved</em> yet. Approve one, or seed the existing system.</td>
+          </tr>
+          <tr>
+            <td><strong>Evidence uploads fail in the CRM</strong></td>
+            <td>The <code>nbr-vault</code> bucket does not exist. Create it — §3, step 5.</td>
+          </tr>
+          <tr>
+            <td><strong>Imported record filed under "Other"</strong></td>
+            <td>Its category name has no match in the CRM's list. A notification is raised so it can
+                be corrected; rename the category, or add the matching one under Settings.</td>
+          </tr>
+          <tr>
+            <td><strong>An approval did not reach the CRM</strong></td>
+            <td><strong>Settings → Internal CRM → Recent Sync Activity</strong> in the existing panel
+                shows every push with its HTTP status and error. Approval itself is never blocked by
+                a failed push, so the application is safe — it just needs re-sending.</td>
+          </tr>
+          <tr>
+            <td><strong>Port already in use</strong></td>
+            <td>Another project is holding a default port. Both systems read their ports from
+                <code>.env</code> — change the one that clashes.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="box danger">
+      <h5>Never point both systems at one database</h5>
+      <p>
+        The schemas are unrelated. The existing system migrates its own tables on every start, and
+        letting it do that inside the CRM's database will not end well. Keep them separate — a
+        second database in the same container is fine.
+      </p>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    National Book of Records · Internal development documentation.
+    The existing system remains the source of truth for everything customer-facing;
+    the CRM mirrors it and manages the internal workflow.
+  </footer>
+</main>
+
+</body>
+</html>

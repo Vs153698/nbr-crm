@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import {
   APPLICATION_SOURCE,
   ageInYears,
@@ -15,6 +16,7 @@ import {
   RECORD_STATUS,
   TIMELINE_EVENT,
   type NbrWebhookApplication,
+  type RecordStatus,
 } from '@nbr/shared';
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
@@ -30,6 +32,30 @@ import { DuplicateService } from '../applicants/duplicate.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { StorageService } from '../storage/storage.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { LegacyLifecycleService } from './legacy-lifecycle.service';
+
+/**
+ * Fingerprint of a snapshot's meaningful content.
+ *
+ * `externalUrl` and the timestamps the sender stamps on each delivery are
+ * excluded — they change on every push without anything about the application
+ * having changed, and including them would defeat duplicate detection entirely.
+ */
+function snapshotHash(payload: NbrWebhookApplication): string {
+  const significant = {
+    externalId: payload.externalId,
+    stage: payload.stage ?? null,
+    applicant: payload.applicant,
+    achievement: payload.achievement,
+    evidence: payload.evidence.map((file) => file.url).sort(),
+    payment: payload.payment ?? null,
+    certificate: payload.certificate ?? null,
+    dispatch: payload.dispatch ?? null,
+    awardee: payload.awardee ?? null,
+  };
+
+  return createHash('sha256').update(JSON.stringify(significant)).digest('hex');
+}
 
 export interface SyncStatus {
   readonly lastWebhookAt: string | null;
@@ -71,6 +97,7 @@ export class NbrWebsiteService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly lifecycle: LegacyLifecycleService,
   ) {}
 
   /**
@@ -111,14 +138,26 @@ export class NbrWebsiteService {
 
     const payload = nbrWebhookApplicationSchema.parse(parsedBody);
 
-    // The unique index on (source, externalId) is what makes a retry safe —
-    // onConflictDoNothing turns the second delivery into a no-op.
+    /**
+     * The event log is keyed by application *and content*, not by application
+     * alone.
+     *
+     * The website sends a full snapshot on every lifecycle event — approval,
+     * payment, certificate, dispatch — all carrying the same `externalId`.
+     * Keying on the id by itself would mean only the first of those was ever
+     * processed and the record would freeze at approval. Folding a content
+     * hash into the key keeps genuine retries idempotent (identical bytes, same
+     * key, dropped) while letting each real change through as its own event.
+     */
+    const contentHash = snapshotHash(payload);
+    const eventKey = `${payload.externalId}#${contentHash.slice(0, 16)}`;
+
     const [event] = await this.db
       .insert(schema.integrationEvents)
       .values({
         source: NbrWebsiteService.SOURCE,
-        externalId: payload.externalId,
-        eventType: 'application.approved',
+        externalId: eventKey,
+        eventType: payload.stage ? `application.${payload.stage}` : 'application.approved',
         payload: payload as unknown as Record<string, unknown>,
         signatureValid: true,
         deliveryMode: 'webhook',
@@ -136,7 +175,7 @@ export class NbrWebsiteService {
         .where(
           and(
             eq(schema.integrationEvents.source, NbrWebsiteService.SOURCE),
-            eq(schema.integrationEvents.externalId, payload.externalId),
+            eq(schema.integrationEvents.externalId, eventKey),
           ),
         )
         .limit(1);
@@ -221,6 +260,26 @@ export class NbrWebsiteService {
     applicantId: string | null;
     recordId: string | null;
   }> {
+    // An application we have already imported takes the update path: merge the
+    // new lifecycle state onto the record that exists rather than opening a
+    // second one for the same achievement.
+    const [known] = await this.db
+      .select({
+        recordId: schema.records.id,
+        applicantId: schema.records.applicantId,
+        status: schema.records.status,
+      })
+      .from(schema.records)
+      .where(
+        and(
+          eq(schema.records.externalSource, NbrWebsiteService.SOURCE),
+          eq(schema.records.externalId, payload.externalId),
+        ),
+      )
+      .limit(1);
+
+    if (known) return this.updateExisting(known, payload);
+
     // Reuse the same duplicate engine the manual form uses, so an applicant who
     // walked in last year and applies online this year lands on one profile.
     const matches = await this.duplicates.check({
@@ -254,7 +313,7 @@ export class NbrWebsiteService {
 
     const category = await this.resolveCategory(payload.achievement.category);
 
-    return this.db.transaction(async (tx) => {
+    const imported = await this.db.transaction(async (tx) => {
       let applicantId: string;
       let merged = false;
 
@@ -405,27 +464,121 @@ export class NbrWebsiteService {
         tx,
       );
 
-      // An unmatched category means the record needs a human glance before it
-      // shows up in category reports as "Other".
-      if (!category.matched) {
-        await this.raiseOperatorAlert(
-          'Imported record needs a category',
-          `${recordCode} arrived with category "${payload.achievement.category ?? '(none)'}", which does not match ours. It has been filed under ${category.name}.`,
-          applicantId,
-          recordId,
-        );
-      }
+      // Everything the website already did to this application — payment,
+      // certificate, courier — applied in the same transaction that created the
+      // record, so a backfilled application arrives at its true stage rather
+      // than at the start of the workflow.
+      await this.lifecycle.apply(tx, {
+        recordId,
+        applicantId,
+        currentStatus: RECORD_STATUS.APPLICATION_SUBMITTED,
+        payload,
+      });
 
-      // Evidence is copied outside the transaction — a slow download must not
-      // hold a database transaction open.
-      void this.copyEvidence(payload, applicantId, recordId);
+      await this.lifecycle.upsertMirror(tx, {
+        recordId,
+        applicantId,
+        payload,
+        inboundHash: snapshotHash(payload),
+      });
 
       return {
         status: merged ? INTEGRATION_IMPORT_STATUS.MERGED : INTEGRATION_IMPORT_STATUS.IMPORTED,
         applicantId,
         recordId,
+        recordCode,
+        categoryMatched: category.matched,
+        categoryName: category.name,
       };
     });
+
+    /**
+     * Post-commit work.
+     *
+     * Both of these write rows that reference the record by foreign key, and
+     * both run on a pooled connection rather than `tx` — so until the
+     * transaction commits, the record they point at does not exist as far as
+     * their connection is concerned. Running them inside the transaction meant
+     * every import with an unrecognised category name died on
+     * `notifications_record_id_records_id_fk` and rolled the whole thing back.
+     */
+    if (!imported.categoryMatched) {
+      // Filed under "Other" and flagged, so it does not quietly distort the
+      // category-wise report.
+      await this.raiseOperatorAlert(
+        'Imported record needs a category',
+        `${imported.recordCode} arrived with category "${payload.achievement.category ?? '(none)'}", which does not match ours. It has been filed under ${imported.categoryName}.`,
+        imported.applicantId,
+        imported.recordId,
+      );
+    }
+
+    // Not awaited — a large video must not hold the import open.
+    void this.copyEvidence(payload, imported.applicantId, imported.recordId);
+
+    return {
+      status: imported.status,
+      applicantId: imported.applicantId,
+      recordId: imported.recordId,
+    };
+  }
+
+  /**
+   * Apply a snapshot to a record we already hold.
+   *
+   * Only the lifecycle blocks are merged. The applicant's own details and the
+   * achievement text are left alone on purpose: once a record is in the CRM,
+   * the verification team's corrections to a name or an approved description
+   * are the authoritative version, and a later website snapshot carrying the
+   * applicant's original wording must not quietly undo them.
+   */
+  private async updateExisting(
+    known: { recordId: string; applicantId: string; status: string },
+    payload: NbrWebhookApplication,
+  ): Promise<{ status: string; applicantId: string | null; recordId: string | null }> {
+    const inboundHash = snapshotHash(payload);
+
+    const [mirror] = await this.db
+      .select({ inboundHash: schema.legacyMirror.inboundHash })
+      .from(schema.legacyMirror)
+      .where(eq(schema.legacyMirror.recordId, known.recordId))
+      .limit(1);
+
+    // Byte-identical to what we last applied — a retry, not a change.
+    if (mirror?.inboundHash === inboundHash) {
+      return {
+        status: INTEGRATION_IMPORT_STATUS.DUPLICATE_SKIPPED,
+        applicantId: known.applicantId,
+        recordId: known.recordId,
+      };
+    }
+
+    await this.db.transaction(async (tx) => {
+      await this.lifecycle.apply(tx, {
+        recordId: known.recordId,
+        applicantId: known.applicantId,
+        currentStatus: known.status as RecordStatus,
+        payload,
+      });
+
+      await this.lifecycle.upsertMirror(tx, {
+        recordId: known.recordId,
+        applicantId: known.applicantId,
+        payload,
+        inboundHash,
+      });
+    });
+
+    // New evidence can appear at any point in the lifecycle — a proof of
+    // delivery scan, a corrected ID document. Already-copied files are skipped
+    // by the storage-key check inside copyEvidence.
+    void this.copyEvidence(payload, known.applicantId, known.recordId);
+
+    return {
+      status: INTEGRATION_IMPORT_STATUS.MERGED,
+      applicantId: known.applicantId,
+      recordId: known.recordId,
+    };
   }
 
   /**
@@ -442,11 +595,28 @@ export class NbrWebsiteService {
   ): Promise<void> {
     for (const file of payload.evidence) {
       try {
+        const fileName = file.fileName ?? file.url.split('/').pop() ?? 'evidence';
+
+        // Snapshots repeat the whole evidence list on every push. Without this
+        // check, a record that reaches delivery would hold five copies of the
+        // same video — and we would have paid to download it five times.
+        const [alreadyCopied] = await this.db
+          .select({ id: schema.evidenceFiles.id })
+          .from(schema.evidenceFiles)
+          .where(
+            and(
+              eq(schema.evidenceFiles.recordId, recordId),
+              eq(schema.evidenceFiles.fileName, fileName),
+            ),
+          )
+          .limit(1);
+
+        if (alreadyCopied) continue;
+
         const response = await fetch(file.url, { signal: AbortSignal.timeout(60_000) });
         if (!response.ok) throw new Error(`source returned ${response.status}`);
 
         const buffer = Buffer.from(await response.arrayBuffer());
-        const fileName = file.fileName ?? file.url.split('/').pop() ?? 'evidence';
         const contentType =
           file.contentType ?? response.headers.get('content-type') ?? 'application/octet-stream';
 

@@ -7,9 +7,24 @@ import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { StorageService } from '../storage/storage.service';
 import { TimelineService } from '../timeline/timeline.service';
+
+/**
+ * Our delivery vocabulary is finer than the website's four states, so several
+ * of ours collapse onto one of theirs. Anything not listed leaves the website's
+ * status untouched rather than guessing.
+ */
+const LEGACY_DELIVERY_STATUS: Readonly<Record<string, string | undefined>> = {
+  [DELIVERY_STATUS.NOT_DISPATCHED]: 'pending',
+  [DELIVERY_STATUS.PACKED]: 'preparing',
+  [DELIVERY_STATUS.DISPATCHED]: 'dispatched',
+  [DELIVERY_STATUS.IN_TRANSIT]: 'dispatched',
+  [DELIVERY_STATUS.OUT_FOR_DELIVERY]: 'dispatched',
+  [DELIVERY_STATUS.DELIVERED]: 'delivered',
+};
 
 /**
  * Publications (§11) and Dispatch (§12) — P2-03, P2-04.
@@ -25,6 +40,7 @@ export class DispatchService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly legacy: LegacyPushService,
   ) {}
 
   // ── Publications ─────────────────────────────────────────────────────────
@@ -259,6 +275,18 @@ export class DispatchService {
     });
 
     await this.bust(input.recordId, record.applicantId);
+
+    // Keep the website's dispatch screen and the applicant's tracking page in
+    // step. Silently skipped for CRM-only records and for an update that came
+    // from the website in the first place.
+    this.legacy.pushDispatch(input.recordId, {
+      status: LEGACY_DELIVERY_STATUS[input.deliveryStatus],
+      courierName: input.courierPartner,
+      trackingNumber: input.trackingNumber,
+      trackingUrl: input.trackingUrl,
+      notes: input.remarks,
+    });
+
     return { id };
   }
 
