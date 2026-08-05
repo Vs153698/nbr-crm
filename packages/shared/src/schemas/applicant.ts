@@ -101,30 +101,54 @@ export const consentBlockSchema = z.object({
   evidenceKey: optionalTrimmedString(500),
 });
 
+/** Statuses a genuinely new record may start at. */
+const INTAKE_STATUSES: readonly string[] = [
+  RECORD_STATUS.NEW_LEAD,
+  RECORD_STATUS.APPLICATION_SUBMITTED,
+  RECORD_STATUS.UNDER_REVIEW,
+];
+
 /** Payload for the Add Applicant screen (W-05): person + first record in one go. */
 export const createApplicantSchema = z.object({
   applicant: applicantCoreSchema,
   identifiers: applicantIdentifiersSchema.optional(),
-  record: z.object({
-    source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
-    assignedToUserId: uuidSchema.optional(),
-    initialStatus: z
-      .nativeEnum(RECORD_STATUS)
-      .default(RECORD_STATUS.NEW_LEAD)
-      .refine(
-        (s) =>
-          (
-            [
-              RECORD_STATUS.NEW_LEAD,
-              RECORD_STATUS.APPLICATION_SUBMITTED,
-              RECORD_STATUS.UNDER_REVIEW,
-            ] as string[]
-          ).includes(s),
-        { message: 'A new record can only start at lead, submitted or under-review' },
-      ),
-    internalRemarks: optionalTrimmedString(2000),
-    achievement: achievementSchema,
-  }),
+  record: z
+    .object({
+      source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
+      assignedToUserId: uuidSchema.optional(),
+      initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
+      internalRemarks: optionalTrimmedString(2000),
+      achievement: achievementSchema,
+
+      /**
+       * Back-entry, exactly as on Add Record — an applicant recognised before
+       * this system existed is most often entered here, on their first visit,
+       * not as a second record on a profile that does not yet exist.
+       */
+      existingRecordCode: optionalTrimmedString(20),
+      existingCertificateNumber: optionalTrimmedString(80),
+      originallyAwardedOn: z.coerce.date().optional(),
+    })
+    .superRefine((value, ctx) => {
+      const isBackEntry = Boolean(value.existingRecordCode);
+
+      if (!isBackEntry && !INTAKE_STATUSES.includes(value.initialStatus)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['initialStatus'],
+          message:
+            'A new record can only start at lead, submitted or under-review. To enter a record NBR has already awarded, supply its existing record number.',
+        });
+      }
+
+      if (value.existingCertificateNumber && !isBackEntry) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['existingCertificateNumber'],
+          message: 'Supply the existing record number as well when entering a past record.',
+        });
+      }
+    }),
   consent: consentBlockSchema.optional(),
   /** Set by an Admin to proceed past a duplicate or blacklist warning (§18, §19). */
   overrideDuplicate: z.boolean().default(false),
@@ -210,13 +234,6 @@ export type ApplicantListQuery = z.infer<typeof applicantListQuerySchema>;
  * applicant's personal details are already on file and are edited through the
  * profile, not re-entered per record.
  */
-/** Statuses a genuinely new record may start at. */
-const INTAKE_STATUSES: readonly string[] = [
-  RECORD_STATUS.NEW_LEAD,
-  RECORD_STATUS.APPLICATION_SUBMITTED,
-  RECORD_STATUS.UNDER_REVIEW,
-];
-
 export const addRecordSchema = z
   .object({
     source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),

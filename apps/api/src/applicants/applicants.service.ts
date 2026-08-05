@@ -21,6 +21,7 @@ import {
   ForbiddenError,
   NotFoundError,
   StaleWriteError,
+  ValidationError,
 } from '../common/errors';
 import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
@@ -115,9 +116,29 @@ export class ApplicantsService {
       );
     }
 
+    // Back-entry of a record NBR awarded before this system existed. Checked
+    // before the transaction so a clash is a field error rather than a unique
+    // violation surfacing as a 500.
+    const backEntryCode = input.record.existingRecordCode?.trim().toUpperCase();
+    if (backEntryCode) {
+      const [clash] = await this.db
+        .select({ id: schema.records.id })
+        .from(schema.records)
+        .where(eq(schema.records.recordCode, backEntryCode))
+        .limit(1);
+
+      if (clash) {
+        throw new ValidationError({
+          'record.existingRecordCode': [`${backEntryCode} is already in use by another record.`],
+        });
+      }
+    }
+
     return this.db.transaction(async (tx) => {
       const applicantSeq = await nextSequence(tx, 'applicant_code_seq');
-      const recordSeq = await nextSequence(tx, 'record_code_seq');
+      // The sequence is only drawn when a number is actually being minted:
+      // burning one for a back-entry would leave a permanent gap in the series.
+      const recordCode = backEntryCode ?? formatRecordId(await nextSequence(tx, 'record_code_seq'));
 
       const [applicant] = await tx
         .insert(schema.applicants)
@@ -162,7 +183,7 @@ export class ApplicantsService {
       const [record] = await tx
         .insert(schema.records)
         .values({
-          recordCode: formatRecordId(recordSeq),
+          recordCode,
           applicantId,
           status: input.record.initialStatus,
           source: input.record.source,
@@ -173,6 +194,22 @@ export class ApplicantsService {
         .returning({ id: schema.records.id, code: schema.records.recordCode });
 
       const recordId = record!.id;
+
+      // A certificate the holder already has, so the profile shows the number
+      // they will quote rather than looking as though none was ever issued.
+      if (backEntryCode && input.record.existingCertificateNumber) {
+        await tx.insert(schema.certificates).values({
+          recordId,
+          applicantId,
+          certificateNumber: input.record.existingCertificateNumber.trim(),
+          issueDate: input.record.originallyAwardedOn ?? null,
+        });
+
+        await tx
+          .update(schema.records)
+          .set({ hasCertificate: true })
+          .where(eq(schema.records.id, recordId));
+      }
 
       await tx.insert(schema.achievements).values({
         recordId,

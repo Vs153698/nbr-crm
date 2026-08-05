@@ -12,7 +12,7 @@ import {
   CHILD_AGE_THRESHOLD_YEARS,
   CONSENT_NOTICE_VERSION,
   type DuplicateMatch,
-} from '@nbr/shared';
+  ORDERED_STATUSES,} from '@nbr/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -81,6 +81,11 @@ export default function ApplicantFormPage() {
     source: APPLICATION_SOURCE.WALK_IN as string,
     assignedToUserId: '',
     initialStatus: RECORD_STATUS.NEW_LEAD as string,
+    // Back-entry of a record NBR awarded before this system existed.
+    isBackEntry: false,
+    existingRecordCode: '',
+    existingCertificateNumber: '',
+    originallyAwardedOn: '',
     internalRemarks: '',
   });
 
@@ -217,6 +222,13 @@ export default function ApplicantFormPage() {
         assignedToUserId: form.assignedToUserId || undefined,
         initialStatus: form.initialStatus,
         internalRemarks: form.internalRemarks || undefined,
+        ...(form.isBackEntry
+          ? {
+              existingRecordCode: form.existingRecordCode.trim().toUpperCase(),
+              existingCertificateNumber: form.existingCertificateNumber.trim() || undefined,
+              originallyAwardedOn: form.originallyAwardedOn || undefined,
+            }
+          : {}),
         achievement: {
           recordTitle: form.recordTitle,
           categoryId: form.categoryId,
@@ -641,15 +653,70 @@ export default function ApplicantFormPage() {
                     label: `${member.fullName} — ${member.roleName}`,
                   }))}
                 />
+                <div className="rounded-card border border-line bg-canvas/40 p-3">
+                  <Checkbox
+                    label="This record was already awarded by NBR"
+                    checked={form.isBackEntry}
+                    onChange={(event) => {
+                      const on = event.target.checked;
+                      setForm((current) => ({
+                        ...current,
+                        isBackEntry: on,
+                        // Recording the past, not starting it — New Lead would
+                        // be wrong on every one of these.
+                        initialStatus: on ? RECORD_STATUS.COMPLETED : RECORD_STATUS.NEW_LEAD,
+                      }));
+                    }}
+                  />
+                  <p className="mt-1 pl-6 text-[11px] text-ink-3">
+                    Keeps the record number already printed on the holder's certificate instead of
+                    allocating a new one.
+                  </p>
+
+                  {form.isBackEntry ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <Input
+                        label="Existing record number"
+                        required
+                        value={form.existingRecordCode}
+                        onChange={(event) => set('existingRecordCode')(event.target.value)}
+                        placeholder="NBRR00042"
+                      />
+                      <Input
+                        label="Certificate number"
+                        value={form.existingCertificateNumber}
+                        onChange={(event) => set('existingCertificateNumber')(event.target.value)}
+                        placeholder="Optional"
+                      />
+                      <Input
+                        type="date"
+                        label="Originally awarded on"
+                        value={form.originallyAwardedOn}
+                        onChange={(event) => set('originallyAwardedOn')(event.target.value)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
                 <Select
                   label="Starting status"
                   value={form.initialStatus}
                   onChange={(event) => set('initialStatus')(event.target.value)}
-                  options={[
-                    { value: RECORD_STATUS.NEW_LEAD, label: 'New Lead' },
-                    { value: RECORD_STATUS.APPLICATION_SUBMITTED, label: 'Application Submitted' },
-                    { value: RECORD_STATUS.UNDER_REVIEW, label: 'Under Review' },
-                  ]}
+                  options={
+                    form.isBackEntry
+                      ? ORDERED_STATUSES.map((status) => ({
+                          value: status.code,
+                          label: status.label,
+                        }))
+                      : [
+                          { value: RECORD_STATUS.NEW_LEAD, label: 'New Lead' },
+                          {
+                            value: RECORD_STATUS.APPLICATION_SUBMITTED,
+                            label: 'Application Submitted',
+                          },
+                          { value: RECORD_STATUS.UNDER_REVIEW, label: 'Under Review' },
+                        ]
+                  }
                 />
                 <Textarea
                   label="Internal remarks"
