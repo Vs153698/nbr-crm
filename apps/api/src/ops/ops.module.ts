@@ -198,6 +198,13 @@ class TemplatesController {
   ) {
     return this.comms.upsertTemplate(body);
   }
+
+  /** Custom templates only — the built-ins back workflow stages. */
+  @Delete(':id')
+  @Can(MODULES.TEMPLATES, ACTIONS.EDIT)
+  async remove(@Param('id') id: string) {
+    return this.comms.deleteTemplate(uuidSchema.parse(id));
+  }
 }
 
 @Controller('blacklists')

@@ -861,12 +861,31 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     tag: 'Templates',
     summary: 'List message templates',
     description: 'All email and WhatsApp templates with their bodies and active state.',
-    response: arrayOf({ id: UUID, code: { type: 'string' }, channel: { type: 'string' }, name: { type: 'string' }, subject: { type: 'string', nullable: true }, body: { type: 'string' }, isActive: { type: 'boolean' } }),
+    response: arrayOf({ id: UUID, code: { type: 'string' }, channel: { type: 'string' }, name: { type: 'string' }, subject: { type: 'string', nullable: true }, body: { type: 'string' }, isActive: { type: 'boolean' }, isSystem: { type: 'boolean' } }),
+    notes:
+      '`isSystem` marks the templates the Smart Workflow Engine addresses by code. Those can ' +
+      'be reworded or switched off but not deleted — a stage action would otherwise be left ' +
+      'with no message to send. Anything else is a custom template.',
+  },
+  'TemplatesController.remove': {
+    tag: 'Templates',
+    summary: 'Delete a custom template',
+    description: 'Removes a template an Admin added. Built-in templates are refused.',
+    response: OK,
+    audited: 'template.updated',
+    notes:
+      'The refusal is enforced here rather than only hidden in the interface: a permitted API ' +
+      'call must not be able to break a workflow stage the UI merely declines to offer.',
+    errors: {
+      '422': { description: 'The template is a built-in one. Reword it or deactivate it instead.' },
+    },
   },
   'TemplatesController.upsert': {
     tag: 'Templates',
     summary: 'Create or update a template',
-    description: 'Upserts by template code.',
+    description:
+      'Upserts by template code. Any slug is accepted, so an Admin can add templates of ' +
+      'their own alongside the built-in seven.',
     body: zodSchema(upsertTemplateSchema, 'UpsertTemplate'),
     response: ID_ONLY,
     audited: 'template.updated',

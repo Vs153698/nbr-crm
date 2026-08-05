@@ -210,28 +210,64 @@ export type ApplicantListQuery = z.infer<typeof applicantListQuerySchema>;
  * applicant's personal details are already on file and are edited through the
  * profile, not re-entered per record.
  */
-export const addRecordSchema = z.object({
-  source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
-  assignedToUserId: uuidSchema.optional(),
-  initialStatus: z
-    .nativeEnum(RECORD_STATUS)
-    .default(RECORD_STATUS.NEW_LEAD)
-    .refine(
-      (s) =>
-        (
-          [
-            RECORD_STATUS.NEW_LEAD,
-            RECORD_STATUS.APPLICATION_SUBMITTED,
-            RECORD_STATUS.UNDER_REVIEW,
-          ] as string[]
-        ).includes(s),
-      { message: 'A new record can only start at lead, submitted or under-review' },
-    ),
-  internalRemarks: optionalTrimmedString(2000),
-  achievement: achievementSchema,
-  /** Admin override when the applicant is blacklisted (§19). */
-  override: z.boolean().default(false),
-  overrideReason: optionalTrimmedString(500),
-});
+/** Statuses a genuinely new record may start at. */
+const INTAKE_STATUSES: readonly string[] = [
+  RECORD_STATUS.NEW_LEAD,
+  RECORD_STATUS.APPLICATION_SUBMITTED,
+  RECORD_STATUS.UNDER_REVIEW,
+];
+
+export const addRecordSchema = z
+  .object({
+    source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
+    assignedToUserId: uuidSchema.optional(),
+    initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
+    internalRemarks: optionalTrimmedString(2000),
+    achievement: achievementSchema,
+    /** Admin override when the applicant is blacklisted (§19). */
+    override: z.boolean().default(false),
+    overrideReason: optionalTrimmedString(500),
+
+    /**
+     * ── Back-entry of a record NBR already awarded ────────────────────────────
+     *
+     * A holder who was recognised before this system existed arrives with a
+     * record number already printed on their certificate. Minting them a fresh
+     * one would put two different numbers on the same achievement, so their own
+     * number is carried across instead of generated.
+     *
+     * Supplying it is also what marks the record as historical, which is why the
+     * status rules below relax only when it is present: an entry that is
+     * recording the past legitimately starts at Completed, while a genuinely new
+     * application must still begin at the top of the workflow.
+     */
+    existingRecordCode: optionalTrimmedString(20),
+    /** The number printed on the certificate they already hold. */
+    existingCertificateNumber: optionalTrimmedString(80),
+    /** When the record was originally awarded, for the timeline. */
+    originallyAwardedOn: z.coerce.date().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const isBackEntry = Boolean(value.existingRecordCode);
+
+    if (!isBackEntry && !INTAKE_STATUSES.includes(value.initialStatus)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['initialStatus'],
+        message:
+          'A new record can only start at lead, submitted or under-review. To enter a record NBR has already awarded, supply its existing record number.',
+      });
+    }
+
+    // A certificate number without a record number is a half-told story: there
+    // is nothing to attach it to that would not itself be newly invented.
+    if (value.existingCertificateNumber && !isBackEntry) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['existingCertificateNumber'],
+        message: 'Supply the existing record number as well when entering a past record.',
+      });
+    }
+  });
 
 export type AddRecordInput = z.infer<typeof addRecordSchema>;

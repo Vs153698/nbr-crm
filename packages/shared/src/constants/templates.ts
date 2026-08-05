@@ -46,6 +46,31 @@ export const WHATSAPP_TEMPLATE_CODES: readonly TemplateCode[] = [
 ];
 
 /**
+ * The codes above are *system* templates: the Smart Workflow Engine names them
+ * directly (`email:selection`, `whatsapp:payment_reminder`), so a stage action
+ * would silently lose its message if one were renamed or removed.
+ *
+ * Anything else is a custom template — an Admin's own wording for a situation
+ * the workflow does not model, selectable when composing a message by hand.
+ * Both kinds live in the same table and render through the same placeholder
+ * validation; only deletability differs.
+ */
+const SYSTEM_TEMPLATE_CODES: ReadonlySet<string> = new Set(Object.values(TEMPLATE_CODE));
+
+export function isSystemTemplateCode(code: string): boolean {
+  return SYSTEM_TEMPLATE_CODES.has(code);
+}
+
+/**
+ * Shape of a template code.
+ *
+ * Slug-like rather than free text because the code is an identifier the
+ * workflow and the API both address templates by — spaces and punctuation there
+ * would make `email:my template!` ambiguous.
+ */
+export const TEMPLATE_CODE_PATTERN = /^[a-z][a-z0-9_]{1,39}$/;
+
+/**
  * Dynamic fields usable in any template as `{{field}}`. The renderer resolves
  * them from the record graph; a template referencing anything not listed here
  * fails validation at save time rather than at send time.

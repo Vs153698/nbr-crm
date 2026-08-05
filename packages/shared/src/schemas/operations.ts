@@ -12,7 +12,7 @@ import {
 } from '../constants/catalog';
 import { BLACKLIST_KIND, BLACKLIST_REASON, FLAG } from '../constants/flags';
 import { RECORD_STATUS } from '../constants/statuses';
-import { TEMPLATE_CHANNEL, TEMPLATE_CODE } from '../constants/templates';
+import { TEMPLATE_CHANNEL, TEMPLATE_CODE, TEMPLATE_CODE_PATTERN } from '../constants/templates';
 import {
   moneySchema,
   optionalTrimmedString,
@@ -201,9 +201,19 @@ export const updateTaskSchema = z.object({
 
 // ── Communication (§7, §8, §22, M-07, M-08) ──────────────────────────────────
 
+/**
+ * A template code as referenced when sending.
+ *
+ * Not `nativeEnum(TEMPLATE_CODE)`: the whole point of custom templates is that
+ * they can be sent, and the enum would have accepted only the seven built-ins.
+ * The code is resolved against the templates table at render time, so an
+ * unknown one fails there with a message naming it.
+ */
+const templateCodeRef = z.string().trim().toLowerCase().regex(TEMPLATE_CODE_PATTERN);
+
 export const sendEmailSchema = z.object({
   recordId: uuidSchema,
-  templateCode: z.nativeEnum(TEMPLATE_CODE).optional(),
+  templateCode: templateCodeRef.optional(),
   to: z.string().email(),
   cc: z.array(z.string().email()).max(5).optional(),
   subject: trimmedString(250),
@@ -213,7 +223,7 @@ export const sendEmailSchema = z.object({
 
 export const whatsappLinkSchema = z.object({
   recordId: uuidSchema,
-  templateCode: z.nativeEnum(TEMPLATE_CODE),
+  templateCode: templateCodeRef,
   /** Staff may tweak the rendered text before clicking through. */
   bodyOverride: optionalTrimmedString(4000),
 });
@@ -232,7 +242,21 @@ export const logCallSchema = z.object({
 });
 
 export const upsertTemplateSchema = z.object({
-  code: z.nativeEnum(TEMPLATE_CODE),
+  /**
+   * Any slug, not just the system codes.
+   *
+   * Restricting this to the seven built-ins meant an Admin could reword the
+   * shipped templates but never add one of their own — so a message the
+   * workflow does not model had to be retyped from scratch every time.
+   */
+  code: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(
+      TEMPLATE_CODE_PATTERN,
+      'Use 2–40 characters: lowercase letters, numbers and underscores, starting with a letter.',
+    ),
   channel: z.nativeEnum(TEMPLATE_CHANNEL),
   name: trimmedString(120),
   subject: optionalTrimmedString(250),

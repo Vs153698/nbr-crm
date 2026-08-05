@@ -8,7 +8,12 @@ import {
 } from '@nbr/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
-import { BlacklistBlockedError, ForbiddenError, NotFoundError } from '../common/errors';
+import {
+  BlacklistBlockedError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../common/errors';
 import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
@@ -32,6 +37,15 @@ export interface AddRecordInput {
   };
   readonly override?: boolean;
   readonly overrideReason?: string | undefined;
+
+  /**
+   * Back-entry of a record NBR awarded before this system existed. Supplying
+   * the holder's existing number is what makes the entry historical — see
+   * `addRecordSchema`, which relaxes the intake status rules on the same signal.
+   */
+  readonly existingRecordCode?: string | undefined;
+  readonly existingCertificateNumber?: string | undefined;
+  readonly originallyAwardedOn?: Date | undefined;
 }
 
 /**
@@ -103,12 +117,39 @@ export class AddRecordService {
       }
     }
 
+    const backEntryCode = input.existingRecordCode?.trim().toUpperCase();
+
+    // Checked before the transaction so the caller gets a field-level error
+    // rather than a unique-violation surfacing as a 500.
+    if (backEntryCode) {
+      const [clash] = await this.db
+        .select({ id: schema.records.id })
+        .from(schema.records)
+        .where(eq(schema.records.recordCode, backEntryCode))
+        .limit(1);
+
+      if (clash) {
+        throw new ValidationError({
+          existingRecordCode: [`${backEntryCode} is already in use by another record.`],
+        });
+      }
+    }
+
     return this.db.transaction(async (tx) => {
-      const result = await tx.execute<{ nextval: string }>(
-        sql`SELECT nextval('record_code_seq')::text AS nextval`,
-      );
-      const sequence = Number((result as unknown as Array<{ nextval: string }>)[0]!.nextval);
-      const recordCode = formatRecordId(sequence);
+      let recordCode: string;
+
+      if (backEntryCode) {
+        // Their own number, carried across verbatim. The sequence is left
+        // alone: burning a number for a record that will never use it would
+        // put a permanent gap in the new-record series.
+        recordCode = backEntryCode;
+      } else {
+        const result = await tx.execute<{ nextval: string }>(
+          sql`SELECT nextval('record_code_seq')::text AS nextval`,
+        );
+        const sequence = Number((result as unknown as Array<{ nextval: string }>)[0]!.nextval);
+        recordCode = formatRecordId(sequence);
+      }
 
       const [record] = await tx
         .insert(schema.records)
@@ -138,6 +179,23 @@ export class AddRecordService {
         participantCount: input.achievement.participantCount,
       });
 
+      // A certificate the holder already has. Registered so the profile shows
+      // the number they will quote on the phone, and so a reissue versions from
+      // it rather than starting again at v1.
+      if (backEntryCode && input.existingCertificateNumber) {
+        await tx.insert(schema.certificates).values({
+          recordId,
+          applicantId,
+          certificateNumber: input.existingCertificateNumber.trim(),
+          issueDate: input.originallyAwardedOn ?? null,
+        });
+
+        await tx
+          .update(schema.records)
+          .set({ hasCertificate: true })
+          .where(eq(schema.records.id, recordId));
+      }
+
       // Denormalised counter drives the profile header and the list view.
       await tx
         .update(schema.applicants)
@@ -149,13 +207,20 @@ export class AddRecordService {
           applicantId,
           recordId,
           eventType: TIMELINE_EVENT.RECORD_CREATED,
-          summary: `New record opened — "${input.achievement.recordTitle}"`,
+          summary: backEntryCode
+            ? `Existing record ${recordCode} entered — "${input.achievement.recordTitle}"`
+            : `New record opened — "${input.achievement.recordTitle}"`,
           meta: {
             recordCode,
             source: input.source,
             // Makes it obvious on the timeline that this is a returning
             // applicant rather than a first-time one.
             isAdditionalRecord: true,
+            // A back-entry describes something NBR already did. Without this the
+            // timeline would read as though the award happened today.
+            backEntry: Boolean(backEntryCode),
+            originallyAwardedOn: input.originallyAwardedOn?.toISOString() ?? null,
+            existingCertificateNumber: input.existingCertificateNumber ?? null,
           },
         },
         tx,
@@ -170,6 +235,7 @@ export class AddRecordService {
           meta: {
             applicantCode: applicant.applicantCode,
             additionalRecord: true,
+            backEntry: Boolean(backEntryCode),
             override: Boolean(input.override),
             overrideReason: input.overrideReason ?? null,
           },

@@ -10,7 +10,7 @@ import {
   toE164,
   validateTemplate,
   type TemplateContext,
-} from '@nbr/shared';
+  isSystemTemplateCode,} from '@nbr/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
@@ -537,8 +537,8 @@ export class CommunicationsService {
   // ── Template manager (W-26) ───────────────────────────────────────────────
 
   async listTemplates() {
-    return this.cache.remember('templates:all', 600, [CacheTag.templates()], () =>
-      this.db
+    return this.cache.remember('templates:all', 600, [CacheTag.templates()], async () => {
+      const rows = await this.db
         .select({
           id: schema.templates.id,
           code: schema.templates.code,
@@ -550,8 +550,50 @@ export class CommunicationsService {
           updatedAt: schema.templates.updatedAt,
         })
         .from(schema.templates)
-        .orderBy(schema.templates.channel, schema.templates.code),
-    );
+        .orderBy(schema.templates.channel, schema.templates.code);
+
+      // The Smart Workflow Engine addresses system templates by code, so the
+      // screen has to distinguish them: renaming one is fine, deleting it would
+      // leave a stage action with no message to send.
+      return rows.map((row) => ({ ...row, isSystem: isSystemTemplateCode(row.code) }));
+    });
+  }
+
+  /**
+   * Delete a custom template.
+   *
+   * System templates are refused rather than hidden from the UI as well —
+   * a permitted API call must not be able to break a workflow stage that the
+   * interface merely declines to offer.
+   */
+  async deleteTemplate(id: string): Promise<{ ok: true }> {
+    const [template] = await this.db
+      .select({ code: schema.templates.code, channel: schema.templates.channel })
+      .from(schema.templates)
+      .where(eq(schema.templates.id, id))
+      .limit(1);
+
+    if (!template) throw new NotFoundError('Template');
+
+    if (isSystemTemplateCode(template.code)) {
+      throw new ValidationError({
+        code: [
+          `"${template.code}" is a built-in template used by the workflow and cannot be deleted. Reword it, or switch it off instead.`,
+        ],
+      });
+    }
+
+    await this.db.delete(schema.templates).where(eq(schema.templates.id, id));
+    await this.cache.invalidateTags(CacheTag.templates());
+
+    await this.audit.record({
+      action: AUDIT.TEMPLATE_UPDATED,
+      entityType: 'template',
+      entityId: id,
+      entityLabel: `deleted ${template.channel}/${template.code}`,
+    });
+
+    return { ok: true };
   }
 
   /**
