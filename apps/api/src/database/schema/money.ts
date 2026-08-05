@@ -27,9 +27,25 @@ export const packages = pgTable(
     gstPercent: numeric('gst_percent', { precision: 5, scale: 2 }).notNull().default('18.00'),
     isActive: boolean('is_active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
+
+    /**
+     * The public website's own code for this package, when it mirrors one.
+     *
+     * Set by the package sync. Its whole purpose is that a payment recorded
+     * here pushes back carrying the exact code the website's payments table
+     * expects, instead of being guessed at from the amount. Null for packages
+     * that only exist in the CRM — those still fall back to the website's
+     * name-and-amount matching.
+     */
+    legacyCode: varchar('legacy_code', { length: 60 }),
     ...timestamps(),
   },
-  (t) => [uniqueIndex('packages_name_uq').on(t.name)],
+  (t) => [
+    uniqueIndex('packages_name_uq').on(t.name),
+    uniqueIndex('packages_legacy_code_uq')
+      .on(t.legacyCode)
+      .where(sql`${t.legacyCode} is not null`),
+  ],
 );
 
 /**

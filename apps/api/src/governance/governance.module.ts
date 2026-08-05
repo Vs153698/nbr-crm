@@ -260,6 +260,20 @@ class IntegrationsController {
   }
 
   /**
+   * Mirror the website's plan catalogue into our packages list.
+   *
+   * Run once at setup, and again whenever prices change over there. With both
+   * sides offering the same packages, a payment recorded here pushes back
+   * carrying the website's own plan code instead of being matched by price.
+   */
+  @Post('sync-packages')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async syncPackages() {
+    return this.legacyPush.syncPackages();
+  }
+
+  /**
    * Fingerprint of the webhook secret, for comparing against the sender's.
    * Turns a 401 into a definite answer about whether the secrets match.
    */

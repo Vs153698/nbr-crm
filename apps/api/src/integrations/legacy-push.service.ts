@@ -1,7 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
+import { toRupees } from '@nbr/shared';
 import { eq } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
+import { ValidationError } from '../common/errors';
+import { CacheService, CacheTag } from '../redis/cache.service';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
@@ -20,6 +23,29 @@ const LEGACY_PATHS = {
   dispatch: '/api/crm-connector/dispatch',
   certificate: '/api/crm-connector/certificate',
 } as const;
+
+/** Read-only endpoint carrying the website's plan catalogue. */
+const LEGACY_PLANS_PATH = '/api/crm-connector/plans';
+
+/** GST the website charges. Its plan prices are inclusive, with no separate line. */
+const LEGACY_GST_PERCENT = '0.00';
+
+interface LegacyPlan {
+  readonly code: string;
+  readonly label: string;
+  readonly amountPaise: number;
+  readonly features: string[];
+  readonly isActive: boolean;
+  readonly sortOrder: number;
+  readonly acceptedByPaymentsTable: boolean;
+}
+
+export interface PackageSyncResult {
+  readonly imported: number;
+  readonly updated: number;
+  readonly skipped: number;
+  readonly packages: Array<{ name: string; legacyCode: string; amount: string }>;
+}
 
 const PUSH_TIMEOUT_MS = 15_000;
 const RETRY_DELAYS_MS = [1_000, 5_000] as const;
@@ -68,6 +94,7 @@ export class LegacyPushService {
     @Inject(DB) private readonly db: Database,
     private readonly governance: GovernanceService,
     private readonly audit: AuditService,
+    private readonly cache: CacheService,
   ) {}
 
   async getConfig(): Promise<LegacyConfig> {
@@ -228,13 +255,124 @@ export class LegacyPushService {
     });
   }
 
+  /**
+   * Mirror the website's plan catalogue into our packages list.
+   *
+   * The reason this exists rather than a mapping table: the website's payments
+   * table only accepts three plan codes, and a payment recorded here against a
+   * CRM-invented package had to be guessed back onto one of them by price.
+   * Guessing works until someone prices two packages the same. Sharing the
+   * catalogue means an operator picks the same package on either side and the
+   * code round-trips exactly.
+   *
+   * Matched on `legacyCode`, so renaming a package here does not orphan it, and
+   * an operator's own packages are never touched.
+   */
+  async syncPackages(): Promise<PackageSyncResult> {
+    const config = await this.getConfig();
+    if (!config.enabled) {
+      throw new ValidationError({
+        integration: ['Set the website URL and secret, and switch the integration on, first.'],
+      });
+    }
+
+    // The website signs GETs over the literal "{}" — it has no body to sign and
+    // its verifier falls back to an empty object.
+    const signedEmptyBody = '{}';
+    const response = await fetch(`${config.baseUrl}${LEGACY_PLANS_PATH}`, {
+      method: 'GET',
+      headers: { 'X-NBR-Signature': this.sign(signedEmptyBody, config.secret) },
+      signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new ValidationError({
+        integration: [
+          `The website returned HTTP ${response.status} for its plan catalogue${detail ? `: ${detail.slice(0, 200)}` : ''}.`,
+        ],
+      });
+    }
+
+    const body = (await response.json()) as { data?: LegacyPlan[] };
+    const plans = body.data ?? [];
+
+    const result: PackageSyncResult = { imported: 0, updated: 0, skipped: 0, packages: [] };
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const packages: PackageSyncResult['packages'] = [];
+
+    for (const plan of plans) {
+      // A code the website cannot write back to its own payments table would
+      // give an operator a package that silently degrades on push. Better not
+      // to offer it at all.
+      if (!plan.acceptedByPaymentsTable) {
+        skipped++;
+        continue;
+      }
+
+      const amount = toRupees(plan.amountPaise);
+      const name = `${plan.label} (website)`;
+
+      const [existing] = await this.db
+        .select({ id: schema.packages.id })
+        .from(schema.packages)
+        .where(eq(schema.packages.legacyCode, plan.code))
+        .limit(1);
+
+      if (existing) {
+        await this.db
+          .update(schema.packages)
+          .set({
+            name,
+            amount,
+            // The website's prices are all-inclusive with no separate GST line,
+            // so mirroring them at 18% would overstate every invoice by 18%.
+            gstPercent: LEGACY_GST_PERCENT,
+            description: plan.features.join(' · ') || null,
+            isActive: plan.isActive,
+            sortOrder: plan.sortOrder,
+          })
+          .where(eq(schema.packages.id, existing.id));
+        updated++;
+      } else {
+        await this.db.insert(schema.packages).values({
+          name,
+          legacyCode: plan.code,
+          amount,
+          gstPercent: LEGACY_GST_PERCENT,
+          description: plan.features.join(' · ') || null,
+          isActive: plan.isActive,
+          sortOrder: plan.sortOrder,
+        });
+        imported++;
+      }
+
+      packages.push({ name, legacyCode: plan.code, amount });
+    }
+
+    await this.cache.invalidateTags(CacheTag.settings());
+
+    this.logger.log(`Package sync: ${imported} imported, ${updated} updated, ${skipped} skipped`);
+    return { ...result, imported, updated, skipped, packages };
+  }
+
   // ── Typed helpers for the three mirrored events ───────────────────────────
 
-  /** A payment banked in the CRM. Amounts cross the wire in paise. */
-  pushPayment(
+  /**
+   * A payment banked in the CRM. Amounts cross the wire in paise.
+   *
+   * `packageId` is what makes this exact: a package mirrored from the website
+   * carries its `legacyCode`, so the push sends the code the website's payments
+   * table actually stores. Without one — a CRM-only package — the name goes
+   * over and the website matches it by name and amount.
+   */
+  async pushPayment(
     recordId: string,
     input: {
       plan: string;
+      packageId?: string | null;
       amountPaise: number;
       method: string;
       referenceNumber: string;
@@ -243,9 +381,21 @@ export class LegacyPushService {
        *  applicant does not receive two messages for one payment. */
       sendNotifications?: boolean;
     },
-  ): void {
+  ): Promise<void> {
+    let plan = input.plan;
+
+    if (input.packageId) {
+      const [pkg] = await this.db
+        .select({ legacyCode: schema.packages.legacyCode })
+        .from(schema.packages)
+        .where(eq(schema.packages.id, input.packageId))
+        .limit(1);
+
+      if (pkg?.legacyCode) plan = pkg.legacyCode;
+    }
+
     this.pushDetached('payment', recordId, {
-      plan: input.plan,
+      plan,
       amountPaise: input.amountPaise,
       method: input.method,
       referenceNumber: input.referenceNumber,

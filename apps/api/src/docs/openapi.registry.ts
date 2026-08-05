@@ -1321,6 +1321,33 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     ],
     response: arrayOf({ id: UUID, externalId: { type: 'string' }, status: { type: 'string' }, error: { type: 'string', nullable: true }, receivedAt: ISO }),
   },
+  'IntegrationsController.syncPackages': {
+    tag: 'Integration',
+    summary: 'Sync packages from the website',
+    description:
+      "Mirrors the public website's plan catalogue into this system's packages, matched on " +
+      'the website\'s plan code.',
+    response: {
+      type: 'object',
+      properties: {
+        imported: { type: 'integer' },
+        updated: { type: 'integer' },
+        skipped: { type: 'integer' },
+        packages: arrayOf({ name: { type: 'string' }, legacyCode: { type: 'string' }, amount: { type: 'string' } }),
+      },
+    },
+    notes:
+      "The website's payments table only accepts three plan codes, so a payment recorded " +
+      'here against a CRM-invented package had to be guessed back onto one of them by ' +
+      'price. Sharing the catalogue means an operator picks the same package on either ' +
+      'side and the code round-trips exactly. Plans the website cannot write back to its ' +
+      'own payments table are skipped rather than offered as packages that would silently ' +
+      'degrade on push. Prices are mirrored at 0% GST because the website quotes ' +
+      'all-inclusive figures with no separate tax line.',
+    errors: {
+      '422': { description: 'The integration is not configured, or the website rejected the request.' },
+    },
+  },
   'IntegrationsController.secretIdentity': {
     tag: 'Integration',
     summary: 'Webhook secret fingerprint',

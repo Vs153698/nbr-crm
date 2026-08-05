@@ -278,8 +278,11 @@ export class PaymentsService {
     // invoice and its dispatch queue agree with ours. A no-op for records that
     // only exist here, and for a receipt that came from there in the first
     // place. Detached: the operator has already been answered.
-    this.legacy.pushPayment(payment.recordId, {
+    void this.legacy.pushPayment(payment.recordId, {
       plan: payment.packageName,
+      // Resolves to the website's own plan code when this package mirrors one,
+      // so the push carries the exact code rather than a name to be matched.
+      packageId: payment.packageId,
       amountPaise: toPaise(input.amount),
       method: input.mode,
       referenceNumber: input.transactionRef ?? `CRM-${result.transactionId}`,
