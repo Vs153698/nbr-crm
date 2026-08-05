@@ -1,4 +1,10 @@
-import { APPLICATION_SOURCE, APPLICATION_SOURCE_LABELS, RECORD_STATUS, RECORD_TYPE } from '@nbr/shared';
+import {
+  APPLICATION_SOURCE,
+  APPLICATION_SOURCE_LABELS,
+  ORDERED_STATUSES,
+  RECORD_STATUS,
+  RECORD_TYPE,
+} from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -49,6 +55,17 @@ export function AddRecordDialog({
   const [override, setOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
 
+  /**
+   * Back-entry of a record NBR awarded before this system existed. Off by
+   * default: almost every record opened here is a new application, and an
+   * always-visible record-number field invites someone to type one in and
+   * accidentally file a new application as historical.
+   */
+  const [isBackEntry, setIsBackEntry] = useState(false);
+  const [existingRecordCode, setExistingRecordCode] = useState('');
+  const [existingCertificateNumber, setExistingCertificateNumber] = useState('');
+  const [originallyAwardedOn, setOriginallyAwardedOn] = useState('');
+
   const { data: lookups } = useQuery({
     queryKey: ['lookups'],
     queryFn: ({ signal }) => api.get<Lookups>('/lookups', undefined, signal),
@@ -72,6 +89,13 @@ export function AddRecordDialog({
         },
         override,
         overrideReason: overrideReason || undefined,
+        ...(isBackEntry
+          ? {
+              existingRecordCode: existingRecordCode.trim().toUpperCase(),
+              existingCertificateNumber: existingCertificateNumber.trim() || undefined,
+              originallyAwardedOn: originallyAwardedOn || undefined,
+            }
+          : {}),
       }),
     onSuccess: (result) => {
       toast.success(`Record ${result.recordCode} opened`, {
@@ -208,15 +232,63 @@ export function AddRecordDialog({
           />
         </div>
 
+        <div className="rounded-card border border-line bg-canvas/40 p-3">
+          <Checkbox
+            label="This record was already awarded by NBR"
+            checked={isBackEntry}
+            onChange={(event) => {
+              const on = event.target.checked;
+              setIsBackEntry(on);
+              // A historical entry is being recorded, not started — Completed is
+              // the honest default, and New Lead would be wrong on every one.
+              setInitialStatus(on ? RECORD_STATUS.COMPLETED : RECORD_STATUS.NEW_LEAD);
+            }}
+          />
+          <p className="mt-1 pl-6 text-[11px] text-ink-3">
+            Enter a holder recognised before this system existed, keeping the record number
+            already printed on their certificate.
+          </p>
+
+          {isBackEntry ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Input
+                label="Existing record number"
+                required
+                value={existingRecordCode}
+                onChange={(event) => setExistingRecordCode(event.target.value)}
+                placeholder="NBRR00042"
+              />
+              <Input
+                label="Certificate number"
+                value={existingCertificateNumber}
+                onChange={(event) => setExistingCertificateNumber(event.target.value)}
+                placeholder="Optional"
+              />
+              <Input
+                type="date"
+                label="Originally awarded on"
+                value={originallyAwardedOn}
+                onChange={(event) => setOriginallyAwardedOn(event.target.value)}
+              />
+            </div>
+          ) : null}
+        </div>
+
         <Select
           label="Starting status"
           value={initialStatus}
           onChange={(event) => setInitialStatus(event.target.value)}
-          options={[
-            { value: RECORD_STATUS.NEW_LEAD, label: 'New Lead' },
-            { value: RECORD_STATUS.APPLICATION_SUBMITTED, label: 'Application Submitted' },
-            { value: RECORD_STATUS.UNDER_REVIEW, label: 'Under Review' },
-          ]}
+          options={
+            isBackEntry
+              ? // A past record can sit anywhere in the workflow — most are
+                // finished, but some were abandoned partway.
+                ORDERED_STATUSES.map((status) => ({ value: status.code, label: status.label }))
+              : [
+                  { value: RECORD_STATUS.NEW_LEAD, label: 'New Lead' },
+                  { value: RECORD_STATUS.APPLICATION_SUBMITTED, label: 'Application Submitted' },
+                  { value: RECORD_STATUS.UNDER_REVIEW, label: 'Under Review' },
+                ]
+          }
         />
 
         <Textarea
