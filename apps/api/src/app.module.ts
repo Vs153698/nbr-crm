@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.service';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthModule } from './auth/auth.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { DocumentsModule } from './documents/documents.module';
 import { GovernanceModule } from './governance/governance.module';
 import { LookupsModule } from './lookups/lookups.module';
 import { NotesModule } from './notes/notes.module';
@@ -49,6 +50,7 @@ import { RedisModule } from './redis/redis.module';
     StorageModule,
     ApplicantsModule,
     DashboardModule,
+    DocumentsModule,
     LookupsModule,
     VaultModule,
     NotesModule,

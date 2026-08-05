@@ -14,6 +14,7 @@ import { formatDate, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { Lookups, PaymentSummary } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 /**
  * W-10 Payment tab (§9, M-03).
@@ -22,13 +23,29 @@ import type { Lookups, PaymentSummary } from '../types';
  * the figure shown in the modal is byte-identical to the one written to the
  * database — no "the total changed when I saved it".
  */
-export function PaymentTab({ recordId, applicantId }: { recordId: string; applicantId: string }) {
+export function PaymentTab({
+  recordId,
+  applicantId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  recordId: string;
+  applicantId: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
 
   const [planOpen, setPlanOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<string | null>(null);
+
+  useAutoOpen(
+    autoOpen,
+    { 'payment-plan': () => setPlanOpen(true), payment: () => setPayOpen(true) },
+    onAutoOpened,
+  );
 
   const { data: payment, isLoading } = useQuery({
     queryKey: queryKeys.payment(recordId),

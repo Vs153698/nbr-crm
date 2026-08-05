@@ -1,6 +1,6 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/AppShell';
@@ -15,6 +15,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime, formatRelative, humanise, initials } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
+import { AssignRecordDialog } from './components/AssignRecordDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
 import { EditApplicantDialog } from './components/EditApplicantDialog';
 import { CommunicationTab } from './components/CommunicationTab';
@@ -55,6 +56,17 @@ export default function ApplicantProfilePage() {
   const { can } = useAuth();
 
   const activeTab = searchParams.get('tab') ?? 'overview';
+  /**
+   * A dialog the Smart Action panel has asked a tab to open.
+   *
+   * Held here because the panel and the tabs are siblings. Cleared as soon as
+   * the owning tab reports it has acted, so returning to that tab later does
+   * not re-open the dialog.
+   */
+  const [pendingDialog, setPendingDialog] = useState<string | null>(null);
+  const clearPendingDialog = useCallback(() => setPendingDialog(null), []);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [revealOpen, setRevealOpen] = useState(false);
   const [revealReason, setRevealReason] = useState('');
   const [revealedAadhaar, setRevealedAadhaar] = useState<string | null>(null);
@@ -98,6 +110,81 @@ export default function ApplicantProfilePage() {
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not reveal the identifier'),
   });
+
+  /**
+   * Which tab owns each Smart Action target.
+   *
+   * The panel names an action; this says where that action lives. Kept as one
+   * table rather than a chain of conditionals because it is a mapping, and
+   * because a new stage action should only ever need a line adding here.
+   */
+  const ACTION_TAB: Record<string, string> = {
+    'payment-plan': 'payment',
+    payment: 'payment',
+    certificate: 'certificate',
+    publication: 'publications',
+    'publication:magazine': 'publications',
+    'publication:enews': 'publications',
+    dispatch: 'dispatch',
+    'dispatch:pod': 'dispatch',
+    task: 'tasks',
+    note: 'notes',
+    evidence: 'evidence',
+    email: 'communication',
+    'call-note': 'communication',
+  };
+
+  function tabForAction(target: string): string | undefined {
+    if (ACTION_TAB[target]) return ACTION_TAB[target];
+    // email:selection, whatsapp:payment_reminder, and so on.
+    if (target.startsWith('email:') || target.startsWith('whatsapp:')) return 'communication';
+    return undefined;
+  }
+
+  /**
+   * Fetch a generated document and hand it to the browser.
+   *
+   * Each of these is produced on demand rather than stored: an invoice or a
+   * selection letter reflects the record as it stands, and a stale copy in the
+   * vault would be worse than no copy at all.
+   */
+  async function runDownload(target: string) {
+    if (!activeRecord && target !== 'applicant-pdf') return;
+
+    const endpoints: Record<string, string> = {
+      'applicant-pdf': `/applicants/${applicant.id}/document`,
+      invoice: `/records/${activeRecord?.id}/documents/invoice`,
+      'selection-letter': `/records/${activeRecord?.id}/documents/selection-letter`,
+    };
+
+    // The certificate is a stored file, not a generated one — it has its own
+    // versioned download that returns a signed URL.
+    if (target === 'certificate') {
+      setTab('certificate');
+      return;
+    }
+
+    const endpoint = endpoints[target];
+    if (!endpoint) {
+      toast.error('That document is not available');
+      return;
+    }
+
+    setDownloading(target);
+    try {
+      // Same shape as every other download here: the server writes the file to
+      // the vault and hands back a short-lived signed URL, so the API never
+      // streams bytes through an app worker.
+      const { url } = await api.get<{ url: string; fileName: string }>(endpoint);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof ApiError ? error.message : 'Could not generate the document',
+      );
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   function setTab(tab: string) {
     const next = new URLSearchParams(searchParams);
@@ -149,7 +236,12 @@ export default function ApplicantProfilePage() {
               </Button>
             ) : null}
             {can('applicants:export') ? (
-              <Button variant="secondary" icon={Icons.Printer}>
+              <Button
+                variant="secondary"
+                icon={Icons.Printer}
+                loading={downloading === 'applicant-pdf'}
+                onClick={() => void runDownload('applicant-pdf')}
+              >
                 Export PDF
               </Button>
             ) : null}
@@ -324,7 +416,12 @@ export default function ApplicantProfilePage() {
 
                 <Tabs.Content value="evidence">
                   {activeRecord ? (
-                    <EvidenceTab recordId={activeRecord.id} applicantId={applicant.id} />
+                    <EvidenceTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
+                    />
                   ) : null}
                 </Tabs.Content>
 
@@ -333,7 +430,12 @@ export default function ApplicantProfilePage() {
                 </Tabs.Content>
 
                 <Tabs.Content value="notes">
-                  <NotesTab applicantId={applicant.id} recordId={activeRecord?.id} />
+                  <NotesTab
+                    applicantId={applicant.id}
+                    recordId={activeRecord?.id}
+                    autoOpen={pendingDialog}
+                    onAutoOpened={clearPendingDialog}
+                  />
                 </Tabs.Content>
 
                 <Tabs.Content value="attachments">
@@ -342,30 +444,55 @@ export default function ApplicantProfilePage() {
 
                 <Tabs.Content value="payment">
                   {activeRecord ? (
-                    <PaymentTab recordId={activeRecord.id} applicantId={applicant.id} />
+                    <PaymentTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
+                    />
                   ) : null}
                 </Tabs.Content>
 
                 <Tabs.Content value="certificate">
                   {activeRecord ? (
-                    <CertificateTab recordId={activeRecord.id} applicantId={applicant.id} />
+                    <CertificateTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
+                    />
                   ) : null}
                 </Tabs.Content>
 
                 <Tabs.Content value="publications">
                   {activeRecord ? (
-                    <PublicationsTab recordId={activeRecord.id} applicantId={applicant.id} />
+                    <PublicationsTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
+                    />
                   ) : null}
                 </Tabs.Content>
 
                 <Tabs.Content value="dispatch">
                   {activeRecord ? (
-                    <DispatchTab recordId={activeRecord.id} applicantId={applicant.id} />
+                    <DispatchTab
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
+                    />
                   ) : null}
                 </Tabs.Content>
 
                 <Tabs.Content value="tasks">
-                  <TasksTab applicantId={applicant.id} recordId={activeRecord?.id} />
+                  <TasksTab
+                    applicantId={applicant.id}
+                    recordId={activeRecord?.id}
+                    autoOpen={pendingDialog}
+                    onAutoOpened={clearPendingDialog}
+                  />
                 </Tabs.Content>
 
                 <Tabs.Content value="communication">
@@ -375,6 +502,8 @@ export default function ApplicantProfilePage() {
                       applicantId={applicant.id}
                       // Enforced server-side too; this only hides the buttons.
                       doNotContact={flags.some((flag) => flag.flag === 'do_not_contact')}
+                      autoOpen={pendingDialog}
+                      onAutoOpened={clearPendingDialog}
                     />
                   ) : null}
                 </Tabs.Content>
@@ -392,13 +521,41 @@ export default function ApplicantProfilePage() {
               panel={panel}
               isLoading={panelLoading}
               onAction={(action) => {
-                if (action.kind === 'navigate' && action.target.startsWith('tab:')) {
-                  setTab(action.target.slice(4));
-                } else {
-                  toast.info('Phase 2 action', {
-                    description: 'This modal is scheduled for Phase 2.',
-                  });
+                if (action.kind === 'navigate') {
+                  if (action.target.startsWith('tab:')) {
+                    setTab(action.target.slice(4));
+                    return;
+                  }
+                  if (action.target === 'record:new') {
+                    setAddRecordOpen(true);
+                    return;
+                  }
                 }
+
+                if (action.kind === 'modal') {
+                  if (action.target === 'assign') {
+                    setAssignOpen(true);
+                    return;
+                  }
+
+                  const tab = tabForAction(action.target);
+                  if (tab) {
+                    // Switch first: the tab has to be mounted before it can act
+                    // on the request.
+                    setTab(tab);
+                    setPendingDialog(action.target);
+                    return;
+                  }
+                }
+
+                if (action.kind === 'download') {
+                  void runDownload(action.target);
+                  return;
+                }
+
+                toast.error('That action is not available here', {
+                  description: `No handler for "${action.target}".`,
+                });
               }}
             />
           ) : null}
@@ -485,6 +642,16 @@ export default function ApplicantProfilePage() {
       </div>
 
       <EditApplicantDialog profile={applicant} open={editOpen} onOpenChange={setEditOpen} />
+
+      {activeRecord ? (
+        <AssignRecordDialog
+          recordId={activeRecord.id}
+          applicantId={applicant.id}
+          currentUserId={activeRecord.assignedToUserId ?? null}
+          open={assignOpen}
+          onOpenChange={setAssignOpen}
+        />
+      ) : null}
 
       <AddRecordDialog
         applicantId={applicant.id}

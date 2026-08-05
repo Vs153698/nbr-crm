@@ -13,6 +13,7 @@ import { formatBytes, formatRelative } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { EvidenceItem } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 interface UploadingFile {
   id: string;
@@ -32,10 +33,23 @@ interface UploadingFile {
  * There is deliberately no delete control anywhere on this screen: the vault is
  * permanent by requirement, and the database enforces it independently.
  */
-export function EvidenceTab({ recordId, applicantId }: { recordId: string; applicantId: string }) {
+export function EvidenceTab({
+  recordId,
+  applicantId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  recordId: string;
+  applicantId: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Evidence has no dialog — the equivalent is the file picker itself.
+  useAutoOpen(autoOpen, { evidence: () => fileInputRef.current?.click() }, onAutoOpened);
 
   const [kind, setKind] = useState<string>(EVIDENCE_KIND.PHOTO);
   const [dragging, setDragging] = useState(false);

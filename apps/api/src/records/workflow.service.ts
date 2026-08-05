@@ -5,6 +5,7 @@ import {
   stageActions,
   STATUS_META,
   TIMELINE_EVENT,
+  USER_STATUS,
   allowedTransitions,
   type RecordStatus,
   type StageAction,
@@ -18,6 +19,7 @@ import {
   InvalidTransitionError,
   NotFoundError,
   StaleWriteError,
+  ValidationError,
   WorkflowLockedError,
 } from '../common/errors';
 import { requireActor, type Actor } from '../common/request-context';
@@ -85,6 +87,69 @@ export class WorkflowService {
     private readonly audit: AuditService,
     private readonly cache: CacheService,
   ) {}
+
+  /**
+   * §11 "Assign employee" / "Assign verification team".
+   *
+   * A first-class operation rather than a field on the edit form: the Smart
+   * Action panel offers it at four separate stages, the applicant list filters
+   * on it, and every reassignment belongs on the timeline so a record's
+   * ownership history is answerable later.
+   */
+  async assign(
+    recordId: string,
+    input: { assignedToUserId: string | null; remark?: string },
+  ): Promise<{ assignedToUserId: string | null }> {
+    const record = await this.loadRecord(recordId);
+
+    let assigneeName: string | null = null;
+    if (input.assignedToUserId) {
+      const [user] = await this.db
+        .select({ fullName: schema.users.fullName, status: schema.users.status })
+        .from(schema.users)
+        .where(eq(schema.users.id, input.assignedToUserId))
+        .limit(1);
+
+      if (!user) throw new NotFoundError('User');
+      // Assigning work to a deactivated account would silently park the record
+      // with nobody, and it would still look assigned on every screen.
+      if (user.status !== USER_STATUS.ACTIVE) {
+        throw new ValidationError({
+          assignedToUserId: [`${user.fullName} is not an active user.`],
+        });
+      }
+      assigneeName = user.fullName;
+    }
+
+    await this.db
+      .update(schema.records)
+      .set({ assignedToUserId: input.assignedToUserId })
+      .where(eq(schema.records.id, recordId));
+
+    await this.timeline.write({
+      applicantId: record.applicantId,
+      recordId,
+      eventType: TIMELINE_EVENT.ASSIGNED,
+      summary: assigneeName ? `Assigned to ${assigneeName}` : 'Assignment cleared',
+      meta: { assignedToUserId: input.assignedToUserId, remark: input.remark ?? null },
+    });
+
+    await this.audit.record({
+      action: AUDIT.RECORD_ASSIGNED,
+      entityType: 'record',
+      entityId: recordId,
+      entityLabel: `${record.recordCode} → ${assigneeName ?? 'unassigned'}`,
+      meta: { remark: input.remark ?? null },
+    });
+
+    await this.cache.invalidateTags(
+      CacheTag.applicant(record.applicantId),
+      CacheTag.applicantList(),
+      CacheTag.dashboard(),
+    );
+
+    return { assignedToUserId: input.assignedToUserId };
+  }
 
   async changeStatus(recordId: string, input: ChangeStatusInput): Promise<{ status: RecordStatus }> {
     const actor = requireActor();

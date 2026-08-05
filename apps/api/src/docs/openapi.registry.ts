@@ -17,6 +17,7 @@ import {
   exportRequestSchema,
   forgotPasswordSchema,
   liftBlacklistSchema,
+  assignRecordSchema,
   logCallSchema,
   loginSchema,
   markWhatsappSentSchema,
@@ -482,6 +483,23 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'state. Some transitions require a remark; leaving a terminal state requires an ' +
       'administrator override, which is recorded with its reason.',
     errors: { '422': ERROR_RESPONSES.invalidTransition },
+  },
+  'RecordsController.assign': {
+    tag: 'Records',
+    summary: 'Assign a record to a user',
+    description: 'Sets or clears the employee responsible for a record.',
+    body: zodSchema(assignRecordSchema, 'AssignRecord'),
+    response: { type: 'object', properties: { assignedToUserId: { ...UUID, nullable: true } } },
+    audited: 'record.assigned',
+    notes:
+      'A first-class operation rather than a field on the edit form: the Smart Action panel ' +
+      'offers it at four stages, the applicant list filters on it, and every reassignment is ' +
+      'written to the timeline so a record\'s ownership history stays answerable. Assigning ' +
+      'to a deactivated account is refused — the record would look assigned while belonging ' +
+      'to nobody.',
+    errors: {
+      '422': { description: 'The chosen user is not active.' },
+    },
   },
   'RecordsController.timelineFeed': {
     tag: 'Records',
@@ -1239,6 +1257,48 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     body: zodSchema(courierSchema, 'Courier'),
     response: ID_ONLY,
     audited: 'catalogue.courier_updated',
+  },
+
+  // ── Generated documents ───────────────────────────────────────────────────
+  'ApplicantDocumentsController.applicantFile': {
+    tag: 'Applicants',
+    summary: 'Export the applicant file as a PDF',
+    description:
+      "The applicant's details and every record on the profile, rendered on demand.",
+    response: { type: 'object', properties: { url: { type: 'string' }, fileName: { type: 'string' } } },
+    notes:
+      'Identity document numbers are deliberately omitted. They are encrypted at rest and ' +
+      'every read is logged under DPDP §8(4) — a PDF is exactly the artefact that escapes ' +
+      'that control by being forwarded on. Generated per request rather than stored: the ' +
+      'document describes the profile as it stands, and a stale copy would look ' +
+      'authoritative while being wrong.',
+  },
+  'RecordDocumentsController.selectionLetter': {
+    tag: 'Records',
+    summary: 'Download the selection letter',
+    description: 'A letter confirming the record was selected, addressed to the applicant.',
+    response: { type: 'object', properties: { url: { type: 'string' }, fileName: { type: 'string' } } },
+    notes:
+      'Refused for a record that has not been selected — the letter is a document NBR has ' +
+      'to stand behind, and generating one for a rejected or still-under-review record ' +
+      'would put that in writing.',
+    errors: {
+      '422': { description: 'The record has not reached selection.' },
+    },
+  },
+  'RecordDocumentsController.invoice': {
+    tag: 'Payments',
+    summary: 'Download the invoice PDF',
+    description: 'The issued invoice with its frozen figures and the payments received.',
+    response: { type: 'object', properties: { url: { type: 'string' }, fileName: { type: 'string' } } },
+    notes:
+      'Every figure is read from the invoice row, not the payment plan: the numbers were ' +
+      'frozen when the invoice was issued, and a later price change must not retroactively ' +
+      'alter a document already sent to an applicant. Requires the invoice number to have ' +
+      'been generated first.',
+    errors: {
+      '422': { description: 'No payment has been raised, or no invoice number issued yet.' },
+    },
   },
 
   // ── Audit ─────────────────────────────────────────────────────────────────

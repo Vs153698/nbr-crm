@@ -13,6 +13,7 @@ import { formatDateTime, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { NoteItem } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 /**
  * W-15 Internal notes (§14, P1-13).
@@ -22,11 +23,23 @@ import type { NoteItem } from '../types';
  * user who believes a note is disposable will write something they wouldn't
  * want on a permanent record.
  */
-export function NotesTab({ applicantId, recordId }: { applicantId: string; recordId?: string }) {
+export function NotesTab({
+  applicantId,
+  recordId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  applicantId: string;
+  recordId?: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
 
   const [composerOpen, setComposerOpen] = useState(false);
+
+  useAutoOpen(autoOpen, { note: () => setComposerOpen(true) }, onAutoOpened);
   const [body, setBody] = useState('');
   const [category, setCategory] = useState<string>(NOTE_CATEGORY.GENERAL);
   const [priority, setPriority] = useState<string>(TASK_PRIORITY.NORMAL);

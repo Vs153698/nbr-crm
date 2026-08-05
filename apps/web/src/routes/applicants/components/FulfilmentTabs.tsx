@@ -18,6 +18,7 @@ import { formatDate, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { CertificateView, DispatchRow, Lookups, PublicationRow } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 /** Upload a file straight to storage and return its key. */
 async function uploadFile(
@@ -43,10 +44,22 @@ async function uploadFile(
  * the UI says so explicitly, because a user who believes "upload" means
  * "replace" will hesitate to correct a typo on a certificate.
  */
-export function CertificateTab({ recordId, applicantId }: { recordId: string; applicantId: string }) {
+export function CertificateTab({
+  recordId,
+  applicantId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  recordId: string;
+  applicantId: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  useAutoOpen(autoOpen, { certificate: () => setUploadOpen(true) }, onAutoOpened);
 
   const { data: certificate, isLoading } = useQuery({
     queryKey: queryKeys.certificate(recordId),
@@ -367,10 +380,30 @@ function FilePicker({
 }
 
 /** W-12 Publications tab (§11). */
-export function PublicationsTab({ recordId, applicantId }: { recordId: string; applicantId: string }) {
+export function PublicationsTab({
+  recordId,
+  applicantId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  recordId: string;
+  applicantId: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [addOpen, setAddOpen] = useState(false);
+
+  useAutoOpen(
+    autoOpen,
+    {
+      publication: () => setAddOpen(true),
+      'publication:magazine': () => setAddOpen(true),
+      'publication:enews': () => setAddOpen(true),
+    },
+    onAutoOpened,
+  );
 
   const { data: publications, isLoading } = useQuery({
     queryKey: queryKeys.publications(recordId),
@@ -584,10 +617,27 @@ function AddPublicationDialog({
 }
 
 /** W-13 Dispatch tab (§12, M-06). */
-export function DispatchTab({ recordId, applicantId }: { recordId: string; applicantId: string }) {
+export function DispatchTab({
+  recordId,
+  applicantId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  recordId: string;
+  applicantId: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
+
+  // The proof-of-delivery upload lives inside the same dispatch dialog.
+  useAutoOpen(
+    autoOpen,
+    { dispatch: () => setEditOpen(true), 'dispatch:pod': () => setEditOpen(true) },
+    onAutoOpened,
+  );
 
   const { data: dispatches, isLoading } = useQuery({
     queryKey: queryKeys.dispatch(recordId),

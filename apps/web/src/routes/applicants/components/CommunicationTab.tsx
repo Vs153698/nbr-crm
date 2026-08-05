@@ -19,6 +19,7 @@ import { formatDateTime, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { CommunicationRow, RenderedMessage } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 const CHANNEL_STYLE: Record<string, { icon: keyof typeof Icons; tone: string }> = {
   email: { icon: 'Mail', tone: 'bg-purple-tint text-purple' },
@@ -37,10 +38,14 @@ export function CommunicationTab({
   recordId,
   applicantId,
   doNotContact,
+  autoOpen,
+  onAutoOpened,
 }: {
   recordId: string;
   applicantId: string;
   doNotContact: boolean;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
@@ -49,6 +54,33 @@ export function CommunicationTab({
   const [emailOpen, setEmailOpen] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
+  /**
+   * Template the Smart Action panel asked for, e.g. `email:selection`.
+   * Carried separately so the dialog opens on the right message rather than on
+   * whichever template happens to sort first.
+   */
+  const [presetTemplate, setPresetTemplate] = useState<string | null>(null);
+
+  useAutoOpen(
+    autoOpen,
+    {
+      email: () => { setPresetTemplate(null); setEmailOpen(true); },
+      'call-note': () => setCallOpen(true),
+      ...Object.fromEntries(
+        EMAIL_TEMPLATE_CODES.map((code) => [
+          `email:${code}`,
+          () => { setPresetTemplate(code); setEmailOpen(true); },
+        ]),
+      ),
+      ...Object.fromEntries(
+        WHATSAPP_TEMPLATE_CODES.map((code) => [
+          `whatsapp:${code}`,
+          () => { setPresetTemplate(code); setWhatsappOpen(true); },
+        ]),
+      ),
+    },
+    onAutoOpened,
+  );
 
   const { data: history, isLoading } = useQuery({
     queryKey: queryKeys.communications(applicantId, channelFilter),
@@ -228,10 +260,20 @@ export function CommunicationTab({
       )}
 
       {emailOpen ? (
-        <SendEmailDialog recordId={recordId} onClose={() => setEmailOpen(false)} onSent={invalidate} />
+        <SendEmailDialog
+          recordId={recordId}
+          initialTemplateCode={presetTemplate}
+          onClose={() => setEmailOpen(false)}
+          onSent={invalidate}
+        />
       ) : null}
       {whatsappOpen ? (
-        <WhatsAppDialog recordId={recordId} onClose={() => setWhatsappOpen(false)} onSent={invalidate} />
+        <WhatsAppDialog
+          recordId={recordId}
+          initialTemplateCode={presetTemplate}
+          onClose={() => setWhatsappOpen(false)}
+          onSent={invalidate}
+        />
       ) : null}
       {callOpen ? (
         <CallNoteDialog
@@ -248,14 +290,19 @@ export function CommunicationTab({
 /** M-07 Send Email with live preview. */
 function SendEmailDialog({
   recordId,
+  initialTemplateCode,
   onClose,
   onSent,
 }: {
   recordId: string;
+  /** Preselected by the Smart Action panel; null when opened from the tab. */
+  initialTemplateCode?: string | null;
   onClose: () => void;
   onSent: () => void;
 }) {
-  const [templateCode, setTemplateCode] = useState<string>(EMAIL_TEMPLATE_CODES[0] ?? 'selection');
+  const [templateCode, setTemplateCode] = useState<string>(
+    initialTemplateCode ?? EMAIL_TEMPLATE_CODES[0] ?? 'selection',
+  );
   const [edited, setEdited] = useState(false);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -370,15 +417,18 @@ function SendEmailDialog({
 /** M-08 WhatsApp click-to-chat with an explicit "mark as sent". */
 function WhatsAppDialog({
   recordId,
+  initialTemplateCode,
   onClose,
   onSent,
 }: {
   recordId: string;
+  /** Preselected by the Smart Action panel; null when opened from the tab. */
+  initialTemplateCode?: string | null;
   onClose: () => void;
   onSent: () => void;
 }) {
   const [templateCode, setTemplateCode] = useState<string>(
-    WHATSAPP_TEMPLATE_CODES[0] ?? 'selection',
+    initialTemplateCode ?? WHATSAPP_TEMPLATE_CODES[0] ?? 'selection',
   );
   const [link, setLink] = useState<{ communicationId: string; link: string; body: string } | null>(
     null,

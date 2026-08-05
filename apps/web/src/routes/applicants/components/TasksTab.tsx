@@ -14,12 +14,25 @@ import { formatDate, formatRelative, humanise } from '@/lib/format';
 import { ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { Lookups, TaskRow } from '../types';
+import { useAutoOpen } from '@/hooks/useAutoOpen';
 
 /** W-16 Tasks & follow-ups on the profile (§15, M-10). */
-export function TasksTab({ applicantId, recordId }: { applicantId: string; recordId?: string }) {
+export function TasksTab({
+  applicantId,
+  recordId,
+  autoOpen,
+  onAutoOpened,
+}: {
+  applicantId: string;
+  recordId?: string;
+  autoOpen?: string | null;
+  onAutoOpened?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [addOpen, setAddOpen] = useState(false);
+
+  useAutoOpen(autoOpen, { task: () => setAddOpen(true) }, onAutoOpened);
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: queryKeys.tasks(applicantId),

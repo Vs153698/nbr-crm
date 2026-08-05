@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
+  assignRecordSchema,
   changeStatusSchema,
   uuidSchema,
   type RecordStatus,
@@ -43,6 +44,17 @@ export class RecordsController {
     },
   ): Promise<{ status: RecordStatus }> {
     return this.workflow.changeStatus(uuidSchema.parse(id), body);
+  }
+
+  /** §11 "Assign employee". Pass null to clear the assignment. */
+  @Post(':id/assign')
+  @Can(MODULES.RECORDS, ACTIONS.EDIT)
+  async assign(
+    @Param('id') id: string,
+    @Body(zodBody(assignRecordSchema))
+    body: { assignedToUserId: string | null; remark?: string },
+  ): Promise<{ assignedToUserId: string | null }> {
+    return this.workflow.assign(uuidSchema.parse(id), body);
   }
 
   @Get(':id/timeline')
