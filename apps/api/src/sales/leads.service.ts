@@ -9,7 +9,7 @@ import {
   RECORD_STATUS,
   type CallOutcome,
   type LeadStatus,
-} from '@nbr/shared';
+  TIMELINE_EVENT,} from '@nbr/shared';
 import { and, asc, desc, eq, gte, ilike, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ConflictError, NotFoundError, ValidationError } from '../common/errors';
@@ -18,6 +18,7 @@ import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { ApplicantsService } from '../applicants/applicants.service';
+import { TimelineService } from '../timeline/timeline.service';
 
 /**
  * Where a lead lands after a call, when the rep does not say explicitly.
@@ -43,6 +44,7 @@ export class LeadsService {
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
     private readonly applicants: ApplicantsService,
+    private readonly timeline: TimelineService,
   ) {}
 
   // ── Create ────────────────────────────────────────────────────────────────
@@ -437,6 +439,55 @@ export class LeadsService {
         nextFollowUpAt: null,
       })
       .where(eq(schema.leads.id, leadId));
+
+    /**
+     * Carry the sales calls onto the applicant's timeline.
+     *
+     * Without this the call history stays behind in `lead_calls`, reachable
+     * only from a lead page nobody visits once it is converted — so the
+     * profile of a hard-won applicant looks as though they simply walked in.
+     * Anyone later asking "how did we get this one?" or "who has spoken to
+     * them?" is answered on the profile itself.
+     *
+     * Each entry keeps its original date and caller, so the timeline reads as
+     * the history it is rather than a burst of activity at conversion.
+     */
+    const calls = await this.db
+      .select()
+      .from(schema.leadCalls)
+      .where(eq(schema.leadCalls.leadId, leadId))
+      .orderBy(schema.leadCalls.calledAt);
+
+    await this.timeline.writeMany([
+      ...calls.map((call) => ({
+        applicantId: created.applicantId,
+        recordId: created.recordId,
+        eventType: TIMELINE_EVENT.CALL_LOGGED,
+        summary: `Sales call — ${call.outcome.replace(/_/g, ' ')}${
+          call.durationMinutes ? ` (${call.durationMinutes} min)` : ''
+        }: ${call.summary.slice(0, 120)}`,
+        meta: {
+          source: 'lead',
+          leadCode: lead.leadCode,
+          outcome: call.outcome,
+          durationMinutes: call.durationMinutes,
+          followUpAt: call.followUpAt?.toISOString() ?? null,
+        },
+        // The person who actually made the call, not whoever converted.
+        actorKind: 'user' as const,
+        actorName: call.calledByName ?? undefined,
+        occurredAt: call.calledAt,
+      })),
+      {
+        applicantId: created.applicantId,
+        recordId: created.recordId,
+        eventType: TIMELINE_EVENT.RECORD_CREATED,
+        summary: `Converted from sales lead ${lead.leadCode} after ${calls.length} call${
+          calls.length === 1 ? '' : 's'
+        }`,
+        meta: { leadCode: lead.leadCode, leadId, callCount: calls.length },
+      },
+    ]);
 
     await this.audit.record({
       action: AUDIT.LEAD_CONVERTED,

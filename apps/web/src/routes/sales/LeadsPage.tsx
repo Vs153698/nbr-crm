@@ -19,7 +19,7 @@ import { PageHeader } from '@/components/layout/AppShell';
 
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api-client';
-import { formatRelative } from '@/lib/format';
+import { formatDate, formatRelative } from '@/lib/format';
 import { Icons } from '@/lib/icons';
 import type { Lookups } from '../applicants/types';
 
@@ -65,6 +65,7 @@ export default function LeadsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [callTarget, setCallTarget] = useState<LeadRow | null>(null);
   const [convertTarget, setConvertTarget] = useState<LeadRow | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['leads', queue, status, search],
@@ -99,27 +100,23 @@ export default function LeadsPage() {
         }
       />
 
+      {/* Every filter is the same kind of control on one row — the follow-up
+          queue was a row of pills, which read as a different mechanism from the
+          two dropdowns beside it. */}
       <Card className="mb-4">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex gap-1">
-            {QUEUES.map((entry) => (
-              <button
-                key={entry.key}
-                type="button"
-                onClick={() => setQueue(entry.key)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  queue === entry.key
-                    ? 'bg-brand text-white'
-                    : 'bg-canvas text-ink-2 hover:text-ink'
-                }`}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={queue}
+            onChange={(event) => setQueue(event.target.value)}
+            placeholder="All leads"
+            options={QUEUES.filter((entry) => entry.key !== '').map((entry) => ({
+              value: entry.key,
+              label: entry.label,
+            }))}
+            containerClassName="w-40"
+          />
 
           <Select
-            label="Stage"
             value={status}
             onChange={(event) => setStatus(event.target.value)}
             placeholder="Any stage"
@@ -127,16 +124,30 @@ export default function LeadsPage() {
               value: meta.code,
               label: meta.label,
             }))}
-            containerClassName="w-44"
+            containerClassName="w-40"
           />
 
           <Input
-            label="Search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Name, code or number"
-            containerClassName="w-56"
+            containerClassName="min-w-52 flex-1"
           />
+
+          {queue || status || search ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Icons.XCircle}
+              onClick={() => {
+                setQueue('');
+                setStatus('');
+                setSearch('');
+              }}
+            >
+              Clear
+            </Button>
+          ) : null}
         </div>
       </Card>
 
@@ -175,7 +186,13 @@ export default function LeadsPage() {
                   return (
                     <tr key={lead.id}>
                       <td className="py-2.5 pr-3">
-                        <p className="font-medium text-ink">{lead.fullName}</p>
+                        <button
+                          type="button"
+                          onClick={() => setDetailId(lead.id)}
+                          className="text-left font-medium text-ink hover:text-brand hover:underline"
+                        >
+                          {lead.fullName}
+                        </button>
                         <p className="tabular text-[11px] text-ink-3">
                           {lead.leadCode} · {lead.mobile}
                           {lead.city ? ` · ${lead.city}` : ''}
@@ -197,6 +214,14 @@ export default function LeadsPage() {
                       <td className="tabular py-2.5 px-2 text-right text-xs">{lead.callCount}</td>
                       <td className="py-2.5 pl-2">
                         <div className="flex justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon={Icons.FileText}
+                            onClick={() => setDetailId(lead.id)}
+                          >
+                            Details
+                          </Button>
                           {can('leads:edit') && !lead.convertedApplicantId ? (
                             <Button
                               size="sm"
@@ -245,6 +270,17 @@ export default function LeadsPage() {
           lead={convertTarget}
           onClose={() => setConvertTarget(null)}
           onSaved={invalidate}
+        />
+      ) : null}
+      {detailId ? (
+        <LeadDetailDialog
+          leadId={detailId}
+          onClose={() => setDetailId(null)}
+          onChanged={invalidate}
+          onLogCall={(lead) => {
+            setDetailId(null);
+            setCallTarget(lead);
+          }}
         />
       ) : null}
     </div>
@@ -556,6 +592,224 @@ function ConvertLeadDialog({
           was won.
         </p>
       </div>
+    </Dialog>
+  );
+}
+
+interface LeadCall {
+  id: string;
+  outcome: string;
+  summary: string;
+  durationMinutes: number | null;
+  calledByName: string | null;
+  calledAt: string;
+  followUpAt: string | null;
+  resultingStatus: string | null;
+}
+
+interface LeadDetail extends LeadRow {
+  achievementSummary: string | null;
+  sourceDetail: string | null;
+  notes: string | null;
+  state: string | null;
+  lostReason: string | null;
+  convertedAt: string | null;
+  createdAt: string;
+  calls: LeadCall[];
+}
+
+/**
+ * Everything known about one lead, with its call history.
+ *
+ * The history is the point: a rep picking the phone up needs to know what was
+ * said last time and by whom, and a manager reviewing a stalled lead needs to
+ * see how many attempts it has taken. The follow-up date can also be set here
+ * directly — previously it could only be changed by logging a call, which meant
+ * rescheduling a callback required inventing a call that never happened.
+ */
+function LeadDetailDialog({
+  leadId,
+  onClose,
+  onChanged,
+  onLogCall,
+}: {
+  leadId: string;
+  onClose: () => void;
+  onChanged: () => void;
+  onLogCall: (lead: LeadRow) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const [followUpAt, setFollowUpAt] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['lead', leadId],
+    queryFn: ({ signal }) => api.get<LeadDetail>(`/leads/${leadId}`, undefined, signal),
+  });
+
+  const setFollowUp = useMutation({
+    mutationFn: (value: string | null) =>
+      api.put(`/leads/${leadId}`, { nextFollowUpAt: value ?? undefined }),
+    onSuccess: () => {
+      toast.success(followUpAt ? 'Follow-up date set' : 'Follow-up cleared');
+      setFollowUpAt('');
+      void queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
+      onChanged();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not set the follow-up'),
+  });
+
+  const meta = data ? LEAD_STATUS_META[data.status as LeadStatus] : undefined;
+  const isClosed = Boolean(data?.convertedApplicantId) || meta?.isClosed;
+
+  return (
+    <Dialog
+      open
+      onOpenChange={onClose}
+      title={data?.fullName ?? 'Lead'}
+      description={data ? `${data.leadCode} · ${data.mobile}${data.city ? ` · ${data.city}` : ''}` : ''}
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          {data && can('leads:edit') && !isClosed ? (
+            <Button variant="primary" icon={Icons.Phone} onClick={() => onLogCall(data)}>
+              Log a call
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {isLoading || !data ? (
+        <div className="skeleton h-72" />
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip tone={meta?.tone ?? 'slate'}>{meta?.label ?? data.status}</Chip>
+            <span className="text-[11px] text-ink-3">
+              {data.callCount} call{data.callCount === 1 ? '' : 's'}
+              {data.lastContactedAt ? ` · last reached ${formatRelative(data.lastContactedAt)}` : ''}
+            </span>
+            {data.convertedApplicantId ? (
+              <a
+                href={`/applicants/${data.convertedApplicantId}`}
+                className="text-[11px] font-semibold text-brand hover:underline"
+              >
+                Open applicant profile →
+              </a>
+            ) : null}
+          </div>
+
+          {data.achievementSummary ? (
+            <Card>
+              <CardHeader title="Why we are calling" icon={Icons.StickyNote} />
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink-2">
+                {data.achievementSummary}
+              </p>
+            </Card>
+          ) : null}
+
+          {/* Rescheduling should not require inventing a call that never happened. */}
+          {can('leads:edit') && !isClosed ? (
+            <Card>
+              <CardHeader
+                title="Follow-up"
+                subtitle={
+                  data.nextFollowUpAt
+                    ? `Currently due ${formatRelative(data.nextFollowUpAt)}`
+                    : 'Nothing scheduled'
+                }
+                icon={Icons.CalendarClock}
+              />
+              <div className="flex flex-wrap items-end gap-2">
+                <Input
+                  type="date"
+                  label="Call back on"
+                  value={followUpAt}
+                  onChange={(event) => setFollowUpAt(event.target.value)}
+                  containerClassName="w-44"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={setFollowUp.isPending}
+                  disabled={!followUpAt}
+                  onClick={() => setFollowUp.mutate(followUpAt)}
+                >
+                  Set date
+                </Button>
+                {data.nextFollowUpAt ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setFollowUp.mutate(null)}
+                    loading={setFollowUp.isPending}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+
+          <Card>
+            <CardHeader
+              title={`Call history (${data.calls.length})`}
+              subtitle="Most recent first."
+              icon={Icons.Phone}
+            />
+            {data.calls.length === 0 ? (
+              <p className="py-6 text-center text-xs text-ink-3">
+                Nobody has called this lead yet.
+              </p>
+            ) : (
+              <ol className="space-y-0">
+                {data.calls.map((call, index) => (
+                  <li
+                    key={call.id}
+                    className={`flex gap-3 py-3 ${
+                      index < data.calls.length - 1 ? 'border-b border-line/60' : ''
+                    }`}
+                  >
+                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-canvas text-ink-3">
+                      <Icons.Phone size={12} strokeWidth={2} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-ink">
+                          {CALL_OUTCOME_LABELS[call.outcome as CallOutcome] ?? call.outcome}
+                        </span>
+                        <span className="text-[11px] text-ink-3">
+                          {call.calledByName ?? 'Unknown'} · {formatRelative(call.calledAt)}
+                          {call.durationMinutes ? ` · ${call.durationMinutes} min` : ''}
+                        </span>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-2">
+                        {call.summary}
+                      </p>
+                      {call.followUpAt ? (
+                        <p className="mt-1 text-[11px] text-ink-3">
+                          Promised a callback on {formatDate(call.followUpAt)}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
+
+          {data.notes ? (
+            <Card>
+              <CardHeader title="Notes" icon={Icons.StickyNote} />
+              <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink-2">{data.notes}</p>
+            </Card>
+          ) : null}
+        </div>
+      )}
     </Dialog>
   );
 }
