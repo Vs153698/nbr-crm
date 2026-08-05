@@ -16,6 +16,7 @@ import { Chip } from '@/components/ui/Badge';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input, Select, Textarea } from '@/components/ui/Field';
 import { PageHeader } from '@/components/layout/AppShell';
+import { RowActions, RowActionsCell } from '@/components/ui/RowActions';
 
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api-client';
@@ -213,44 +214,51 @@ export default function LeadsPage() {
                       </td>
                       <td className="tabular py-2.5 px-2 text-right text-xs">{lead.callCount}</td>
                       <td className="py-2.5 pl-2">
-                        <div className="flex justify-end gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon={Icons.FileText}
-                            onClick={() => setDetailId(lead.id)}
-                          >
-                            Details
-                          </Button>
-                          {can('leads:edit') && !lead.convertedApplicantId ? (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              icon={Icons.Phone}
-                              onClick={() => setCallTarget(lead)}
-                            >
-                              Log call
-                            </Button>
-                          ) : null}
-                          {can('leads:change_status') && !lead.convertedApplicantId ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              icon={Icons.UserPlus}
-                              onClick={() => setConvertTarget(lead)}
-                            >
-                              Convert
-                            </Button>
-                          ) : null}
-                          {lead.convertedApplicantId ? (
-                            <a
-                              href={`/applicants/${lead.convertedApplicantId}`}
-                              className="text-xs font-semibold text-brand hover:underline"
-                            >
-                              Open profile
-                            </a>
-                          ) : null}
-                        </div>
+                        <RowActionsCell>
+                          <RowActions
+                            label={`Actions for ${lead.fullName}`}
+                            actions={[
+                              {
+                                id: 'details',
+                                label: 'View details',
+                                icon: Icons.FileText,
+                                onSelect: () => setDetailId(lead.id),
+                              },
+                              ...(can('leads:edit') && !lead.convertedApplicantId
+                                ? [
+                                    {
+                                      id: 'call',
+                                      label: 'Log a call',
+                                      icon: Icons.Phone,
+                                      onSelect: () => setCallTarget(lead),
+                                    },
+                                  ]
+                                : []),
+                              ...(can('leads:change_status') && !lead.convertedApplicantId
+                                ? [
+                                    {
+                                      id: 'convert',
+                                      label: 'Convert to applicant',
+                                      icon: Icons.UserPlus,
+                                      onSelect: () => setConvertTarget(lead),
+                                    },
+                                  ]
+                                : []),
+                              ...(lead.convertedApplicantId
+                                ? [
+                                    {
+                                      id: 'profile',
+                                      label: 'Open applicant profile',
+                                      icon: Icons.ArrowRight,
+                                      onSelect: () => {
+                                        window.location.href = `/applicants/${lead.convertedApplicantId}`;
+                                      },
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
+                        </RowActionsCell>
                       </td>
                     </tr>
                   );

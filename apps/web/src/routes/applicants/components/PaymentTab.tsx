@@ -12,6 +12,7 @@ import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
+import { RowActions } from '@/components/ui/RowActions';
 import { queryKeys } from '@/lib/query-client';
 import type { Lookups, PaymentSummary } from '../types';
 import { useAutoOpen } from '@/hooks/useAutoOpen';
@@ -268,13 +269,18 @@ export function PaymentTab({
                 </div>
 
                 {can('payments:edit') && !transaction.isReversal ? (
-                  <button
-                    type="button"
-                    onClick={() => setReverseTarget(transaction.id)}
-                    className="text-[10px] font-semibold text-danger hover:underline"
-                  >
-                    Reverse
-                  </button>
+                  <RowActions
+                    label="Transaction actions"
+                    actions={[
+                      {
+                        id: 'reverse',
+                        label: 'Reverse this payment',
+                        icon: Icons.RotateCcw,
+                        danger: true,
+                        onSelect: () => setReverseTarget(transaction.id),
+                      },
+                    ]}
+                  />
                 ) : null}
               </li>
             ))}

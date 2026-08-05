@@ -10,6 +10,7 @@ import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CardHeader, DetailRow, EmptyState } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
+import { RowActions } from '@/components/ui/RowActions';
 import { Input, Select, Textarea } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError, uploadToStorage } from '@/lib/api-client';
@@ -160,29 +161,27 @@ export function CertificateTab({
                     </p>
                   </div>
 
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={Icons.Download}
-                      onClick={() =>
-                        downloadMutation.mutate({ versionId: version.id, file: 'pdf' })
-                      }
-                    >
-                      PDF
-                    </Button>
-                    {version.hasEditableFile ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          downloadMutation.mutate({ versionId: version.id, file: 'editable' })
-                        }
-                      >
-                        Source
-                      </Button>
-                    ) : null}
-                  </div>
+                  <RowActions
+                    label={`Downloads for version ${version.version}`}
+                    actions={[
+                      {
+                        id: 'pdf',
+                        label: 'Download PDF',
+                        icon: Icons.Download,
+                        onSelect: () =>
+                          downloadMutation.mutate({ versionId: version.id, file: 'pdf' }),
+                      },
+                      {
+                        id: 'source',
+                        label: 'Download source file',
+                        icon: Icons.FileText,
+                        disabled: !version.hasEditableFile,
+                        disabledReason: 'No editable file was uploaded with this version.',
+                        onSelect: () =>
+                          downloadMutation.mutate({ versionId: version.id, file: 'editable' }),
+                      },
+                    ]}
+                  />
                 </li>
               ))}
             </ul>

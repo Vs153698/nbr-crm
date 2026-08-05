@@ -15,6 +15,7 @@ import { Chip } from '@/components/ui/Badge';
 import { Dialog } from '@/components/ui/Dialog';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Field';
 import { PageHeader } from '@/components/layout/AppShell';
+import { RowActions } from '@/components/ui/RowActions';
 
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError, api } from '@/lib/api-client';
@@ -72,6 +73,7 @@ export default function EmployeesPage() {
   const [editing, setEditing] = useState<EmployeeRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<EmployeeRow | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['employees', search, department, status],
@@ -183,7 +185,7 @@ export default function EmployeesPage() {
                   </div>
                 </dl>
 
-                <div className="mt-3 flex gap-1.5 border-t border-line pt-2.5">
+                <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5">
                   <Button
                     size="sm"
                     variant="ghost"
@@ -192,16 +194,32 @@ export default function EmployeesPage() {
                   >
                     Details
                   </Button>
-                  {can('employees:edit') ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      icon={Icons.PenLine}
-                      onClick={() => setEditing(employee)}
-                    >
-                      Edit
-                    </Button>
-                  ) : null}
+                  <RowActions
+                    label={`Actions for ${employee.fullName}`}
+                    actions={[
+                      ...(can('employees:edit')
+                        ? [
+                            {
+                              id: 'edit',
+                              label: 'Edit employee',
+                              icon: Icons.PenLine,
+                              onSelect: () => setEditing(employee),
+                            },
+                          ]
+                        : []),
+                      ...(can('employees:delete')
+                        ? [
+                            {
+                              id: 'delete',
+                              label: 'Delete record',
+                              icon: Icons.Trash2,
+                              danger: true,
+                              onSelect: () => setDeleting(employee),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
                 </div>
               </Card>
             );
@@ -222,6 +240,14 @@ export default function EmployeesPage() {
 
       {viewing ? (
         <EmployeeDetailDialog employeeId={viewing} onClose={() => setViewing(null)} />
+      ) : null}
+
+      {deleting ? (
+        <DeleteEmployeeDialog
+          employee={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={invalidate}
+        />
       ) : null}
     </div>
   );
@@ -638,6 +664,69 @@ function EmployeeDetailDialog({
           ) : null}
         </div>
       )}
+    </Dialog>
+  );
+}
+
+/**
+ * Deleting a directory record.
+ *
+ * Rarely the right action — an employee who has left is marked Exited, because
+ * audit entries and the records they handled all point at them. The server
+ * refuses outright while anyone still reports to them.
+ */
+function DeleteEmployeeDialog({
+  employee,
+  onClose,
+  onDeleted,
+}: {
+  employee: EmployeeRow;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [reason, setReason] = useState('');
+
+  const remove = useMutation({
+    mutationFn: () =>
+      api.delete(`/employees/${employee.id}${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`),
+    onSuccess: () => {
+      toast.success('Employee record deleted');
+      onClose();
+      onDeleted();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not delete the record'),
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={onClose}
+      title={`Delete ${employee.fullName}?`}
+      description={employee.employeeCode}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>
+            Delete record
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="rounded-lg border border-warn-ring bg-warn-tint p-2.5 text-[11px] leading-relaxed text-warn">
+          If this person has left, set their status to <b>Exited</b> instead. Deleting is for a
+          record created in error — audit entries and the work they handled still refer to them.
+        </div>
+        <Input
+          label="Reason"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Why is this being deleted?"
+        />
+      </div>
     </Dialog>
   );
 }

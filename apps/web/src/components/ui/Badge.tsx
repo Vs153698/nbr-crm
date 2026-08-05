@@ -24,7 +24,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full font-semibold uppercase tracking-wide',
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-semibold uppercase tracking-wide',
         size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-2xs',
         tone.badge,
         className,
@@ -68,7 +68,7 @@ export function FlagChip({ flag, className }: { flag: string; className?: string
     <span
       title={consequences.length > 0 ? `${meta.label} — ${consequences.join(', ')}` : meta.label}
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs font-semibold',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-2xs font-semibold',
         FLAG_TONE[meta.tone] ?? FLAG_TONE.slate,
         className,
       )}
@@ -92,7 +92,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs font-medium',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-2xs font-medium',
         TONE_CLASSES[tone].badge,
         className,
       )}

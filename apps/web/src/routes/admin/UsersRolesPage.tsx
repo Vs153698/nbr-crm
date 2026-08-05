@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, EmptyState } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
+import { RowActions, RowActionsCell } from '@/components/ui/RowActions';
 import { Input, Select } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
@@ -140,10 +141,22 @@ export default function UsersRolesPage() {
       align: 'right',
       width: '110px',
       render: (row) =>
+        // Signing yourself out from here would be indistinguishable from a bug.
         can('users:edit') && row.id !== currentUser?.id ? (
-          <Button size="sm" variant="ghost" icon={Icons.LogOut} onClick={() => setRevokeTarget(row)}>
-            Sign out
-          </Button>
+          <RowActionsCell>
+            <RowActions
+              label={`Actions for ${row.fullName}`}
+              actions={[
+                {
+                  id: 'revoke',
+                  label: 'Sign out everywhere',
+                  icon: Icons.LogOut,
+                  danger: true,
+                  onSelect: () => setRevokeTarget(row),
+                },
+              ]}
+            />
+          </RowActionsCell>
         ) : null,
     },
   ];
