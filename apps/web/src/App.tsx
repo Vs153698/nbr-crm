@@ -19,6 +19,9 @@ const ApplicantProfilePage = lazy(() => import('@/routes/applicants/ApplicantPro
 const UsersRolesPage = lazy(() => import('@/routes/admin/UsersRolesPage'));
 const TasksBoardPage = lazy(() => import('@/routes/modules/TasksBoardPage'));
 const ReportsPage = lazy(() => import('@/routes/modules/ReportsPage'));
+const SalesDashboardPage = lazy(() => import('@/routes/sales/SalesDashboardPage'));
+const LeadsPage = lazy(() => import('@/routes/sales/LeadsPage'));
+const EmployeesPage = lazy(() => import('@/routes/sales/EmployeesPage'));
 
 // The five queues share one module chunk — they are the same component with
 // different props, so splitting them further would only add round-trips.
@@ -182,6 +185,10 @@ export function App() {
           <Route path="/tasks" element={guarded('tasks:view', TasksBoardPage)} />
           <Route path="/blacklist" element={guarded('blacklist:view', BlacklistPage)} />
           <Route path="/reports" element={guarded('reports:view', ReportsPage)} />
+
+          <Route path="/sales" element={guarded('leads:view', SalesDashboardPage)} />
+          <Route path="/leads" element={guarded('leads:view', LeadsPage)} />
+          <Route path="/employees" element={guarded('employees:view', EmployeesPage)} />
 
           <Route path="/admin/users" element={guarded('users:view', UsersRolesPage)} />
           <Route path="/admin/templates" element={guarded('templates:view', TemplatesPage)} />

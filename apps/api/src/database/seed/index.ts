@@ -433,6 +433,29 @@ async function seedSettings(db: Database): Promise<void> {
     { key: 'mail.smtp_password', value: '', category: 'mail', label: 'SMTP password' },
     { key: 'mail.from_name', value: '', category: 'mail', label: 'From name' },
     { key: 'mail.from_address', value: '', category: 'mail', label: 'From address' },
+    // ── Sales ───────────────────────────────────────────────────────────────
+    {
+      key: 'sales.daily_report_enabled',
+      value: false,
+      category: 'sales',
+      label: 'Send the end-of-day sales report',
+      description:
+        'Emails a per-person summary of calls, follow-ups and conversions. Skipped on a day with no calls and nothing missed.',
+    },
+    {
+      key: 'sales.daily_report_time',
+      value: '19:00',
+      category: 'sales',
+      label: 'Send at',
+      description: 'Server local time, 24-hour. The job checks hourly and sends once the hour arrives.',
+    },
+    {
+      key: 'sales.daily_report_recipients',
+      value: '',
+      category: 'sales',
+      label: 'Send to',
+      description: 'Comma-separated addresses. Leave blank to disable delivery.',
+    },
   ];
 
   await db

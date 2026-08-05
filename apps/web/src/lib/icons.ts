@@ -7,6 +7,7 @@
  * resolves through `iconByName` — without shipping all 1,500 lucide icons.
  */
 import {
+  AlertCircle,
   ArrowRight,
   Award,
   Ban,
@@ -54,6 +55,7 @@ import {
   PartyPopper,
   PenLine,
   Phone,
+  PhoneCall,
   PlayCircle,
   Plus,
   Printer,
@@ -83,6 +85,7 @@ import {
 } from 'lucide-react';
 
 export const Icons = {
+  AlertCircle,
   ArrowRight,
   Award,
   Ban,
@@ -130,6 +133,7 @@ export const Icons = {
   PartyPopper,
   PenLine,
   Phone,
+  PhoneCall,
   PlayCircle,
   Plus,
   Printer,

@@ -33,6 +33,10 @@ export const MODULES = {
   SETTINGS: 'settings',
   AUDIT: 'audit',
   INTEGRATIONS: 'integrations',
+  /** Outbound sales: leads, call logs, follow-ups, the sales dashboard. */
+  LEADS: 'leads',
+  /** Staff directory. Separate from `users`, which governs login accounts. */
+  EMPLOYEES: 'employees',
   /** DPDP Act, 2023 console: consent ledger, data-principal requests, breaches. */
   PRIVACY: 'privacy',
   /** Reading unmasked Aadhaar / passport numbers is its own gated capability. */
@@ -95,6 +99,17 @@ export const MODULE_ACTIONS: Readonly<Record<ModuleName, readonly ActionName[]>>
   [MODULES.SETTINGS]: [ACTIONS.VIEW, ACTIONS.MANAGE],
   [MODULES.AUDIT]: [ACTIONS.VIEW, ACTIONS.EXPORT],
   [MODULES.INTEGRATIONS]: [ACTIONS.VIEW, ACTIONS.MANAGE],
+  [MODULES.LEADS]: [
+    ACTIONS.VIEW,
+    ACTIONS.CREATE,
+    ACTIONS.EDIT,
+    ACTIONS.DELETE,
+    ACTIONS.EXPORT,
+    // Turning a lead into an applicant is a heavier act than editing one, and
+    // some teams let anyone call but only seniors convert.
+    ACTIONS.CHANGE_STATUS,
+  ],
+  [MODULES.EMPLOYEES]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT, ACTIONS.DELETE, ACTIONS.EXPORT],
   [MODULES.PRIVACY]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT, ACTIONS.EXPORT],
   [MODULES.PII]: [ACTIONS.REVEAL],
 };
@@ -133,6 +148,8 @@ export const MODULE_LABELS: Readonly<Record<ModuleName, string>> = {
   [MODULES.SETTINGS]: 'Settings',
   [MODULES.AUDIT]: 'Audit Logs',
   [MODULES.INTEGRATIONS]: 'Integrations',
+  [MODULES.LEADS]: 'Sales & Leads',
+  [MODULES.EMPLOYEES]: 'Employee Directory',
   [MODULES.PRIVACY]: 'Privacy & DPDP',
   [MODULES.PII]: 'Sensitive Identifiers',
 };

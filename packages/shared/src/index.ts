@@ -16,6 +16,8 @@ export * from './constants/flags';
 export * from './constants/catalog';
 export * from './constants/templates';
 export * from './constants/dpdp';
+export * from './constants/sales';
+export * from './constants/hr';
 
 export * from './schemas/common';
 export * from './schemas/auth';
@@ -23,6 +25,7 @@ export * from './schemas/applicant';
 export * from './schemas/operations';
 export * from './schemas/privacy';
 export * from './schemas/integration';
+export * from './schemas/sales';
 
 export * from './utils/money';
 export * from './utils/identity';

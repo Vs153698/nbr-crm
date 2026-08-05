@@ -177,6 +177,17 @@ export function formatRecordId(sequence: number): string {
   return `NBRR${String(sequence).padStart(5, '0')}`;
 }
 
+/** Sales leads: NBRL00001. Distinct prefix so a lead code can never be mistaken
+ *  for a record code in a report or a phone conversation. */
+export function formatLeadId(sequence: number): string {
+  return `NBRL${String(sequence).padStart(5, '0')}`;
+}
+
+/** Employee directory: NBREMP001. */
+export function formatEmployeeId(sequence: number): string {
+  return `NBREMP${String(sequence).padStart(3, '0')}`;
+}
+
 /** Certificate numbers are financial-year scoped: NBR/2026-27/00042 */
 export function formatCertificateNumber(financialYear: string, sequence: number): string {
   return `NBR/${financialYear}/${String(sequence).padStart(5, '0')}`;

@@ -18,6 +18,12 @@ import {
   forgotPasswordSchema,
   liftBlacklistSchema,
   assignRecordSchema,
+  convertLeadSchema,
+  createLeadSchema,
+  employeeSchema,
+  logLeadCallSchema,
+  updateEmployeeSchema,
+  updateLeadSchema,
   logCallSchema,
   loginSchema,
   markWhatsappSentSchema,
@@ -1299,6 +1305,177 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     errors: {
       '422': { description: 'No payment has been raised, or no invoice number issued yet.' },
     },
+  },
+
+  // ── Sales & leads ─────────────────────────────────────────────────────────
+  'LeadsController.list': {
+    tag: 'Sales',
+    summary: 'List leads',
+    description: 'The calling list, filterable by status, owner, source and follow-up queue.',
+    query: [
+      { name: 'q', description: 'Name, lead code or phone number.' },
+      { name: 'status', description: 'Pipeline stage.', example: 'callback' },
+      { name: 'ownerUserId', description: 'Whose list to show.' },
+      { name: 'followUp', description: 'due_today | overdue | upcoming', example: 'overdue' },
+      ...CURSOR_QUERY,
+    ],
+    response: arrayOf({ id: UUID, leadCode: { type: 'string' }, fullName: { type: 'string' }, mobile: { type: 'string' }, status: { type: 'string' }, ownerName: { type: 'string', nullable: true }, nextFollowUpAt: { ...ISO, nullable: true }, callCount: { type: 'integer' } }),
+    notes:
+      'Follow-up queues sort oldest-first — the most overdue is the most urgent. Everything ' +
+      'else sorts by most recent activity.',
+  },
+  'LeadsController.get': {
+    tag: 'Sales',
+    summary: 'Get a lead',
+    description: 'One lead with its full call history, newest call first.',
+    response: { type: 'object', properties: { id: UUID, leadCode: { type: 'string' }, calls: arrayOf({ id: UUID, outcome: { type: 'string' }, summary: { type: 'string' }, calledAt: ISO }) } },
+  },
+  'LeadsController.create': {
+    tag: 'Sales',
+    summary: 'Add a lead',
+    description: 'Creates a lead and assigns it, defaulting to the creator.',
+    body: zodSchema(createLeadSchema, 'CreateLead'),
+    response: { type: 'object', properties: { id: UUID, leadCode: { type: 'string' } } },
+    audited: 'lead.created',
+    notes:
+      'One open lead per phone number. Two reps working the same number off two imported ' +
+      'lists is the classic outbound failure, so a duplicate is refused with a pointer to ' +
+      'the existing lead. Closed leads are excluded, so someone who said no last year can ' +
+      'be approached again.',
+    errors: { '409': { description: 'That number is already an open lead.' } },
+  },
+  'LeadsController.update': {
+    tag: 'Sales',
+    summary: 'Update a lead',
+    description: 'Edits lead details, ownership, status or the next follow-up date.',
+    body: zodSchema(updateLeadSchema, 'UpdateLead'),
+    response: OK,
+    audited: 'lead.updated',
+  },
+  'LeadsController.logCall': {
+    tag: 'Sales',
+    summary: 'Log a call',
+    description: 'Records one call attempt, its outcome and any follow-up promised.',
+    body: zodSchema(logLeadCallSchema, 'LogLeadCall'),
+    response: { type: 'object', properties: { callId: UUID, status: { type: 'string' } } },
+    audited: 'lead.call_logged',
+    notes:
+      'The outcome is an enum, not free text: the evening report counts connected calls ' +
+      'against attempts, and a text box would make that uncountable within a week. The ' +
+      "lead's status follows from the outcome unless overridden, and an unanswered call " +
+      'leaves it untouched — failing to reach someone says nothing about their interest. ' +
+      'The call row and the denormalised counters are written in one transaction, so the ' +
+      'report can never undercount.',
+    errors: { '422': { description: 'A callback outcome needs the date that was promised.' } },
+  },
+  'LeadsController.convert': {
+    tag: 'Sales',
+    summary: 'Convert a lead to an applicant',
+    description: 'Opens a master applicant profile and a record from the lead.',
+    body: zodSchema(convertLeadSchema, 'ConvertLead'),
+    response: { type: 'object', properties: { applicantId: UUID, applicantCode: { type: 'string' }, recordId: UUID, recordCode: { type: 'string' } } },
+    audited: 'lead.converted',
+    notes:
+      'Runs the ordinary intake path, so a converted lead gets the same duplicate ' +
+      'detection, consent ledger entry and timeline as a walk-in rather than a second, ' +
+      'divergent code path. The lead row is kept and marked converted — it carries the ' +
+      'call history that explains how the applicant was won.',
+    errors: { '422': { description: 'The lead has no email address to open a profile with.' } },
+  },
+  'LeadsController.remove': {
+    tag: 'Sales',
+    summary: 'Delete a lead',
+    description: 'Soft delete. The call history survives for historical figures.',
+    response: OK,
+    audited: 'lead.deleted',
+  },
+  'SalesDashboardController.dashboard': {
+    tag: 'Sales',
+    summary: 'Sales dashboard',
+    description: "One day's calling activity, per person and in total, with the live pipeline.",
+    query: [
+      { name: 'date', description: 'Defaults to today.' },
+      { name: 'ownerUserId', description: 'Narrow to one person.' },
+    ],
+    response: { type: 'object', properties: { date: { type: 'string' }, totals: { type: 'object' }, reps: arrayOf({ name: { type: 'string' }, callsMade: { type: 'integer' }, connected: { type: 'integer' }, followUpsMissed: { type: 'integer' } }), pipeline: arrayOf({ status: { type: 'string' }, count: { type: 'integer' } }) } },
+    notes:
+      'The same query backs the evening email, so the figure a manager sees at 4pm and the ' +
+      'one that lands at 7pm cannot disagree. "Missed" means a follow-up promised for today ' +
+      'or earlier on a still-open lead with no call since — a rep who rang at 9am and moved ' +
+      'the date has not missed anything.',
+  },
+  'SalesDashboardController.sendNow': {
+    tag: 'Sales',
+    summary: 'Send the daily sales report now',
+    description: 'Builds and emails the end-of-day summary immediately.',
+    response: { type: 'object', properties: { sent: { type: 'boolean' }, to: arrayOf({}) } },
+    notes:
+      'Skipped when the day had no calls and nothing missed — an empty table trains people ' +
+      'to ignore the email.',
+  },
+
+  // ── Employee directory ────────────────────────────────────────────────────
+  'EmployeesController.list': {
+    tag: 'Administration',
+    summary: 'List employees',
+    description: 'The staff directory, filterable by department, status and employment type.',
+    query: [
+      { name: 'q', description: 'Name, employee code, designation or phone.' },
+      { name: 'department', description: 'Exact department name.' },
+      { name: 'status', description: 'active | on_leave | notice_period | exited', example: 'active' },
+      ...CURSOR_QUERY,
+    ],
+    response: arrayOf({ id: UUID, employeeCode: { type: 'string' }, fullName: { type: 'string' }, department: { type: 'string', nullable: true }, designation: { type: 'string', nullable: true }, status: { type: 'string' } }),
+    notes:
+      'The list omits the personal block — date of birth, home address, emergency contact — ' +
+      'which is returned only when opening one employee.',
+  },
+  'EmployeesController.departments': {
+    tag: 'Administration',
+    summary: 'Departments in use',
+    description: 'Distinct department names, for the filter bar.',
+    response: arrayOf({}),
+  },
+  'EmployeesController.get': {
+    tag: 'Administration',
+    summary: 'Get an employee',
+    description: 'Full record, including the reporting line and direct reports.',
+    response: { type: 'object', properties: { id: UUID, employeeCode: { type: 'string' }, fullName: { type: 'string' }, reportsToName: { type: 'string', nullable: true }, reports: arrayOf({ id: UUID, fullName: { type: 'string' } }) } },
+  },
+  'EmployeesController.create': {
+    tag: 'Administration',
+    summary: 'Add an employee',
+    description: 'Creates a directory record, allocating an employee code when none is given.',
+    body: zodSchema(employeeSchema, 'Employee'),
+    response: { type: 'object', properties: { id: UUID, employeeCode: { type: 'string' } } },
+    audited: 'employee.created',
+    notes:
+      'Separate from `users`, which governs login accounts. Not every employee has one — ' +
+      'field staff and contractors appear here and never sign in — and an account can be ' +
+      'deactivated while the person is still employed. Linking is optional and at most one ' +
+      'account per employee.',
+    errors: { '422': { description: 'The employee code or linked account is already in use.' } },
+  },
+  'EmployeesController.update': {
+    tag: 'Administration',
+    summary: 'Update an employee',
+    description: 'Edits a directory record, its reporting line or its linked login account.',
+    body: zodSchema(updateEmployeeSchema, 'UpdateEmployee'),
+    response: OK,
+    audited: 'employee.updated',
+    errors: { '422': { description: 'Code clash, account already linked, or self-reporting.' } },
+  },
+  'EmployeesController.remove': {
+    tag: 'Administration',
+    summary: 'Delete an employee',
+    description: 'Soft delete, for a record created in error.',
+    response: OK,
+    audited: 'employee.deleted',
+    notes:
+      'An employee who has left is normally marked Exited rather than deleted: audit ' +
+      'entries, records they handled and the reporting line all point at them. Refused ' +
+      'while others still report to them.',
+    errors: { '409': { description: 'Other employees report to this person.' } },
   },
 
   // ── Audit ─────────────────────────────────────────────────────────────────

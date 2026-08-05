@@ -176,6 +176,18 @@ export const AUDIT = {
   WHATSAPP_SENT: 'communication.whatsapp_sent',
   TEMPLATE_UPDATED: 'template.updated',
 
+  // ── Sales & leads ────────────────────────────────────────────────────────
+  LEAD_CREATED: 'lead.created',
+  LEAD_UPDATED: 'lead.updated',
+  LEAD_CALL_LOGGED: 'lead.call_logged',
+  LEAD_CONVERTED: 'lead.converted',
+  LEAD_DELETED: 'lead.deleted',
+
+  // ── Employee directory ───────────────────────────────────────────────────
+  EMPLOYEE_CREATED: 'employee.created',
+  EMPLOYEE_UPDATED: 'employee.updated',
+  EMPLOYEE_DELETED: 'employee.deleted',
+
   BLACKLIST_ADDED: 'blacklist.added',
   BLACKLIST_LIFTED: 'blacklist.lifted',
   BLACKLIST_OVERRIDDEN: 'blacklist.overridden',

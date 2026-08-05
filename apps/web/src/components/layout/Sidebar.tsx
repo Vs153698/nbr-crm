@@ -25,6 +25,11 @@ const PIPELINE_NAV: NavItem[] = [
   { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view' },
 ];
 
+const SALES_NAV: NavItem[] = [
+  { to: '/sales', label: 'Sales Dashboard', icon: Icons.TrendingUp, permission: 'leads:view' },
+  { to: '/leads', label: 'Leads', icon: Icons.PhoneCall, permission: 'leads:view' },
+];
+
 const WORK_NAV: NavItem[] = [
   { to: '/tasks', label: 'Tasks & Follow-ups', icon: Icons.ClipboardCheck, permission: 'tasks:view' },
   { to: '/blacklist', label: 'Blacklist', icon: Icons.Ban, permission: 'blacklist:view' },
@@ -32,6 +37,7 @@ const WORK_NAV: NavItem[] = [
 ];
 
 const ADMIN_NAV: NavItem[] = [
+  { to: '/employees', label: 'Employees', icon: Icons.Users, permission: 'employees:view' },
   { to: '/admin/users', label: 'Users & Roles', icon: Icons.Shield, permission: 'users:view' },
   { to: '/admin/templates', label: 'Templates', icon: Icons.Mail, permission: 'templates:view' },
   { to: '/admin/settings', label: 'Settings', icon: Icons.Settings, permission: 'settings:view' },
@@ -142,6 +148,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavSection items={PRIMARY_NAV} onNavigate={onNavigate} />
         <SectionRule />
         <NavSection title="Pipeline" items={PIPELINE_NAV} onNavigate={onNavigate} />
+        <NavSection title="Sales" items={SALES_NAV} onNavigate={onNavigate} />
         <SectionRule />
         <NavSection title="Workspace" items={WORK_NAV} onNavigate={onNavigate} />
         <SectionRule />

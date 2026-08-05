@@ -13,6 +13,7 @@
  *   collaboration — notes, tasks, templates, communications, notifications
  *   privacy       — DPDP consent ledger, DSRs, breaches, PII access, retention
  *   governance    — settings, couriers, integrations, exports, saved views
+ *   sales         — leads, call logs, employee directory
  */
 
 export * from './identity';
@@ -23,3 +24,4 @@ export * from './money';
 export * from './collaboration';
 export * from './privacy';
 export * from './governance';
+export * from './sales';

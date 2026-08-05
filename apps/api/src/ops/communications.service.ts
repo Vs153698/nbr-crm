@@ -10,7 +10,8 @@ import {
   toE164,
   validateTemplate,
   type TemplateContext,
-  isSystemTemplateCode,} from '@nbr/shared';
+  isSystemTemplateCode,
+  TASK_PRIORITY,} from '@nbr/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
@@ -23,6 +24,7 @@ import * as schema from '../database/schema';
 import { MailService } from '../mail/mail.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { TasksService } from './tasks.service';
 
 export interface RenderedMessage {
   readonly subject: string | null;
@@ -55,6 +57,7 @@ export class CommunicationsService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly tasks: TasksService,
   ) {}
 
   /**
@@ -463,7 +466,7 @@ export class CommunicationsService {
     durationMinutes?: number;
     outcome?: string;
     followUpDate?: Date;
-  }): Promise<{ id: string }> {
+  }): Promise<{ id: string; followUpTaskId: string | null }> {
     const actor = requireActor();
 
     const [communication] = await this.db
@@ -483,15 +486,44 @@ export class CommunicationsService {
       })
       .returning({ id: schema.communications.id });
 
+    /**
+     * A follow-up date becomes a real task.
+     *
+     * It was previously accepted by the endpoint and then dropped on the floor:
+     * the caller typed "ring back on Tuesday", the API returned 200, and nothing
+     * anywhere remembered it. A task is the right home — it is what the
+     * Tasks & Follow-ups board reads, what the overdue notification job checks,
+     * and what the sales report counts as missed.
+     */
+    let followUpTaskId: string | null = null;
+    if (input.followUpDate) {
+      const { id } = await this.tasks.create({
+        applicantId: input.applicantId,
+        recordId: input.recordId,
+        title: `Follow up on call${input.outcome ? ` — ${input.outcome}` : ''}`,
+        description: input.summary,
+        // Whoever made the call owns the callback unless it is reassigned.
+        assignedToUserId: actor.userId,
+        dueDate: input.followUpDate,
+        priority: TASK_PRIORITY.NORMAL,
+      });
+      followUpTaskId = id;
+    }
+
     await this.timeline.write({
       applicantId: input.applicantId,
       recordId: input.recordId ?? null,
       eventType: TIMELINE_EVENT.CALL_LOGGED,
       summary: `Call logged — ${input.summary.slice(0, 80)}`,
-      meta: { durationMinutes: input.durationMinutes ?? null, outcome: input.outcome ?? null },
+      meta: {
+        durationMinutes: input.durationMinutes ?? null,
+        outcome: input.outcome ?? null,
+        followUpDate: input.followUpDate?.toISOString() ?? null,
+        followUpTaskId,
+      },
     });
 
-    return { id: communication!.id };
+    return { id: communication!.id, followUpTaskId };
   }
 
   /** §22 unified history, filterable by channel. */

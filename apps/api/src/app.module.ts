@@ -15,6 +15,7 @@ import { OpsModule } from './ops/ops.module';
 import { PaymentsModule } from './payments/payments.module';
 import { StorageModule } from './storage/storage.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { SalesModule } from './sales/sales.module';
 import { TimelineModule } from './timeline/timeline.module';
 import { VaultModule } from './vault/vault.module';
 import { AllExceptionsFilter } from './common/exception.filter';
@@ -57,6 +58,7 @@ import { RedisModule } from './redis/redis.module';
     PaymentsModule,
     OpsModule,
     GovernanceModule,
+    SalesModule,
     AdminModule,
     ScheduleModule.forRoot(),
   ],

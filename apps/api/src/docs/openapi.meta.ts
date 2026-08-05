@@ -93,6 +93,11 @@ export const TAG_GROUPS = [
   { name: 'Notifications', description: 'In-app alerts and the unread badge.' },
   { name: 'Reports', description: 'Operational and financial reports, and background exports.' },
   { name: 'Notes', description: 'Internal notes with full revision history.' },
+  {
+    name: 'Sales',
+    description:
+      'Outbound leads, call logging, follow-ups, the sales dashboard and the end-of-day report.',
+  },
   { name: 'Administration', description: 'Users, roles, permissions and system settings.' },
   { name: 'Audit', description: 'Append-only audit trail and PII access log.' },
   { name: 'Integration', description: 'Inbound webhook from the existing NBR website.' },

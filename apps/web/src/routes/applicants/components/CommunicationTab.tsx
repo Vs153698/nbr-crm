@@ -555,6 +555,7 @@ function CallNoteDialog({
   const [summary, setSummary] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('');
   const [outcome, setOutcome] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -564,9 +565,12 @@ function CallNoteDialog({
         summary,
         durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
         outcome: outcome || undefined,
+        followUpDate: followUpDate || undefined,
       }),
     onSuccess: () => {
-      toast.success('Call logged');
+      toast.success('Call logged', {
+        description: followUpDate ? 'A follow-up task has been created for you.' : undefined,
+      });
       onClose();
       onSaved();
     },
@@ -618,6 +622,13 @@ function CallNoteDialog({
             placeholder="e.g. Will pay by Friday"
           />
         </div>
+        <Input
+          type="date"
+          label="Follow up on"
+          hint="Creates a task assigned to you, so the callback is not lost when this dialog closes."
+          value={followUpDate}
+          onChange={(event) => setFollowUpDate(event.target.value)}
+        />
       </div>
     </Dialog>
   );
