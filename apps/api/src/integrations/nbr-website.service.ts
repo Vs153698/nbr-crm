@@ -1,5 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
+
+/**
+ * Label for the shared-secret fingerprint. Must stay byte-identical to the
+ * constant of the same name in the website's connector, or the two fingerprints
+ * will differ for secrets that are in fact the same — which is precisely the
+ * confusion this exists to remove.
+ */
+const SECRET_FINGERPRINT_LABEL = 'nbr-crm:secret-fingerprint:v1';
 import {
   APPLICATION_SOURCE,
   ageInYears,
@@ -41,6 +49,23 @@ import { LegacyLifecycleService } from './legacy-lifecycle.service';
  * excluded — they change on every push without anything about the application
  * having changed, and including them would defeat duplicate detection entirely.
  */
+/**
+ * Plain-language cause for each verification failure, returned to the sender.
+ *
+ * Each one names the thing to go and check, because the four causes have four
+ * completely different fixes and they are indistinguishable from a bare 401.
+ */
+const SIGNATURE_FAILURE_HINT: Readonly<Record<string, string>> = {
+  missing_signature:
+    'No X-NBR-Signature header arrived. Either the sender is not signing, or a proxy in front of this API is stripping the header.',
+  malformed_signature:
+    'The X-NBR-Signature header could not be parsed. It must read t=<unix seconds>,v1=<hex>.',
+  timestamp_outside_tolerance:
+    'The signature timestamp is outside the accepted window. The two servers’ clocks disagree by more than the tolerance — check NTP on both.',
+  signature_mismatch:
+    'The signature did not match. The shared secret differs between the two systems, or something rewrote the request body in transit.',
+};
+
 function snapshotHash(payload: NbrWebhookApplication): string {
   const significant = {
     externalId: payload.externalId,
@@ -119,8 +144,6 @@ export class NbrWebsiteService {
     });
 
     if (!verification.valid) {
-      // Logged with the reason so a misconfigured sender is diagnosable, but
-      // the caller only learns that it failed.
       this.logger.warn(`Rejected webhook: ${verification.reason}`);
 
       await this.audit.record({
@@ -130,9 +153,22 @@ export class NbrWebsiteService {
         meta: { reason: verification.reason },
       });
 
+      /**
+       * The reason is returned, not just logged.
+       *
+       * Withholding it sounds safer but is not: an attacker learns the same
+       * thing by experiment — resend with a fresh timestamp, and if it still
+       * fails the signature is wrong — while the operator setting the
+       * integration up cannot see the server log and is left guessing between a
+       * mismatched secret, a drifting clock and a proxy stripping the header.
+       * Stripe, GitHub and Shopify all name the reason for exactly this reason.
+       *
+       * Nothing here is derived from the secret; these four strings are the
+       * complete vocabulary.
+       */
       throw new UnauthorisedError(
         'WEBHOOK_SIGNATURE_INVALID',
-        'The request signature could not be verified.',
+        `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
       );
     }
 
@@ -709,6 +745,37 @@ export class NbrWebsiteService {
         dedupeKey: `integration_attention:${recordId ?? applicantId ?? title}`,
       })
       .onConflictDoNothing();
+  }
+
+  /**
+   * Fingerprint of the secret this API verifies against, plus its own clock.
+   *
+   * The counterpart shows the same fingerprint for the secret it signs with, so
+   * "are the two secrets the same?" becomes a two-value comparison instead of a
+   * guess. It is `HMAC-SHA256(secret, label)` truncated to 8 hex characters —
+   * one-way, and the secret is never displayed, transmitted or logged.
+   *
+   * Behind the integrations permission, not public: the endpoint is a
+   * convenience for an operator who is already an authenticated admin, and a
+   * fingerprint served to anonymous callers would let a weak secret be attacked
+   * offline.
+   */
+  secretIdentity(): {
+    fingerprint: string;
+    secretLength: number;
+    serverTime: string;
+    toleranceSeconds: number;
+  } {
+    const secret = this.env.NBR_WEBHOOK_SECRET;
+    return {
+      fingerprint: createHmac('sha256', secret)
+        .update(SECRET_FINGERPRINT_LABEL)
+        .digest('hex')
+        .slice(0, 8),
+      secretLength: secret.length,
+      serverTime: new Date().toISOString(),
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    };
   }
 
   /** GET /integrations/nbr-website/sync-status */

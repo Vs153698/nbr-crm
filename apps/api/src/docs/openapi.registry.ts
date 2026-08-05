@@ -1321,6 +1321,29 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     ],
     response: arrayOf({ id: UUID, externalId: { type: 'string' }, status: { type: 'string' }, error: { type: 'string', nullable: true }, receivedAt: ISO }),
   },
+  'IntegrationsController.secretIdentity': {
+    tag: 'Integration',
+    summary: 'Webhook secret fingerprint',
+    description:
+      'A one-way fingerprint of the shared secret this API verifies against, plus its own ' +
+      'clock and replay tolerance.',
+    response: {
+      type: 'object',
+      properties: {
+        fingerprint: { type: 'string' },
+        secretLength: { type: 'integer' },
+        serverTime: ISO,
+        toleranceSeconds: { type: 'integer' },
+      },
+    },
+    notes:
+      'Exists so a mismatched secret can be diagnosed without either side revealing one. ' +
+      'The sender shows the same fingerprint for the secret it signs with; equal ' +
+      'fingerprints mean identical secrets. It is HMAC-SHA256(secret, fixed label) ' +
+      'truncated to 8 hex characters, and requires the integrations permission rather ' +
+      'than being public — a fingerprint served anonymously would let a weak secret be ' +
+      'attacked offline.',
+  },
   'IntegrationsController.pushStatus': {
     tag: 'Integration',
     summary: 'Outbound push status',

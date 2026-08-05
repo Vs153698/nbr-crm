@@ -259,6 +259,16 @@ class IntegrationsController {
     return this.nbr.syncStatus();
   }
 
+  /**
+   * Fingerprint of the webhook secret, for comparing against the sender's.
+   * Turns a 401 into a definite answer about whether the secrets match.
+   */
+  @Get('secret-identity')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
+  secretIdentity() {
+    return this.nbr.secretIdentity();
+  }
+
   @Get('events')
   @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
   async events(@Query('limit') limit?: string) {
