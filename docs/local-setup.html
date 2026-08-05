@@ -17,7 +17,10 @@
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
+  /* Light only, deliberately: this document is printed and shared as a
+     handover artefact, and the browser must not restyle scrollbars, form
+     controls or the canvas to match a dark OS theme. */
+  html{scroll-behavior:smooth;color-scheme:light}
   body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
     font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
 
@@ -122,20 +125,6 @@
 
   footer{border-top:1px solid var(--line);padding:24px 0 0;margin-top:12px;
     color:var(--ink-3);font-size:12.5px}
-
-  @media (prefers-color-scheme:dark){
-    :root{--canvas:#0B1220;--card:#131C2E;--ink:#E8EDF6;--ink-2:#A8B4CA;--ink-3:#7E8CA6;
-      --line:#243147;--slate-tint:#1C2740;--blue-tint:#152444;--green-tint:#12301F;
-      --amber-tint:#312414;--red-tint:#331A19;--purple-tint:#221B3B}
-    th{background:#182136}
-    td{border-bottom-color:#1E293F}
-    .info{border-color:#274571}.warn{border-color:#4E3A16}.danger{border-color:#5A2825}
-    .good{border-color:#1E5133}
-    .info h5,.info p,.info li{color:#BBD0F5}
-    .warn h5,.warn p,.warn li{color:#E8C98F}
-    .danger h5,.danger p,.danger li{color:#F0B3AF}
-    .good h5,.good p,.good li{color:#A3DCB8}
-  }
 </style>
 </head>
 <body>
