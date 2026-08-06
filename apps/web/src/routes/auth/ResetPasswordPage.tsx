@@ -2,12 +2,11 @@ import { passwordSchema } from '@nbr/shared';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Field';
 import { PasswordStrength } from '@/components/ui/PasswordStrength';
 import { api, ApiError } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthLayout } from './AuthLayout';
+import { AUTH_FOOTER, AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { BrandBackLink, BrandButton, BrandInput } from './BrandField';
 
 /** W-02 step 2 — set a new password from the emailed link. */
 export default function ResetPasswordPage() {
@@ -59,66 +58,93 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <AuthLayout title="Invalid reset link">
-        <div className="rounded-lg border border-danger-ring bg-danger-tint p-4 text-xs leading-relaxed text-danger">
-          This link is missing its token. Request a new reset email.
-        </div>
-        <Link to="/forgot-password" className="mt-5 block">
-          <Button variant="primary" block>
-            Request a new link
-          </Button>
-        </Link>
-      </AuthLayout>
+      <AuthShell footer={AUTH_FOOTER}>
+        <BrandMark />
+
+        <AuthCard title="Invalid reset link">
+          <AuthNotice tone="danger">
+            This link is missing its token. Request a new reset email.
+          </AuthNotice>
+
+          <div className="mt-5">
+            <Link to="/forgot-password" className="block">
+              <span className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-nbr-orange text-sm font-bold tracking-wide text-white transition-colors hover:bg-nbr-orange-hover">
+                Request a new link
+                <Icons.ArrowRight size={16} strokeWidth={2.4} />
+              </span>
+            </Link>
+          </div>
+        </AuthCard>
+      </AuthShell>
     );
   }
 
   return (
-    <AuthLayout title="Set a new password" subtitle="Choose something you haven't used before.">
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <div className="space-y-2">
-          <Input
-            label="New password"
+    <AuthShell footer={AUTH_FOOTER}>
+      <BrandMark />
+
+      <AuthCard
+        title="Set a new password"
+        subtitle="Choose something you haven't used before."
+        note="This link works once and expires 30 minutes after it was sent."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <BrandInput
+              label="New password"
+              type={show ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              error={errors.password}
+              autoComplete="new-password"
+              autoFocus
+              required
+              prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
+              suffix={
+                <button
+                  type="button"
+                  onClick={() => setShow((value) => !value)}
+                  aria-label={show ? 'Hide password' : 'Show password'}
+                  className="rounded p-1 text-nbr-text-4 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+                >
+                  {show ? (
+                    <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  ) : (
+                    <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  )}
+                </button>
+              }
+            />
+            <PasswordStrength password={password} tone="dark" />
+          </div>
+
+          <BrandInput
+            label="Confirm password"
             type={show ? 'text' : 'password'}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            error={errors.password}
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            error={errors.confirmPassword}
             autoComplete="new-password"
-            autoFocus
             required
             prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-            suffix={
-              <button
-                type="button"
-                onClick={() => setShow((value) => !value)}
-                aria-label={show ? 'Hide password' : 'Show password'}
-                className="text-ink-3 transition-colors hover:text-ink"
-              >
-                {show ? (
-                  <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-                ) : (
-                  <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-                )}
-              </button>
-            }
           />
-          <PasswordStrength password={password} />
-        </div>
 
-        <Input
-          label="Confirm password"
-          type={show ? 'text' : 'password'}
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          error={errors.confirmPassword}
-          autoComplete="new-password"
-          required
-          prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-        />
+          <div className="pt-1.5">
+            <BrandButton loading={submitting} loadingLabel="Setting…">
+              Set Password
+            </BrandButton>
+          </div>
 
-        <Button type="submit" variant="primary" size="lg" block loading={submitting}>
-          Set password &amp; sign in
-        </Button>
-      </form>
-    </AuthLayout>
+          <div className="pt-0.5 text-center">
+            <Link
+              to="/login"
+              className="group inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+            >
+              <BrandBackLink>Back to sign in</BrandBackLink>
+            </Link>
+          </div>
+        </form>
+      </AuthCard>
+    </AuthShell>
   );
 }

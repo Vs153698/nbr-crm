@@ -2,12 +2,12 @@ import { useEffect, type ReactNode } from 'react';
 import { ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 
 /**
- * Brand frame for the sign-in screen.
+ * Brand frame for every auth screen.
  *
- * Deliberately separate from `AuthLayout`, which still serves the password
- * reset screens: the brand rollout is happening page by page, and a shared
- * frame would have dragged three unreviewed screens along with this one.
- * Once those screens are redesigned too, this replaces it.
+ * This replaced `AuthLayout`, which used to serve the reset and change-password
+ * screens while the brand rollout worked through them page by page. Landing on
+ * a light, differently-typeset form straight after signing in on the dark one
+ * read as a different application, so all four now share this frame.
  *
  * The dot grid is a CSS background rather than an image — it is two gradients'
  * worth of visual interest for zero bytes and no HTTP request, and it survives
@@ -125,6 +125,19 @@ export function AuthNotice({
     </div>
   );
 }
+
+/**
+ * The standing footer line, identical on every auth screen.
+ *
+ * Exported rather than repeated per page: it is a compliance statement, and
+ * four hand-copied versions is four chances for them to drift apart.
+ */
+export const AUTH_FOOTER = (
+  <p className="text-[11px] leading-relaxed text-nbr-text-4">
+    Authorised staff only. All access is logged and audited under the
+    <br className="hidden sm:block" /> Digital Personal Data Protection Act, 2023.
+  </p>
+);
 
 /** Logo lock-up. Sized for the login card; the wordmark is text, not artwork. */
 export function BrandMark() {

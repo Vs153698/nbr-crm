@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { ApiError } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { AUTH_FOOTER, AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
 import { BrandButton, BrandCheckbox, BrandInput } from './BrandField';
 
 /**
@@ -53,14 +53,7 @@ export default function LoginPage() {
   const isLockout = error?.code === 'RATE_LIMITED' || error?.code === 'ACCOUNT_LOCKED';
 
   return (
-    <AuthShell
-      footer={
-        <p className="text-[11px] leading-relaxed text-nbr-text-4">
-          Authorised staff only. All access is logged and audited under the
-          <br className="hidden sm:block" /> Digital Personal Data Protection Act, 2023.
-        </p>
-      }
-    >
+    <AuthShell footer={AUTH_FOOTER}>
       <BrandMark />
 
       <AuthCard

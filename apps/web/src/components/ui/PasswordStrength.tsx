@@ -42,10 +42,29 @@ export function evaluatePassword(password: string): {
 
 const BAR_COLOURS = ['bg-danger', 'bg-danger', 'bg-warn', 'bg-brand', 'bg-ok'] as const;
 
-export function PasswordStrength({ password }: { password: string }) {
+/**
+ * `tone` picks the palette for the surface underneath.
+ *
+ * The default tokens are mixed against the light application canvas, and the
+ * unmet-requirement colours in particular (`text-ink-3` on `bg-slate2-tint`)
+ * all but vanish on the dark navy auth surface — which is the one place this
+ * component has to be legible, since it is telling someone why their password
+ * was rejected.
+ */
+export function PasswordStrength({
+  password,
+  tone = 'light',
+}: {
+  password: string;
+  tone?: 'light' | 'dark';
+}) {
   if (!password) return null;
 
   const { score, label, checks } = evaluatePassword(password);
+  const dark = tone === 'dark';
+
+  const trackClass = dark ? 'bg-nbr-line' : 'bg-slate2-tint';
+  const mutedClass = dark ? 'text-nbr-text-4' : 'text-ink-3';
 
   return (
     <div className="space-y-2">
@@ -56,27 +75,28 @@ export function PasswordStrength({ password }: { password: string }) {
               key={index}
               className={cn(
                 'h-1 flex-1 rounded-full transition-colors duration-200',
-                index < score ? BAR_COLOURS[score] : 'bg-slate2-tint',
+                index < score ? BAR_COLOURS[score] : trackClass,
               )}
             />
           ))}
         </div>
-        <span className="w-16 shrink-0 text-right text-[10px] font-semibold text-ink-3">{label}</span>
+        <span className={cn('w-16 shrink-0 text-right text-[10px] font-semibold', mutedClass)}>
+          {label}
+        </span>
       </div>
 
       <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5">
         {checks.map((check) => (
           <li
             key={check.label}
-            className={cn(
-              'flex items-center gap-1 text-[10px]',
-              check.met ? 'text-ok' : 'text-ink-3',
-            )}
+            className={cn('flex items-center gap-1 text-[10px]', check.met ? 'text-ok' : mutedClass)}
           >
             <span
               className={cn(
                 'grid h-3 w-3 shrink-0 place-items-center rounded-full text-[8px] font-bold',
-                check.met ? 'bg-ok text-white' : 'bg-slate2-tint text-ink-4',
+                check.met
+                  ? 'bg-ok text-white'
+                  : cn(trackClass, dark ? 'text-nbr-text-4' : 'text-ink-4'),
               )}
             >
               {check.met ? '✓' : '·'}

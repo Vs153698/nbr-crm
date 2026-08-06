@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { AUTH_FOOTER, AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
 import { BrandBackLink, BrandButton, BrandInput } from './BrandField';
 
 /**
@@ -32,16 +32,9 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  const footer = (
-    <p className="text-[11px] leading-relaxed text-nbr-text-4">
-      Authorised staff only. All access is logged and audited under the
-      <br className="hidden sm:block" /> Digital Personal Data Protection Act, 2023.
-    </p>
-  );
-
   if (sent) {
     return (
-      <AuthShell footer={footer}>
+      <AuthShell footer={AUTH_FOOTER}>
         <BrandMark />
 
         <AuthCard title="Check your email">
@@ -85,7 +78,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthShell footer={footer}>
+    <AuthShell footer={AUTH_FOOTER}>
       <BrandMark />
 
       <AuthCard

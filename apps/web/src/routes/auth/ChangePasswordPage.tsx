@@ -2,13 +2,12 @@ import { passwordSchema } from '@nbr/shared';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Field';
 import { PasswordStrength } from '@/components/ui/PasswordStrength';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
-import { AuthLayout } from './AuthLayout';
+import { AUTH_FOOTER, AuthCard, AuthNotice, AuthShell, BrandMark } from './AuthShell';
+import { BrandButton, BrandButtonSecondary, BrandInput } from './BrandField';
 
 /**
  * Change password — also the forced-rotation screen.
@@ -71,90 +70,90 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <AuthLayout
-      title={forced ? 'Set your password' : 'Change password'}
-      subtitle={
-        forced
-          ? 'Your account was created with a temporary password. Choose your own to continue.'
-          : 'You will be signed out of all devices afterwards.'
-      }
-    >
-      {forced ? (
-        <div className="mb-5 flex gap-2.5 rounded-lg border border-warn-ring bg-warn-tint p-3">
-          <Icons.ShieldAlert
-            size={ICON_SIZE.md}
-            strokeWidth={ICON_STROKE}
-            className="mt-0.5 shrink-0 text-warn"
+    <AuthShell footer={AUTH_FOOTER}>
+      <BrandMark />
+
+      <AuthCard
+        title={forced ? 'Set your password' : 'Change password'}
+        subtitle={
+          forced
+            ? 'Your account was created with a temporary password. Choose your own to continue.'
+            : 'You will be signed out of all devices afterwards.'
+        }
+        note="Changing your password ends every active session, on this device and any other."
+      >
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {forced ? (
+            <AuthNotice tone="warn">
+              The temporary password you were given is assumed to be compromised. Nothing else in
+              the system is reachable until you replace it.
+            </AuthNotice>
+          ) : null}
+
+          <BrandInput
+            label={forced ? 'Temporary password' : 'Current password'}
+            type="password"
+            value={currentPassword}
+            onChange={(event) => setCurrentPassword(event.target.value)}
+            error={errors.currentPassword}
+            autoComplete="current-password"
+            autoFocus
+            required
+            prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
           />
-          <p className="text-xs leading-relaxed text-warn">
-            The temporary password you were given is assumed to be compromised. Nothing else in the
-            system is reachable until you replace it.
-          </p>
-        </div>
-      ) : null}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <Input
-          label={forced ? 'Temporary password' : 'Current password'}
-          type="password"
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          error={errors.currentPassword}
-          autoComplete="current-password"
-          autoFocus
-          required
-          prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-        />
+          <div className="space-y-2">
+            <BrandInput
+              label="New password"
+              type={show ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              error={errors.password}
+              autoComplete="new-password"
+              required
+              prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
+              suffix={
+                <button
+                  type="button"
+                  onClick={() => setShow((value) => !value)}
+                  aria-label={show ? 'Hide password' : 'Show password'}
+                  className="rounded p-1 text-nbr-text-4 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-nbr-orange-ring"
+                >
+                  {show ? (
+                    <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  ) : (
+                    <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
+                  )}
+                </button>
+              }
+            />
+            <PasswordStrength password={password} tone="dark" />
+          </div>
 
-        <div className="space-y-2">
-          <Input
-            label="New password"
+          <BrandInput
+            label="Confirm new password"
             type={show ? 'text' : 'password'}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            error={errors.password}
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            error={errors.confirmPassword}
             autoComplete="new-password"
             required
             prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-            suffix={
-              <button
-                type="button"
-                onClick={() => setShow((value) => !value)}
-                aria-label={show ? 'Hide password' : 'Show password'}
-                className="text-ink-3 transition-colors hover:text-ink"
-              >
-                {show ? (
-                  <Icons.EyeOff size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-                ) : (
-                  <Icons.Eye size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />
-                )}
-              </button>
-            }
           />
-          <PasswordStrength password={password} />
-        </div>
 
-        <Input
-          label="Confirm new password"
-          type={show ? 'text' : 'password'}
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          error={errors.confirmPassword}
-          autoComplete="new-password"
-          required
-          prefix={<Icons.Lock size={ICON_SIZE.sm} strokeWidth={ICON_STROKE} />}
-        />
+          <div className="pt-1.5">
+            <BrandButton loading={submitting} loadingLabel="Updating…">
+              Update Password
+            </BrandButton>
+          </div>
 
-        <Button type="submit" variant="primary" size="lg" block loading={submitting}>
-          Update password
-        </Button>
-
-        {!forced ? (
-          <Button variant="ghost" block onClick={() => navigate(-1)}>
-            Cancel
-          </Button>
-        ) : null}
-      </form>
-    </AuthLayout>
+          {/* No way out while the rotation is forced — the API closes every
+              other endpoint for this user, so a Cancel would only dead-end. */}
+          {!forced ? (
+            <BrandButtonSecondary onClick={() => navigate(-1)}>Cancel</BrandButtonSecondary>
+          ) : null}
+        </form>
+      </AuthCard>
+    </AuthShell>
   );
 }
