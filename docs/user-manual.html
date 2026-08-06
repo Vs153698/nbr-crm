@@ -5,123 +5,150 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NBR — User manual</title>
 <style>
-  :root {
-    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
-    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
-    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
-    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
-    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
-    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
-    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+  :root{
+    /* Straight from the CRM's own login screen (tailwind.config.ts -> nbr.*) */
+    --bg:#0D1B2A; --dot:#1B2C3D; --surface:#10202F; --raised:#16293A;
+    --line:#1E3549; --edge:#2B4763;
+    --orange:#E8823C; --orange-hover:#D4712C; --orange-soft:#3A2418; --orange-ring:#7A4A22;
+
+    /* Text scale. The --ink-* aliases are kept because a few inline styles in
+       the body reference them; they now resolve to the dark-surface ramp. */
+    --text:#FFFFFF; --ink:#FFFFFF;
+    --text-2:#B4C4D4; --ink-2:#B4C4D4;
+    --text-3:#8098B0; --ink-3:#8098B0;
+    --text-4:#5C7188;
+
+    /* The semantic tokens are mixed against the light app canvas and go muddy
+       here, so these are the same hues lifted for a dark surface. */
+    --ok:#4FC97F; --warn:#E8A33C; --danger:#E8706A; --info:#6D9BF1; --purple:#A98BEF;
+
+    --radius:12px;
     --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  /* Light only, deliberately: this is printed and handed to staff, and the
-     browser must not restyle the canvas to match a dark OS theme. */
-  html{scroll-behavior:smooth;color-scheme:light}
-  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
-    font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
-
-  header.top{
-    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
-               linear-gradient(160deg,var(--navy),var(--navy-soft));
-    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  html{scroll-behavior:smooth;color-scheme:dark}
+  body{
+    margin:0;font-family:var(--sans);color:var(--text-2);background-color:var(--bg);
+    /* Dot grid, as on the login screen: a radial-gradient drawing a dot, not a ramp. */
+    background-image:radial-gradient(circle,var(--dot) 1.5px,transparent 1.5px);
+    background-size:28px 28px;
+    font-size:14.5px;line-height:1.65;-webkit-font-smoothing:antialiased;
   }
+
+  header.top{border-bottom:1px solid var(--line);padding:38px clamp(18px,4vw,48px) 30px}
   .wrap{max-width:1080px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
-  .brand .mark{width:38px;height:38px;border-radius:9px;
-    background:linear-gradient(145deg,#F0C64E,var(--gold));
-    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
-  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
-  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
-  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
-  header.top .lede{margin:0;color:#B6C4E2;max-width:74ch}
+  .brand{display:flex;align-items:center;gap:13px;margin-bottom:26px}
+  .brand .mark{width:40px;height:40px;border-radius:10px;background:var(--raised);
+    border:1px solid var(--edge);display:grid;place-items:center;font-size:17px;
+    color:var(--orange);font-weight:800;flex:none}
+  .brand h1{font-size:13px;margin:0;letter-spacing:.18em;text-transform:uppercase;color:var(--text)}
+  .brand p{margin:2px 0 0;font-size:10px;color:var(--text-4);letter-spacing:.22em;text-transform:uppercase}
+  header.top h2{font-size:clamp(24px,3.2vw,34px);margin:0 0 10px;letter-spacing:-.02em;
+    color:var(--text);font-weight:700}
+  header.top .lede{margin:0;color:var(--text-3);max-width:74ch}
 
-  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 90px}
 
-  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
-    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
-  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
-  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+  nav.toc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 19px;margin:26px 0 34px;display:flex;flex-wrap:wrap;gap:7px 18px;font-size:12.8px}
+  nav.toc a{color:var(--text-3);text-decoration:none;font-weight:500;transition:color .15s}
+  nav.toc a:hover{color:var(--orange)}
 
-  section{margin-bottom:44px;scroll-margin-top:16px}
-  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
-  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
-  h4{font-size:14.5px;margin:26px 0 8px}
-  h5{font-size:13px;margin:18px 0 6px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
-  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
-  p{max-width:78ch}
+  section{margin-bottom:46px;scroll-margin-top:16px}
+  h3{font-size:19.5px;margin:0 0 7px;letter-spacing:-.01em;color:var(--text);
+    display:flex;align-items:baseline;gap:11px;font-weight:700}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--orange);font-weight:700}
+  h4{font-size:14.5px;margin:26px 0 8px;color:var(--text);font-weight:650}
+  h5{font-size:11px;margin:20px 0 7px;color:var(--text-4);text-transform:uppercase;
+    letter-spacing:.1em;font-weight:700}
+  .sub{margin:0 0 18px;color:var(--text-3);max-width:78ch}
+  p{max-width:78ch;margin:10px 0}
+  strong{color:var(--text)}
 
-  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
-    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.7;margin:12px 0}
-  pre .c{color:#7B8DB5;font-style:italic}
-  code{font-family:var(--mono);font-size:.88em;background:var(--slate-tint);
-    padding:1.5px 5px;border-radius:4px;color:var(--navy)}
-  pre code{background:none;padding:0;color:inherit}
+  pre{background:#0A1520;color:#D6E2EE;border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 17px;overflow-x:auto;font-family:var(--mono);font-size:12.2px;
+    line-height:1.75;margin:13px 0}
+  pre .c{color:var(--text-4);font-style:italic}
+  code{font-family:var(--mono);font-size:.88em;background:var(--raised);
+    padding:2px 6px;border-radius:5px;color:#E3ECF5;border:1px solid var(--line)}
+  pre code{background:none;padding:0;border:none;color:inherit}
 
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:18px 20px;box-shadow:var(--shadow);margin:14px 0}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:19px 21px;margin:15px 0}
 
-  .tbl-scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--line);
-    border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
-  table{border-collapse:collapse;width:100%;font-size:13.2px;min-width:520px}
-  th{text-align:left;padding:10px 14px;background:var(--slate-tint);color:var(--ink-2);
-    font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  .tbl-scroll{overflow-x:auto;margin:15px 0;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:520px}
+  th{text-align:left;padding:11px 14px;background:var(--raised);color:var(--text-3);
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;
     border-bottom:1px solid var(--line);white-space:nowrap}
-  td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--text-2)}
   tr:last-child td{border-bottom:none}
   td code{white-space:nowrap}
 
-  .note{border-left:3px solid var(--blue);background:var(--blue-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .warn{border-left:3px solid var(--amber);background:var(--amber-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .danger{border-left:3px solid var(--red);background:var(--red-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .ok{border-left:3px solid var(--green);background:var(--green-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .note,.warn,.danger,.ok{border-left:3px solid;padding:14px 17px;
+    border-radius:0 var(--radius) var(--radius) 0;margin:15px 0}
+  .note{border-color:var(--info);background:rgba(109,155,241,.10)}
+  .warn{border-color:var(--warn);background:rgba(232,163,60,.10)}
+  .danger{border-color:var(--danger);background:rgba(232,112,106,.10)}
+  .ok{border-color:var(--ok);background:rgba(79,201,127,.10)}
   .note p,.warn p,.danger p,.ok p{margin:0}
-  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:8px}
+  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:9px}
+  .note strong{color:var(--info)} .warn strong{color:var(--warn)}
+  .danger strong{color:var(--danger)} .ok strong{color:var(--ok)}
 
-  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;
-    border-radius:20px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
-  .p-blue{background:var(--blue-tint);color:var(--blue)}
-  .p-green{background:var(--green-tint);color:var(--green)}
-  .p-amber{background:var(--amber-tint);color:var(--amber)}
-  .p-red{background:var(--red-tint);color:var(--red)}
-  .p-purple{background:var(--purple-tint);color:var(--purple)}
-  .p-slate{background:var(--slate-tint);color:var(--slate)}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;
+    border-radius:20px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;
+    border:1px solid}
+  .p-blue{background:rgba(109,155,241,.12);color:var(--info);border-color:rgba(109,155,241,.35)}
+  .p-green{background:rgba(79,201,127,.12);color:var(--ok);border-color:rgba(79,201,127,.35)}
+  .p-amber{background:rgba(232,163,60,.12);color:var(--warn);border-color:rgba(232,163,60,.35)}
+  .p-red{background:rgba(232,112,106,.12);color:var(--danger);border-color:rgba(232,112,106,.35)}
+  .p-purple{background:rgba(169,139,239,.12);color:var(--purple);border-color:rgba(169,139,239,.35)}
+  .p-slate{background:var(--raised);color:var(--text-3);border-color:var(--line)}
 
   ol,ul{max-width:78ch;padding-left:22px}
-  li{margin:5px 0}
+  li{margin:6px 0}
   ol.steps{counter-reset:s;list-style:none;padding-left:0}
-  ol.steps>li{counter-increment:s;position:relative;padding-left:34px;margin:12px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:36px;margin:14px 0}
   ol.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;
-    width:23px;height:23px;border-radius:50%;background:var(--blue);color:#fff;
+    width:24px;height:24px;border-radius:50%;background:var(--orange-soft);
+    border:1px solid var(--orange-ring);color:var(--orange);
     font-size:11.5px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+  ul.check{list-style:none;padding-left:0}
+  ul.check li{position:relative;padding-left:28px;margin:8px 0}
+  ul.check li::before{content:"";position:absolute;left:0;top:5px;width:14px;height:14px;
+    border:1.5px solid var(--edge);border-radius:4px}
 
-  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:16px 0;
-    padding:16px;background:var(--card);border:1px solid var(--line);
-    border-radius:var(--radius);box-shadow:var(--shadow)}
-  .flow .step{background:var(--slate-tint);border-radius:6px;padding:5px 11px;
-    font-size:12.3px;font-weight:600;white-space:nowrap}
-  .flow .step.hi{background:var(--blue);color:#fff}
-  .flow .arr{color:var(--ink-3);font-size:13px}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;padding:17px;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+  .flow .step{background:var(--raised);border:1px solid var(--line);border-radius:7px;
+    padding:6px 12px;font-size:12.3px;font-weight:600;white-space:nowrap;color:var(--text-2)}
+  .flow .step.hi{background:var(--orange-soft);border-color:var(--orange-ring);color:var(--orange)}
+  .flow .arr{color:var(--text-4);font-size:13px}
 
   .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:14px 0}
 
-  footer{border-top:1px solid var(--line);padding:22px clamp(18px,4vw,48px);
-    color:var(--ink-3);font-size:12.5px;background:var(--card)}
+  a{color:var(--orange)}
+  footer{border-top:1px solid var(--line);padding:24px clamp(18px,4vw,48px);
+    color:var(--text-4);font-size:12.3px}
   footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 
+  /* Printed and handed to staff, so the dark canvas is dropped for paper. */
   @media print{
-    body{background:#fff;font-size:11pt}
-    header.top{background:var(--navy)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html{color-scheme:light}
+    body{background:#fff;background-image:none;color:#2B3648;font-size:10.5pt}
+    header.top,.card,.tbl-scroll,nav.toc,.flow{border-color:#D8DFE8}
+    .card,.tbl-scroll,.flow{background:#fff}
+    header.top h2,h3,h4,strong{color:#10182B}
+    th{background:#F1F4F8;color:#47536B}
+    td,p,li,.sub,header.top .lede{color:#2B3648}
+    pre{background:#0E1B3D;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    code{background:#F1F4F8;color:#10182B;border-color:#D8DFE8}
+    .flow .step{background:#F1F4F8;color:#2B3648}
     nav.toc{display:none}
     section{break-inside:avoid}
-    pre{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
 </head>
