@@ -119,9 +119,26 @@ export class LegacyLifecycleService {
     const amount = legacy.amount ?? toRupees(legacy.amountPaise ?? 0);
     if (toPaise(amount) <= 0) return false;
 
-    const packageName = legacy.plan
-      ? `${IMPORTED_PACKAGE_PREFIX} — ${legacy.plan}`
-      : `${IMPORTED_PACKAGE_PREFIX} plan`;
+    // Resolve the plan against our own catalogue first. Since the packages are
+    // mirrored from the website they carry its plan code, so "premium" lands on
+    // the real Premium package — the one the Raise Payment dropdown offers and
+    // the one revenue reports group by. The invented "Website — premium" name
+    // below is the fallback for a plan we have not mirrored yet; leaving it as
+    // the default would put a package name in the ledger that appears nowhere
+    // else in the system.
+    const [mirroredPackage] = legacy.plan
+      ? await tx
+          .select({ id: schema.packages.id, name: schema.packages.name })
+          .from(schema.packages)
+          .where(eq(schema.packages.legacyCode, legacy.plan))
+          .limit(1)
+      : [];
+
+    const packageName =
+      mirroredPackage?.name ??
+      (legacy.plan
+        ? `${IMPORTED_PACKAGE_PREFIX} — ${legacy.plan}`
+        : `${IMPORTED_PACKAGE_PREFIX} plan`);
 
     const [existing] = await tx
       .select({ id: schema.payments.id, amountPaid: schema.payments.amountPaid })
@@ -151,6 +168,7 @@ export class LegacyLifecycleService {
         .values({
           recordId,
           applicantId,
+          packageId: mirroredPackage?.id ?? null,
           packageName,
           amount,
           discount: '0.00',
