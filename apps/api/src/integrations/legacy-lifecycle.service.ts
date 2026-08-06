@@ -133,6 +133,18 @@ export class LegacyLifecycleService {
 
     if (existing) {
       paymentId = existing.id;
+
+      // The CRM has already banked at least this much against the record, so
+      // the snapshot is reporting money we put there ourselves — a payment the
+      // CRM pushed out and the website is now echoing back on its next event.
+      // Banking it again would double-count the revenue, and where the CRM set
+      // a transaction reference it also trips the (payment_id, transaction_ref)
+      // unique index, which fails the whole snapshot and silently strands the
+      // dispatch or certificate change travelling alongside it.
+      //
+      // Merge forward, never backward: a snapshot may only ever add money the
+      // CRM does not have yet.
+      if (toPaise(existing.amountPaid ?? '0') >= toPaise(amount)) return false;
     } else {
       const [created] = await tx
         .insert(schema.payments)
@@ -177,6 +189,26 @@ export class LegacyLifecycleService {
       .limit(1);
 
     if (alreadyBanked) return false;
+
+    // Second guard, on the reference rather than the key. The same receipt can
+    // reach us under a different idempotency key — once as the CRM's own entry,
+    // once as `legacy:<id>` when the website echoes it back — and the two keys
+    // never match. `(payment_id, transaction_ref)` is uniquely indexed, so
+    // without this the insert raises and takes the whole import down with it.
+    if (legacy.referenceNumber) {
+      const [sameReference] = await tx
+        .select({ id: schema.paymentTransactions.id })
+        .from(schema.paymentTransactions)
+        .where(
+          and(
+            eq(schema.paymentTransactions.paymentId, paymentId),
+            eq(schema.paymentTransactions.transactionRef, legacy.referenceNumber),
+          ),
+        )
+        .limit(1);
+
+      if (sameReference) return false;
+    }
 
     await tx.insert(schema.paymentTransactions).values({
       paymentId,
