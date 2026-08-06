@@ -3,125 +3,149 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NBR — Deployment manual</title>
+<title>NBR — Coolify deployment manual</title>
 <style>
-  :root {
-    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
-    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
-    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
-    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
-    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
-    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
-    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+  :root{
+    /* Straight from the CRM's own login screen (tailwind.config.ts → nbr.*) */
+    --bg:#0D1B2A; --dot:#1B2C3D; --surface:#10202F; --raised:#16293A;
+    --line:#1E3549; --edge:#2B4763;
+    --orange:#E8823C; --orange-hover:#D4712C; --orange-soft:#3A2418; --orange-ring:#7A4A22;
+    --text:#FFFFFF; --text-2:#B4C4D4; --text-3:#8098B0; --text-4:#5C7188;
+    /* The semantic tokens are mixed against the light app canvas and turn muddy
+       here, so these are the same hues lifted for a dark surface. */
+    --ok:#4FC97F; --warn:#E8A33C; --danger:#E8706A; --info:#6D9BF1; --purple:#A98BEF;
+    --radius:12px;
     --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth;color-scheme:light}
-  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
-    font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
-
-  header.top{
-    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
-               linear-gradient(160deg,var(--navy),var(--navy-soft));
-    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  html{scroll-behavior:smooth;color-scheme:dark}
+  body{
+    margin:0;font-family:var(--sans);color:var(--text-2);background-color:var(--bg);
+    /* Dot grid, as on the login screen: a radial-gradient drawing a dot, not a ramp. */
+    background-image:radial-gradient(circle,var(--dot) 1.5px,transparent 1.5px);
+    background-size:28px 28px;
+    font-size:14.5px;line-height:1.65;-webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1080px;margin:0 auto}
-  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
-  .brand .mark{width:38px;height:38px;border-radius:9px;
-    background:linear-gradient(145deg,#F0C64E,var(--gold));
-    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
-  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
-  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
-  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
-  header.top .lede{margin:0;color:#B6C4E2;max-width:74ch}
 
-  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+  header.top{border-bottom:1px solid var(--line);padding:38px clamp(18px,4vw,48px) 30px}
+  .wrap{max-width:1060px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:13px;margin-bottom:26px}
+  .brand .mark{width:40px;height:40px;border-radius:10px;background:var(--raised);
+    border:1px solid var(--edge);display:grid;place-items:center;font-size:17px;
+    color:var(--orange);font-weight:800;flex:none}
+  .brand h1{font-size:13px;margin:0;letter-spacing:.18em;text-transform:uppercase;color:var(--text)}
+  .brand p{margin:2px 0 0;font-size:10px;color:var(--text-4);letter-spacing:.22em;text-transform:uppercase}
+  header.top h2{font-size:clamp(24px,3.2vw,34px);margin:0 0 10px;letter-spacing:-.02em;color:var(--text);font-weight:700}
+  header.top .lede{margin:0;color:var(--text-3);max-width:74ch}
 
-  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
-    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
-  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
-  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+  main{max-width:1060px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 90px}
 
-  section{margin-bottom:44px;scroll-margin-top:16px}
-  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
-  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
-  h4{font-size:14.5px;margin:26px 0 8px}
-  h5{font-size:13px;margin:18px 0 6px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
-  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
-  p{max-width:78ch}
+  nav.toc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 19px;margin:26px 0 34px;display:flex;flex-wrap:wrap;gap:7px 18px;font-size:12.8px}
+  nav.toc a{color:var(--text-3);text-decoration:none;font-weight:500;transition:color .15s}
+  nav.toc a:hover{color:var(--orange)}
 
-  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
-    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.7;margin:12px 0}
-  pre .c{color:#7B8DB5;font-style:italic}
-  pre .k{color:#F0C64E}
-  code{font-family:var(--mono);font-size:.88em;background:var(--slate-tint);
-    padding:1.5px 5px;border-radius:4px;color:var(--navy)}
-  pre code{background:none;padding:0;color:inherit}
+  section{margin-bottom:46px;scroll-margin-top:16px}
+  h3{font-size:19.5px;margin:0 0 7px;letter-spacing:-.01em;color:var(--text);
+    display:flex;align-items:baseline;gap:11px;font-weight:700}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--orange);font-weight:700}
+  h4{font-size:14.5px;margin:26px 0 8px;color:var(--text);font-weight:650}
+  h5{font-size:11px;margin:20px 0 7px;color:var(--text-4);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+  .sub{margin:0 0 18px;color:var(--text-3);max-width:78ch}
+  p{max-width:78ch;margin:10px 0}
 
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:18px 20px;box-shadow:var(--shadow);margin:14px 0}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:19px 21px;margin:15px 0}
+  .card.accent{overflow:hidden;padding:0}
+  .card.accent .rule{height:3px;background:var(--orange)}
+  .card.accent .inner{padding:19px 21px}
 
-  .tbl-scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--line);
-    border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
-  table{border-collapse:collapse;width:100%;font-size:13.2px;min-width:560px}
-  th{text-align:left;padding:10px 14px;background:var(--slate-tint);color:var(--ink-2);
-    font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  pre{background:#0A1520;color:#D6E2EE;border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 17px;overflow-x:auto;font-family:var(--mono);font-size:12.2px;
+    line-height:1.75;margin:13px 0}
+  pre .c{color:var(--text-4);font-style:italic}
+  pre .k{color:var(--orange)}
+  pre .s{color:#7FD1A0}
+  code{font-family:var(--mono);font-size:.88em;background:var(--raised);
+    padding:2px 6px;border-radius:5px;color:#E3ECF5;border:1px solid var(--line)}
+  pre code{background:none;padding:0;border:none;color:inherit}
+
+  .tbl-scroll{overflow-x:auto;margin:15px 0;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+  th{text-align:left;padding:11px 14px;background:var(--raised);color:var(--text-3);
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;
     border-bottom:1px solid var(--line);white-space:nowrap}
-  td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--text-2)}
   tr:last-child td{border-bottom:none}
+  td strong{color:var(--text)}
   td code{white-space:nowrap}
 
-  .note{border-left:3px solid var(--blue);background:var(--blue-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .warn{border-left:3px solid var(--amber);background:var(--amber-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .danger{border-left:3px solid var(--red);background:var(--red-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
-  .ok{border-left:3px solid var(--green);background:var(--green-tint);
-    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .note,.warn,.danger,.ok{border-left:3px solid;padding:14px 17px;
+    border-radius:0 var(--radius) var(--radius) 0;margin:15px 0}
+  .note{border-color:var(--info);background:rgba(109,155,241,.10)}
+  .warn{border-color:var(--warn);background:rgba(232,163,60,.10)}
+  .danger{border-color:var(--danger);background:rgba(232,112,106,.10)}
+  .ok{border-color:var(--ok);background:rgba(79,201,127,.10)}
   .note p,.warn p,.danger p,.ok p{margin:0}
-  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:8px}
+  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:9px}
+  .note strong{color:var(--info)} .warn strong{color:var(--warn)}
+  .danger strong{color:var(--danger)} .ok strong{color:var(--ok)}
 
-  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;
-    border-radius:20px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
-  .p-blue{background:var(--blue-tint);color:var(--blue)}
-  .p-green{background:var(--green-tint);color:var(--green)}
-  .p-amber{background:var(--amber-tint);color:var(--amber)}
-  .p-red{background:var(--red-tint);color:var(--red)}
-  .p-purple{background:var(--purple-tint);color:var(--purple)}
-  .p-slate{background:var(--slate-tint);color:var(--slate)}
+  .pill{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;
+    border-radius:20px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;
+    border:1px solid}
+  .p-orange{background:var(--orange-soft);color:var(--orange);border-color:var(--orange-ring)}
+  .p-ok{background:rgba(79,201,127,.12);color:var(--ok);border-color:rgba(79,201,127,.35)}
+  .p-warn{background:rgba(232,163,60,.12);color:var(--warn);border-color:rgba(232,163,60,.35)}
+  .p-danger{background:rgba(232,112,106,.12);color:var(--danger);border-color:rgba(232,112,106,.35)}
+  .p-info{background:rgba(109,155,241,.12);color:var(--info);border-color:rgba(109,155,241,.35)}
+  .p-slate{background:var(--raised);color:var(--text-3);border-color:var(--line)}
 
   ol,ul{max-width:78ch;padding-left:22px}
-  li{margin:5px 0}
+  li{margin:6px 0}
   ol.steps{counter-reset:s;list-style:none;padding-left:0}
-  ol.steps>li{counter-increment:s;position:relative;padding-left:34px;margin:12px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:36px;margin:14px 0}
   ol.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;
-    width:23px;height:23px;border-radius:50%;background:var(--blue);color:#fff;
+    width:24px;height:24px;border-radius:50%;background:var(--orange-soft);
+    border:1px solid var(--orange-ring);color:var(--orange);
     font-size:11.5px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
-
   ul.check{list-style:none;padding-left:0}
-  ul.check li{position:relative;padding-left:26px;margin:7px 0}
-  ul.check li::before{content:"";position:absolute;left:0;top:4px;width:14px;height:14px;
-    border:1.5px solid var(--ink-3);border-radius:3px}
+  ul.check li{position:relative;padding-left:28px;margin:8px 0}
+  ul.check li::before{content:"";position:absolute;left:0;top:5px;width:14px;height:14px;
+    border:1.5px solid var(--edge);border-radius:4px}
 
-  .arch{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:16px 0}
-  .arch .box{flex:1 1 190px;background:var(--card);border:1px solid var(--line);
-    border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow)}
-  .arch .box strong{display:block;font-size:13px;margin-bottom:3px}
-  .arch .box span{font-size:12.2px;color:var(--ink-2)}
+  .arch{display:flex;flex-wrap:wrap;gap:11px;margin:16px 0}
+  .arch .box{flex:1 1 210px;background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px 16px}
+  .arch .box strong{display:block;font-size:13px;margin-bottom:4px;color:var(--text)}
+  .arch .box span{font-size:12.3px;color:var(--text-3)}
 
-  footer{border-top:1px solid var(--line);padding:22px clamp(18px,4vw,48px);
-    color:var(--ink-3);font-size:12.5px;background:var(--card)}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0;padding:17px;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+  .flow .step{background:var(--raised);border:1px solid var(--line);border-radius:7px;
+    padding:6px 12px;font-size:12.3px;font-weight:600;white-space:nowrap;color:var(--text-2)}
+  .flow .step.hi{background:var(--orange-soft);border-color:var(--orange-ring);color:var(--orange)}
+  .flow .arr{color:var(--text-4);font-size:13px}
+
+  a{color:var(--orange)}
+  footer{border-top:1px solid var(--line);padding:24px clamp(18px,4vw,48px);
+    color:var(--text-4);font-size:12.3px}
   footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 
   @media print{
-    body{background:#fff;font-size:11pt}
-    header.top{background:var(--navy)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html{color-scheme:light}
+    body{background:#fff;background-image:none;color:#10182B;font-size:10.5pt}
+    header.top,.card,.tbl-scroll,nav.toc{border-color:#D8DFE8}
+    h2,h3,h4,td strong{color:#10182B}
+    .card,.tbl-scroll{background:#fff}
+    th{background:#F1F4F8;color:#47536B}
+    td,p,li,.sub{color:#2B3648}
+    pre{background:#0E1B3D;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    code{background:#F1F4F8;color:#10182B;border-color:#D8DFE8}
     nav.toc{display:none}
     section{break-inside:avoid}
-    pre{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
 </head>
@@ -136,10 +160,11 @@
         <p>Backend CRM · Internal System</p>
       </div>
     </div>
-    <h2>Deployment manual</h2>
+    <h2>Coolify deployment manual</h2>
     <p class="lede">
-      Deploying the internal CRM to production, and exactly what has to change on the
-      existing website so the two connect. Written for whoever holds the servers.
+      Deploying the CRM on Coolify as two applications, with the exact environment for
+      <code>api.codenitti.in</code> and <code>crm.codenitti.in</code>, and what changes on
+      the existing <code>nationalbookofrecords.org</code> site.
     </p>
   </div>
 </header>
@@ -147,161 +172,251 @@
 <main>
 
 <nav class="toc">
-  <a href="#answer">1 · The short answer</a>
-  <a href="#arch">2 · What you are deploying</a>
-  <a href="#prereq">3 · Prerequisites</a>
+  <a href="#domains">1 · Domain plan</a>
+  <a href="#routing">2 · The routing decision</a>
+  <a href="#services">3 · Postgres &amp; Redis</a>
   <a href="#secrets">4 · Generating secrets</a>
-  <a href="#env">5 · CRM environment</a>
-  <a href="#build">6 · Build &amp; first run</a>
-  <a href="#proxy">7 · Reverse proxy</a>
-  <a href="#legacy">8 · Changes on the existing site</a>
-  <a href="#connect">9 · Connecting the two</a>
-  <a href="#verify">10 · Verifying</a>
-  <a href="#ops">11 · Backups, upgrades, rotation</a>
-  <a href="#trouble">12 · Troubleshooting</a>
+  <a href="#api-app">5 · API application</a>
+  <a href="#api-env">6 · Backend environment</a>
+  <a href="#web-app">7 · Frontend application</a>
+  <a href="#web-env">8 · Frontend environment</a>
+  <a href="#migrate">9 · Migrate &amp; seed</a>
+  <a href="#legacy">10 · The .org site</a>
+  <a href="#connect">11 · Connecting the two</a>
+  <a href="#verify">12 · Verifying</a>
+  <a href="#trouble">13 · Troubleshooting</a>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════════ 1 -->
-<section id="answer">
-  <h3><span class="num">01</span> The short answer about the existing site</h3>
-  <p class="sub">Because this is the question that prompted the document, here it is
-  first.</p>
+<section id="domains">
+  <h3><span class="num">01</span> Domain plan</h3>
+  <p class="sub">Three hostnames, each with one job.</p>
 
-  <div class="ok">
-    <p><strong>No environment variable changes are required on the existing website.</strong>
-    The connector reads none. Its three settings — whether sync is on, the CRM's address,
-    and the shared secret — are stored in the <code>site_settings</code> table and are set
-    through the admin panel at <strong>Settings → Internal CRM</strong>.</p>
-    <p>What the existing site does need is a <strong>database migration</strong> (it adds
-    one table and three settings rows, and touches nothing else), a <strong>deploy of the
-    connector branch</strong>, and <strong>outbound network access</strong> to the CRM.
-    Section 8 covers all three.</p>
-  </div>
-
-  <p>The full list of what changes on the existing site is deliberately small, because
-  the brief was that the customer-facing system keeps working exactly as it does today.
-  Nothing in its existing environment is touched.</p>
-</section>
-
-<!-- ══════════════════════════════════════════════════════════ 2 -->
-<section id="arch">
-  <h3><span class="num">02</span> What you are deploying</h3>
-
-  <h4>The CRM is four processes and three stores</h4>
-  <div class="arch">
-    <div class="box"><strong>API</strong><span>NestJS on Node 22. Serves <code>/api/v1</code>. Runs the scheduled jobs.</span></div>
-    <div class="box"><strong>Web</strong><span>React SPA built by Vite to static files. No server of its own.</span></div>
-    <div class="box"><strong>PostgreSQL 16</strong><span>All application data.</span></div>
-    <div class="box"><strong>Redis 7</strong><span>Sessions, cache, rate limits, job queue.</span></div>
-    <div class="box"><strong>S3-compatible storage</strong><span>Cloudflare R2 in production. Evidence, certificates, PDFs.</span></div>
-    <div class="box"><strong>SMTP</strong><span>Outbound email. Any provider.</span></div>
-  </div>
-
-  <div class="warn">
-    <p><strong>The SPA and the API must be served from the same origin.</strong> The web
-    app calls <code>/api/v1</code> as a relative path, and the auth cookies are
-    <code>SameSite=strict</code>. Putting the API on a different hostname breaks sign-in.
-    Section 7 shows the reverse-proxy layout.</p>
-  </div>
-
-  <h4>How the two systems talk</h4>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Direction</th><th>Caller</th><th>Endpoint on the receiver</th></tr></thead>
+      <thead><tr><th>Hostname</th><th>Serves</th><th>Who talks to it</th></tr></thead>
       <tbody>
-        <tr><td>Website → CRM</td><td>Website backend</td><td><code>POST /api/v1/integrations/nbr-website/applications</code></td></tr>
-        <tr><td>CRM → Website</td><td>CRM API</td><td><code>POST /api/crm-connector/{payment,certificate,dispatch}</code></td></tr>
-        <tr><td>CRM → Website</td><td>CRM API</td><td><code>GET /api/crm-connector/{plans,categories}</code></td></tr>
+        <tr><td><code>crm.codenitti.in</code></td>
+            <td>The CRM interface, <strong>and</strong> the API under <code>/api</code></td>
+            <td>Staff browsers. This is the only address anyone types.</td></tr>
+        <tr><td><code>api.codenitti.in</code></td>
+            <td>The same API container</td>
+            <td>The <code>.org</code> site's server, pushing signed webhooks. Server-to-server only — nobody opens this in a browser.</td></tr>
+        <tr><td><code>nationalbookofrecords.org</code></td>
+            <td>The existing public site and its admin</td>
+            <td>The public, and the CRM pushing payments, certificates and dispatch back.</td></tr>
       </tbody>
     </table>
   </div>
-  <p>Every call is signed with HMAC-SHA256 over the timestamp and the raw body, and
-  rejected if the timestamp is more than <strong>300 seconds</strong> from the receiver's
-  clock. Both servers need working NTP.</p>
+
+  <div class="flow">
+    <span class="step">Staff browser</span><span class="arr">→</span>
+    <span class="step hi">crm.codenitti.in</span><span class="arr">→</span>
+    <span class="step">SPA + /api → API</span>
+  </div>
+  <div class="flow">
+    <span class="step">nationalbookofrecords.org</span><span class="arr">→</span>
+    <span class="step hi">api.codenitti.in</span><span class="arr">→</span>
+    <span class="step">API</span>
+  </div>
+  <div class="flow">
+    <span class="step">API</span><span class="arr">→</span>
+    <span class="step hi">nationalbookofrecords.org</span><span class="arr">→</span>
+    <span class="step">/api/crm-connector/…</span>
+  </div>
+
+  <p>Both CRM hostnames point at the <strong>same Coolify application</strong>. There is
+  only ever one API container; it simply answers on two names.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 2 -->
+<section id="routing">
+  <h3><span class="num">02</span> The routing decision — read before you configure anything</h3>
+  <p class="sub">This is the one architectural constraint that will silently break sign-in
+  if you get it wrong, so it comes before the Coolify steps.</p>
+
+  <div class="danger">
+    <p><strong>The browser must reach the API on <code>crm.codenitti.in</code>, not
+    <code>api.codenitti.in</code>.</strong> Two facts in the built frontend force this,
+    and neither is configurable at deploy time:</p>
+    <p>1. The API base is a hardcoded relative path — <code>const API_BASE = '/api/v1'</code>
+    in <code>apps/web/src/lib/api-client.ts</code>. There are no <code>VITE_</code>
+    variables anywhere in the web app, so the built bundle cannot be pointed elsewhere.</p>
+    <p>2. Every request is sent with <code>credentials: 'same-origin'</code>. If the SPA
+    on <code>crm.codenitti.in</code> called <code>api.codenitti.in</code>, the browser
+    would attach <strong>no cookies at all</strong> and every request would come back
+    unauthenticated — a login that appears to succeed and then immediately fails.</p>
+  </div>
+
+  <h4>What this means in practice</h4>
+  <p>Serve the SPA at <code>crm.codenitti.in</code> and have that same host forward
+  <code>/api/*</code> to the API container. The browser then sees one origin, the
+  <code>SameSite=strict</code> cookies work exactly as intended, and CORS never enters
+  the picture because there is no cross-origin request to permit.</p>
+
+  <p><code>api.codenitti.in</code> still earns its place: it is what the <code>.org</code>
+  server posts its signed webhooks to. That traffic carries an HMAC signature rather than
+  a cookie, so origin and CORS are irrelevant to it.</p>
+
+  <div class="note">
+    <p><strong>If you would rather the browser call <code>api.codenitti.in</code>
+    directly</strong>, that is a code change, not a configuration change: introduce a
+    <code>VITE_API_BASE_URL</code>, switch the three <code>credentials: 'same-origin'</code>
+    call sites to <code>'include'</code>, set <code>COOKIE_DOMAIN=.codenitti.in</code>,
+    and add <code>https://crm.codenitti.in</code> to <code>CORS_ORIGINS</code>. It works —
+    the two hosts share a registrable domain, so <code>SameSite=strict</code> still
+    applies — but it is more moving parts for no gain. Section 7 takes the proxy route.</p>
+  </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ 3 -->
-<section id="prereq">
-  <h3><span class="num">03</span> Prerequisites</h3>
-  <ul class="check">
-    <li><strong>Node.js 22 or newer</strong> and <strong>pnpm 11.15.1</strong> (<code>corepack enable</code> is the easiest route).</li>
-    <li><strong>PostgreSQL 16</strong> — hosted in India, see the note below.</li>
-    <li><strong>Redis 7</strong>.</li>
-    <li><strong>An S3-compatible bucket</strong> — Cloudflare R2 with an Object Read &amp; Write token.</li>
-    <li><strong>SMTP credentials</strong> that can send as your organisation's domain.</li>
-    <li><strong>TLS</strong> on the CRM hostname. Non-negotiable: the API refuses to start in production without secure cookies.</li>
-    <li><strong>Outbound HTTPS from the website's server to the CRM</strong>, and from the CRM to the website.</li>
-  </ul>
+<section id="services">
+  <h3><span class="num">03</span> Postgres and Redis in Coolify</h3>
 
-  <div class="danger">
-    <p><strong>Data residency.</strong> <code>DPDP_DATA_REGION</code> defaults to
-    <code>IN</code> and the API checks the database host against it at boot. Host
-    Postgres and the object storage bucket in India. This is a DPDP Act, 2023 posture
-    decision, not a performance one — do not "fix" a boot failure here by weakening the
-    setting.</p>
+  <ol class="steps">
+    <li><strong>New Resource → PostgreSQL 16</strong> in your project. Coolify generates the
+        credentials. Copy the <em>internal</em> connection string — the one using the
+        service name, not a public host.</li>
+    <li><strong>New Resource → Redis 7.</strong> Same again: take the internal URL.</li>
+    <li>Leave both <strong>without a public domain.</strong> They only ever need to be
+        reachable from the API container on Coolify's internal network.</li>
+  </ol>
+
+  <p>The internal URLs look like this, with the service names Coolify assigns:</p>
+<pre><span class="c"># DATABASE_URL</span>
+postgresql://nbr:&lt;generated-password&gt;@&lt;postgres-service-name&gt;:5432/nbr_crm
+
+<span class="c"># REDIS_URL</span>
+redis://:&lt;generated-password&gt;@&lt;redis-service-name&gt;:6379</pre>
+
+  <div class="warn">
+    <p><strong>Sessions live in Redis.</strong> Losing or flushing it signs everyone out.
+    That is recoverable — people sign in again — but do not point it at a shared Redis
+    that something else flushes on a schedule.</p>
   </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ 4 -->
 <section id="secrets">
   <h3><span class="num">04</span> Generating secrets</h3>
-  <p class="sub">Generate these once, store them in your secret manager, and never
-  commit them.</p>
+  <p class="sub">Generate these on your own machine and paste them into Coolify. Do not
+  commit them anywhere.</p>
 
-<pre><span class="c"># Two DIFFERENT JWT secrets — the API refuses to start if they match,</span>
-<span class="c"># because a shared secret lets an access token be replayed as a refresh token.</span>
-openssl rand -base64 48   <span class="c"># → JWT_ACCESS_SECRET</span>
-openssl rand -base64 48   <span class="c"># → JWT_REFRESH_SECRET</span>
+<pre><span class="c"># Two DIFFERENT JWT secrets. The API refuses to start if they match, because one</span>
+<span class="c"># shared secret would let an access token be replayed as a refresh token.</span>
+openssl rand -base64 48    <span class="c"># → JWT_ACCESS_SECRET</span>
+openssl rand -base64 48    <span class="c"># → JWT_REFRESH_SECRET</span>
 
-<span class="c"># 32 bytes for encrypting Aadhaar / passport / bank details at rest.</span>
-openssl rand -base64 32   <span class="c"># → PII_ENCRYPTION_KEY</span>
+<span class="c"># 32 bytes, base64, for encrypting Aadhaar / passport / bank details at rest.</span>
+openssl rand -base64 32    <span class="c"># → PII_ENCRYPTION_KEY</span>
 
-<span class="c"># The shared secret between the CRM and the website.</span>
-openssl rand -hex 32      <span class="c"># → NBR_WEBHOOK_SECRET</span></pre>
+<span class="c"># The shared secret between the CRM and the .org site. Minimum 16 characters.</span>
+openssl rand -hex 32       <span class="c"># → NBR_WEBHOOK_SECRET</span>
+
+<span class="c"># A real password for the first admin. It is forced to change at first login.</span>
+openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pre>
 
   <div class="danger">
-    <p><strong>The webhook secret goes in three places and all three must match exactly.</strong>
-    This is the single most common cause of a failed integration.</p>
+    <p><strong>The webhook secret goes in three places and all three must be byte-identical.</strong>
+    This is the most common integration failure by a wide margin.</p>
   </div>
 
   <div class="tbl-scroll">
     <table>
       <thead><tr><th>#</th><th>Where</th><th>Used for</th></tr></thead>
       <tbody>
-        <tr><td>1</td><td>CRM environment → <code>NBR_WEBHOOK_SECRET</code></td><td>Verifying pushes arriving <em>from</em> the website.</td></tr>
-        <tr><td>2</td><td>CRM settings → integration secret</td><td>Signing pushes going <em>to</em> the website.</td></tr>
-        <tr><td>3</td><td>Website admin → Settings → Internal CRM → shared secret</td><td>Both signing and verifying on that side.</td></tr>
+        <tr><td>1</td><td>Coolify → API app → <code>NBR_WEBHOOK_SECRET</code></td>
+            <td>Verifying webhooks arriving <em>from</em> the .org site.</td></tr>
+        <tr><td>2</td><td>CRM UI → Settings → integration secret</td>
+            <td>Signing pushes going <em>to</em> the .org site.</td></tr>
+        <tr><td>3</td><td>.org admin → Settings → Internal CRM → shared secret</td>
+            <td>Both signing and verifying on that side.</td></tr>
       </tbody>
     </table>
   </div>
-  <p>Paste it with no leading or trailing whitespace and no surrounding quotes. Both
-  sides expose a <strong>fingerprint</strong> of the secret they hold so you can compare
-  them without revealing either.</p>
+  <p>Paste with no surrounding quotes and no trailing newline. Both systems expose a
+  <strong>fingerprint</strong> of the secret they hold, so you can compare them without
+  either side revealing the value.</p>
+
+  <div class="warn">
+    <p><strong>Losing <code>PII_ENCRYPTION_KEY</code> makes the encrypted identifier
+    columns unrecoverable.</strong> Store it in a password manager, separately from the
+    database backups. A backup you cannot decrypt is not a backup.</p>
+  </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ 5 -->
-<section id="env">
-  <h3><span class="num">05</span> CRM environment</h3>
-  <p class="sub">Copy <code>apps/api/.env.example</code> to <code>apps/api/.env</code>
-  and fill it in. Below is what production needs and why.</p>
+<section id="api-app">
+  <h3><span class="num">05</span> The API application</h3>
 
-  <div class="warn">
-    <p><strong>Keep exactly one <code>.env</code>.</strong> A second copy at the
-    repository root will be loaded instead depending on the working directory the process
-    starts from, and you will chase signature failures caused by two different secrets.</p>
+  <ol class="steps">
+    <li><strong>New Resource → Application</strong>, pointed at this repository, on the
+        branch you deploy from. <strong>Base Directory: <code>/</code></strong> — it is a
+        pnpm workspace and the build must run from the root, not from
+        <code>apps/api</code>.</li>
+    <li><strong>Build Pack: Nixpacks.</strong> There is no Dockerfile in the repo.</li>
+    <li><strong>Install command</strong>
+<pre><code>corepack enable &amp;&amp; pnpm install --frozen-lockfile</code></pre></li>
+    <li><strong>Build command</strong> — the shared package must be built before the API,
+        because the API imports its compiled output.
+<pre><code>pnpm --filter @nbr/shared build &amp;&amp; pnpm --filter @nbr/api build</code></pre></li>
+    <li><strong>Start command</strong>
+<pre><code>pnpm --filter @nbr/api start:prod</code></pre></li>
+    <li><strong>Port: <code>4100</code></strong>, matching <code>API_PORT</code>. The app
+        binds <code>0.0.0.0</code>, so it is reachable inside the container network without
+        further work.</li>
+    <li><strong>Health check path: <code>/health</code></strong>
+        <span class="pill p-warn">not /api/v1/health</span> — the health routes are
+        deliberately excluded from the global prefix and are version-neutral.</li>
+    <li><strong>Domains:</strong> add both, comma-separated.
+<pre><code>https://api.codenitti.in,https://crm.codenitti.in/api</code></pre>
+        The second entry is what puts the API on the same origin as the SPA.</li>
+  </ol>
+
+  <div class="danger">
+    <p><strong>Check whether Coolify's proxy strips the path prefix.</strong> If the
+    <code>/api</code> route arrives at the container with <code>/api</code> already
+    removed, every request 404s, because the application genuinely expects to be served
+    under <code>/api</code>. Verify with the curl in section 12 before going further — if
+    it 404s, remove the strip-prefix middleware on that route, or use the nginx approach
+    in section 7 instead, which leaves the path untouched.</p>
+  </div>
+
+  <div class="ok">
+    <p><strong>Run exactly one instance.</strong> The scheduled jobs — the evening sales
+    report, payment reminders, the retention sweep — are not leader-elected, so a second
+    replica sends everything twice.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 6 -->
+<section id="api-env">
+  <h3><span class="num">06</span> Backend environment</h3>
+  <p class="sub">All of this goes in the API application's <strong>Environment
+  Variables</strong> tab in Coolify. Values below are the real ones for these domains.</p>
+
+  <div class="note">
+    <p><strong>No <code>.env</code> file is involved.</strong> The API calls
+    <code>dotenv/config</code> at startup, but dotenv never overwrites a variable that is
+    already set in the process environment — so Coolify's injected values win, and with no
+    <code>.env</code> file in the container the call simply does nothing. Set everything
+    in the Coolify UI and do not ship a <code>.env</code>.</p>
+    <p>None of these are build-time variables. Leave Coolify's <em>Build Variable</em>
+    checkbox unticked for all of them.</p>
   </div>
 
   <h5>Application</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th><th>Why</th></tr></thead>
       <tbody>
-        <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>Switches on every guard in this table.</td></tr>
-        <tr><td><code>API_PORT</code></td><td><code>4100</code></td><td>Bind behind the proxy; do not expose directly.</td></tr>
-        <tr><td><code>API_URL</code></td><td><code>https://crm.example.in</code></td><td>Used in generated links.</td></tr>
-        <tr><td><code>WEB_URL</code></td><td><code>https://crm.example.in</code></td><td>Same origin as the API.</td></tr>
-        <tr><td><code>CORS_ORIGINS</code></td><td><code>https://crm.example.in</code></td><td><span class="pill p-red">Required</span> Wildcards are rejected — the API serves personal data with credentials.</td></tr>
-        <tr><td><code>DOCS_ENABLED</code></td><td><code>false</code></td><td>The API reference lists every endpoint and its permission. Leave it off.</td></tr>
+        <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>Switches on every guard below.</td></tr>
+        <tr><td><code>APP_NAME</code></td><td><code>NBR Backend CRM</code></td><td>Appears in logs and email subjects.</td></tr>
+        <tr><td><code>API_PORT</code></td><td><code>4100</code></td><td>Must match the port Coolify exposes.</td></tr>
+        <tr><td><code>API_URL</code></td><td><code>https://api.codenitti.in</code></td><td>Used for generated links and the OpenAPI server URL.</td></tr>
+        <tr><td><code>WEB_URL</code></td><td><code>https://crm.codenitti.in</code></td><td>Where staff-facing links point.</td></tr>
+        <tr><td><code>CORS_ORIGINS</code></td><td><code>https://crm.codenitti.in</code></td><td><span class="pill p-danger">Required</span> Wildcards are rejected outright. With the proxy in place nothing actually needs CORS, but the value must be set and exact.</td></tr>
+        <tr><td><code>DOCS_ENABLED</code></td><td><code>false</code></td><td>The API reference lists every endpoint and the permission it needs. Keep it off in production.</td></tr>
       </tbody>
     </table>
   </div>
@@ -309,417 +424,492 @@ openssl rand -hex 32      <span class="c"># → NBR_WEBHOOK_SECRET</span></pre>
   <h5>Data stores</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
       <tbody>
-        <tr><td><code>DATABASE_URL</code></td><td>Full Postgres URL. Host it in India.</td></tr>
-        <tr><td><code>DATABASE_POOL_MAX</code></td><td><code>20</code> is a sane start; raise with traffic.</td></tr>
-        <tr><td><code>REDIS_URL</code></td><td>Sessions live here — losing Redis signs everyone out.</td></tr>
+        <tr><td><code>DATABASE_URL</code></td><td>The internal Postgres URL from section 3.</td></tr>
+        <tr><td><code>DATABASE_POOL_MAX</code></td><td><code>20</code></td></tr>
+        <tr><td><code>REDIS_URL</code></td><td>The internal Redis URL from section 3.</td></tr>
       </tbody>
     </table>
   </div>
 
-  <h5>Authentication <span class="pill p-red">guarded at boot</span></h5>
+  <h5>Authentication <span class="pill p-danger">boot fails if wrong</span></h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th><th>Note</th></tr></thead>
       <tbody>
-        <tr><td><code>JWT_ACCESS_SECRET</code></td><td>generated</td><td>Must not contain <code>CHANGE_ME</code>.</td></tr>
+        <tr><td><code>JWT_ACCESS_SECRET</code></td><td>generated</td><td>Must not contain <code>CHANGE_ME</code>, <code>password</code> or <code>secret123</code>.</td></tr>
         <tr><td><code>JWT_REFRESH_SECRET</code></td><td>generated</td><td>Must <strong>differ</strong> from the access secret.</td></tr>
-        <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><span class="pill p-red">Required</span> Boot fails otherwise.</td></tr>
-        <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.example.in</code></td><td>The CRM hostname.</td></tr>
+        <tr><td><code>JWT_ACCESS_TTL</code></td><td><code>15m</code></td><td></td></tr>
+        <tr><td><code>JWT_REFRESH_TTL</code></td><td><code>7d</code></td><td></td></tr>
+        <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><span class="pill p-danger">Required</span> Boot fails in production if false.</td></tr>
+        <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.codenitti.in</code></td><td>The host the browser actually talks to. Not <code>api.codenitti.in</code>, which no browser visits.</td></tr>
         <tr><td><code>SESSION_IDLE_TIMEOUT_MINUTES</code></td><td><code>30</code></td><td></td></tr>
-        <tr><td><code>LOGIN_MAX_ATTEMPTS</code> / <code>LOGIN_LOCKOUT_MINUTES</code></td><td><code>5</code> / <code>15</code></td><td></td></tr>
+        <tr><td><code>LOGIN_MAX_ATTEMPTS</code></td><td><code>5</code></td><td></td></tr>
+        <tr><td><code>LOGIN_LOCKOUT_MINUTES</code></td><td><code>15</code></td><td></td></tr>
       </tbody>
     </table>
   </div>
 
-  <h5>Encryption &amp; first admin</h5>
+  <h5>Encryption and the first admin</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th><th>Note</th></tr></thead>
       <tbody>
-        <tr><td><code>PII_ENCRYPTION_KEY</code></td><td>32 bytes base64. <strong>Lose this and encrypted identifiers are unrecoverable.</strong> Back it up separately from the database.</td></tr>
-        <tr><td><code>PII_ENCRYPTION_KEY_PREVIOUS</code></td><td>Empty normally. During rotation, hold the old key here so existing rows stay readable.</td></tr>
-        <tr><td><code>SUPER_ADMIN_EMAIL</code></td><td>Seeded once on first run.</td></tr>
-        <tr><td><code>SUPER_ADMIN_PASSWORD</code></td><td>Real password, no placeholder. Forced to change at first login.</td></tr>
+        <tr><td><code>PII_ENCRYPTION_KEY</code></td><td>generated</td><td>Back it up separately from the database.</td></tr>
+        <tr><td><code>PII_ENCRYPTION_KEY_PREVIOUS</code></td><td>empty</td><td>Only holds a value during a key rotation.</td></tr>
+        <tr><td><code>SUPER_ADMIN_EMAIL</code></td><td><code>admin@nationalbookofrecords.in</code></td><td>Seeded once, on first seed run.</td></tr>
+        <tr><td><code>SUPER_ADMIN_PASSWORD</code></td><td>generated</td><td>Real password, no placeholder. Forced to change at first login.</td></tr>
+        <tr><td><code>SUPER_ADMIN_NAME</code></td><td><code>Platform Super Admin</code></td><td></td></tr>
       </tbody>
     </table>
   </div>
 
-  <h5>Object storage (Cloudflare R2)</h5>
+  <h5>Object storage — Cloudflare R2</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Production value</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
       <tbody>
-        <tr><td><code>S3_ENDPOINT</code></td><td><code>https://&lt;account&gt;.r2.cloudflarestorage.com</code></td></tr>
+        <tr><td><code>S3_ENDPOINT</code></td><td><code>https://&lt;account-id&gt;.r2.cloudflarestorage.com</code></td></tr>
         <tr><td><code>S3_REGION</code></td><td><code>auto</code></td></tr>
         <tr><td><code>S3_BUCKET</code></td><td>Your bucket. <strong>Keep it private</strong> — files are served by signed URL.</td></tr>
-        <tr><td><code>S3_ACCESS_KEY_ID</code> / <code>S3_SECRET_ACCESS_KEY</code></td><td>R2 token with Object Read &amp; Write.</td></tr>
+        <tr><td><code>S3_ACCESS_KEY_ID</code></td><td>R2 token with Object Read &amp; Write.</td></tr>
+        <tr><td><code>S3_SECRET_ACCESS_KEY</code></td><td>The matching secret.</td></tr>
         <tr><td><code>S3_FORCE_PATH_STYLE</code></td><td><code>true</code></td></tr>
-        <tr><td><code>UPLOAD_PRESIGN_TTL_SECONDS</code> / <code>DOWNLOAD_PRESIGN_TTL_SECONDS</code></td><td><code>900</code> / <code>300</code></td></tr>
+        <tr><td><code>S3_PUBLIC_BASE_URL</code></td><td>Leave empty unless the bucket has a public domain.</td></tr>
+        <tr><td><code>UPLOAD_PRESIGN_TTL_SECONDS</code></td><td><code>900</code></td></tr>
+        <tr><td><code>DOWNLOAD_PRESIGN_TTL_SECONDS</code></td><td><code>300</code></td></tr>
         <tr><td><code>MAX_UPLOAD_MB</code></td><td><code>200</code> — record videos are large.</td></tr>
       </tbody>
     </table>
   </div>
 
   <h5>Email</h5>
-  <p><code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_SECURE</code>,
-  <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>MAIL_FROM_NAME</code>,
-  <code>MAIL_FROM_ADDRESS</code>. Set SPF and DKIM for the sending domain or selection
-  letters and payment reminders will land in spam.</p>
-
-  <h5>Integration with the website</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
       <tbody>
-        <tr><td><code>NBR_WEBHOOK_SECRET</code></td><td>the shared secret</td><td>Minimum 16 characters. Must match the website.</td></tr>
-        <tr><td><code>NBR_WEBHOOK_TOLERANCE_SECONDS</code></td><td><code>300</code></td><td>Widen only if you cannot fix clock drift.</td></tr>
-        <tr><td><code>NBR_POLL_ENABLED</code></td><td><code>false</code></td><td>Push is the normal path. If you enable polling, <code>NBR_POLL_URL</code> becomes mandatory.</td></tr>
+        <tr><td><code>SMTP_HOST</code> / <code>SMTP_PORT</code> / <code>SMTP_SECURE</code></td><td>Your provider. <code>587</code> with <code>false</code> for STARTTLS, <code>465</code> with <code>true</code> for implicit TLS.</td></tr>
+        <tr><td><code>SMTP_USER</code> / <code>SMTP_PASSWORD</code></td><td>Provider credentials.</td></tr>
+        <tr><td><code>MAIL_FROM_NAME</code></td><td><code>National Book of Records</code></td></tr>
+        <tr><td><code>MAIL_FROM_ADDRESS</code></td><td><code>no-reply@nationalbookofrecords.in</code></td></tr>
       </tbody>
     </table>
   </div>
+  <p>Set SPF and DKIM for whichever domain you send as, or selection letters and payment
+  reminders will land in spam.</p>
+
+  <h5>Integration with the .org site</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Value</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code>NBR_WEBHOOK_SECRET</code></td><td>the shared secret</td><td>Verifies inbound webhooks. Minimum 16 characters.</td></tr>
+        <tr><td><code>NBR_WEBHOOK_TOLERANCE_SECONDS</code></td><td><code>300</code></td><td>Widen only if you cannot fix clock drift.</td></tr>
+        <tr><td><code>NBR_POLL_ENABLED</code></td><td><code>false</code></td><td>Push is the normal path. If you set this true, <code>NBR_POLL_URL</code> becomes mandatory.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The outbound direction — the CRM pushing to the <code>.org</code> site — is
+  <strong>not</strong> configured here. It lives in the CRM's own settings, set through the
+  UI in section 11, so the secret can be rotated without a redeploy.</p>
 
   <h5>DPDP Act, 2023</h5>
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Value</th></tr></thead>
       <tbody>
-        <tr><td><code>DPDP_DATA_FIDUCIARY_NAME</code></td><td>Shown on the consent notice.</td></tr>
-        <tr><td><code>DPDP_GRIEVANCE_OFFICER_NAME</code> / <code>_EMAIL</code> / <code>_PHONE</code></td><td>Real, monitored contact details. This is a statutory disclosure.</td></tr>
-        <tr><td><code>DPDP_DSR_RESPONSE_DAYS</code> / <code>DPDP_GRIEVANCE_RESPONSE_DAYS</code></td><td><code>30</code> each.</td></tr>
-        <tr><td><code>DPDP_RETENTION_YEARS</code></td><td><code>8</code>. Drives the erasure job.</td></tr>
-        <tr><td><code>DPDP_BREACH_NOTIFY_HOURS</code></td><td><code>72</code>.</td></tr>
-        <tr><td><code>DPDP_DATA_REGION</code></td><td><code>IN</code>. Checked at boot.</td></tr>
+        <tr><td><code>DPDP_DATA_FIDUCIARY_NAME</code></td><td><code>National Book of Records</code></td></tr>
+        <tr><td><code>DPDP_GRIEVANCE_OFFICER_NAME</code></td><td>A real, named person.</td></tr>
+        <tr><td><code>DPDP_GRIEVANCE_OFFICER_EMAIL</code></td><td>A monitored mailbox — this is a statutory disclosure.</td></tr>
+        <tr><td><code>DPDP_GRIEVANCE_OFFICER_PHONE</code></td><td>Optional but expected.</td></tr>
+        <tr><td><code>DPDP_DSR_RESPONSE_DAYS</code> / <code>DPDP_GRIEVANCE_RESPONSE_DAYS</code></td><td><code>30</code> each</td></tr>
+        <tr><td><code>DPDP_RETENTION_YEARS</code></td><td><code>8</code> — drives the erasure job.</td></tr>
+        <tr><td><code>DPDP_BREACH_NOTIFY_HOURS</code></td><td><code>72</code></td></tr>
+        <tr><td><code>DPDP_DATA_REGION</code></td><td><code>IN</code></td></tr>
       </tbody>
     </table>
   </div>
 
+  <div class="warn">
+    <p><strong>Correction to the earlier draft of this document:</strong>
+    <code>DPDP_DATA_REGION</code> is declared in the config schema with a default of
+    <code>IN</code>, but nothing reads it — it is <em>not</em> enforced at boot and will
+    not stop the API starting against a database hosted outside India. Treat data
+    residency as an operational decision you have to make yourself: host Postgres and the
+    R2 bucket in India because the DPDP posture requires it, not because the application
+    will catch you.</p>
+  </div>
+
   <h5>Observability</h5>
-  <p><code>LOG_LEVEL=info</code> in production (<code>debug</code> is noisy and logs more
-  than you want retained), <code>SENTRY_DSN</code> if you use Sentry, and
+  <p><code>LOG_LEVEL=info</code> (<code>debug</code> is noisy and logs more than you want
+  retained), <code>SENTRY_DSN</code> if you use Sentry, and
   <code>RATE_LIMIT_GLOBAL_PER_MINUTE=300</code>.</p>
 </section>
 
-<!-- ══════════════════════════════════════════════════════════ 6 -->
-<section id="build">
-  <h3><span class="num">06</span> Build and first run</h3>
-
-<pre><span class="c"># 1 — install and build all three packages in dependency order</span>
-pnpm install --frozen-lockfile
-pnpm build
-
-<span class="c"># 2 — create the schema. Safe to re-run; it only applies what is missing.</span>
-pnpm db:migrate
-
-<span class="c"># 3 — seed reference data and the first Super Admin.</span>
-<span class="c">#     Creates roles, permissions, statuses, templates, couriers and settings.</span>
-<span class="c">#     Creates NO applicants and NO applications.</span>
-pnpm db:seed
-
-<span class="c"># 4 — start the API</span>
-cd apps/api &amp;&amp; pnpm start:prod</pre>
-
-  <p>The SPA build lands in <code>apps/web/dist</code> as static files. Serve it from
-  your web server or upload it to your CDN — it needs no Node process.</p>
-
-  <div class="note">
-    <p><strong>If the API refuses to start, read the error.</strong> It validates the
-    whole environment before listening and prints every problem at once, each naming the
-    variable and what is wrong with it. It is telling you exactly what to fix.</p>
-  </div>
-
-  <h4>Running it as a service</h4>
-  <p>Use systemd, PM2 or your platform's process manager against
-  <code>node dist/main.js</code> in <code>apps/api</code> with
-  <code>NODE_ENV=production</code>. Restart on failure, and make sure the working
-  directory is <code>apps/api</code> so the correct <code>.env</code> is found.</p>
-
-  <div class="warn">
-    <p><strong>Run exactly one API instance for now.</strong> The scheduled jobs — the
-    evening sales report, payment reminders, the retention job — are not leader-elected,
-    so a second instance sends everything twice.</p>
-  </div>
-</section>
-
 <!-- ══════════════════════════════════════════════════════════ 7 -->
-<section id="proxy">
-  <h3><span class="num">07</span> Reverse proxy</h3>
-  <p class="sub">One hostname, two backends. This layout is what keeps the auth cookies
-  working.</p>
+<section id="web-app">
+  <h3><span class="num">07</span> The frontend application</h3>
+  <p class="sub">A static build plus a proxy. The proxy is the part that matters.</p>
 
-<pre><span class="c"># nginx</span>
+  <h4>Build settings</h4>
+  <ol class="steps">
+    <li><strong>New Resource → Application</strong>, same repository and branch.
+        <strong>Base Directory: <code>/</code></strong>.</li>
+    <li><strong>Install command</strong>
+<pre><code>corepack enable &amp;&amp; pnpm install --frozen-lockfile</code></pre></li>
+    <li><strong>Build command</strong> — again, shared first.
+<pre><code>pnpm --filter @nbr/shared build &amp;&amp; pnpm --filter @nbr/web build</code></pre></li>
+    <li><strong>Publish / output directory: <code>apps/web/dist</code></strong></li>
+    <li><strong>Domain: <code>https://crm.codenitti.in</code></strong></li>
+    <li><strong>Enable SPA mode</strong> (Coolify's "Is it a SPA?" toggle, or an
+        equivalent <code>try_files</code> fallback). Without it, refreshing on
+        <code>/applicants/123</code> returns 404 — React Router owns those paths, not the
+        web server.</li>
+  </ol>
+
+  <h4>Routing <code>/api</code> to the API</h4>
+  <p>Two ways, depending on how section 5's path routing behaved:</p>
+
+  <div class="card accent">
+    <div class="rule"></div>
+    <div class="inner">
+      <h4 style="margin-top:0">Option A — Coolify path routing <span class="pill p-ok">try first</span></h4>
+      <p style="margin:6px 0 0">You already added <code>https://crm.codenitti.in/api</code>
+      as a second domain on the API app in section 5. If the curl in section 12 returns a
+      JSON envelope rather than a 404, you are done — nothing further is needed here.</p>
+    </div>
+  </div>
+
+  <div class="card accent">
+    <div class="rule"></div>
+    <div class="inner">
+      <h4 style="margin-top:0">Option B — serve the SPA from nginx and proxy <span class="pill p-info">deterministic</span></h4>
+      <p style="margin:6px 0 12px">If the path route 404s or strips the prefix, deploy the
+      frontend as a Dockerfile application instead of a static site. This leaves the path
+      completely untouched, and you own the behaviour rather than inferring it.</p>
+
+<pre><span class="c"># Dockerfile at the repository root</span>
+<span class="k">FROM</span> node:22-alpine <span class="k">AS</span> build
+<span class="k">WORKDIR</span> /app
+<span class="k">RUN</span> corepack enable
+<span class="k">COPY</span> . .
+<span class="k">RUN</span> pnpm install --frozen-lockfile \
+ &amp;&amp; pnpm --filter @nbr/shared build \
+ &amp;&amp; pnpm --filter @nbr/web build
+
+<span class="k">FROM</span> nginx:alpine
+<span class="k">COPY</span> --from=build /app/apps/web/dist /usr/share/nginx/html
+<span class="k">COPY</span> nginx.conf /etc/nginx/conf.d/default.conf</pre>
+
+<pre><span class="c"># nginx.conf — &lt;api-service&gt; is the API application's internal Coolify name</span>
 server {
-  listen 443 ssl http2;
-  server_name crm.example.in;
+  listen 80;
 
-  <span class="c"># API — everything under /api goes to the Node process</span>
   location /api/ {
-    proxy_pass         http://127.0.0.1:4100;
+    proxy_pass         http://&lt;api-service&gt;:4100;
     proxy_http_version 1.1;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Real-IP         $remote_addr;
     proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header   X-Forwarded-Proto $scheme;
 
-    <span class="c"># Evidence and record videos are large; the app allows up to 200 MB.</span>
+    <span class="c"># Evidence and record videos: MAX_UPLOAD_MB is 200.</span>
     client_max_body_size 220m;
     proxy_read_timeout   300s;
   }
 
-  <span class="c"># SPA — static build, with client-side routing</span>
-  root /var/www/nbr-crm;
   location / {
+    root      /usr/share/nginx/html;
     try_files $uri $uri/ /index.html;
   }
 }</pre>
-
-  <div class="danger">
-    <p><strong>Do not put the CRM on the public internet without restriction if you can
-    avoid it.</strong> It is an internal system holding personal data. An IP allowlist,
-    a VPN, or Cloudflare Access in front of it is worth the small inconvenience.</p>
+      <p style="margin:12px 0 0">Note the trailing slash on both
+      <code>location /api/</code> and the <code>proxy_pass</code> target being absent —
+      that combination forwards the full original path, which is what the API expects.</p>
+    </div>
   </div>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ 8 -->
-<section id="legacy">
-  <h3><span class="num">08</span> Changes on the existing website</h3>
-  <p class="sub">The complete list. It is short on purpose — the customer-facing system
-  keeps behaving exactly as it does today.</p>
+<section id="web-env">
+  <h3><span class="num">08</span> Frontend environment</h3>
 
-  <h4>8.1 — Environment: nothing to change <span class="pill p-green">no action</span></h4>
-  <p>The connector reads no environment variables. Every existing variable —
-  <code>DATABASE_URL</code>, <code>JWT_SECRET</code>, the R2 keys, SMTP, Razorpay,
-  Redis — stays exactly as it is. Nothing is added, removed or repurposed.</p>
-
-  <div class="note">
-    <p>The reason is deliberate: the shared secret and the CRM address need to be
-    changeable by an administrator without a redeploy, and rotating a secret should not
-    require an ops ticket. They live in <code>site_settings</code> and are edited in the
-    admin panel.</p>
+  <div class="ok">
+    <p><strong>The frontend takes no environment variables at all.</strong> There is not a
+    single <code>import.meta.env</code> reference in <code>apps/web/src</code>. The API
+    base is the hardcoded relative path <code>/api/v1</code>, and everything else the app
+    needs — organisation details, packages, categories, templates, feature permissions —
+    it fetches from the API at runtime.</p>
   </div>
 
-  <p>Two existing variables are worth <em>confirming</em> rather than changing, because
-  the connector's deep links back into the site are built from them:</p>
+  <p>So there is nothing to configure on the frontend application beyond the build command,
+  the output directory, the domain and the SPA fallback. Leave the Environment Variables
+  tab empty.</p>
+
   <div class="tbl-scroll">
     <table>
-      <thead><tr><th>Variable</th><th>Confirm it is</th></tr></thead>
+      <thead><tr><th>Variable</th><th>Scope</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td><code>API_URL</code></td><td>The site's real public API address.</td></tr>
-        <tr><td><code>FRONTEND_URL</code></td><td>The site's real public address, so links the CRM shows open the right page.</td></tr>
+        <tr><td><code>VITE_API_TARGET</code></td><td>Local development only</td>
+            <td><span class="pill p-slate">Not used in production</span> It configures the Vite dev-server proxy in <code>vite.config.ts</code> and has no effect on a built bundle.</td></tr>
       </tbody>
     </table>
   </div>
 
-  <h4>8.2 — Deploy the connector branch <span class="pill p-amber">action</span></h4>
-  <p>Deploy the branch carrying the connector. It adds files and appends to a few
-  existing route handlers; no existing endpoint changes its request or response shape,
-  and no customer-facing behaviour is altered.</p>
+  <div class="note">
+    <p><strong>The consequence worth remembering:</strong> because the API address is baked
+    in as a relative path, moving the API to a different hostname later is a code change
+    and a rebuild, not an environment change. That is the trade-off behind the routing
+    decision in section 2.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 9 -->
+<section id="migrate">
+  <h3><span class="num">09</span> Migrate and seed</h3>
+  <p class="sub">Once, after the first successful API deploy.</p>
+
+  <p>Run these from Coolify's <strong>terminal / execute-command</strong> against the API
+  container, so they use the same environment and internal network as the app:</p>
+
+<pre><span class="c"># Create the schema. Additive and safe to re-run — it applies only what is missing.</span>
+pnpm --filter @nbr/api db:migrate
+
+<span class="c"># Reference data plus the first Super Admin: roles, permissions, statuses,</span>
+<span class="c"># templates, couriers, packages, categories, settings.</span>
+<span class="c"># Creates NO applicants and NO applications.</span>
+pnpm --filter @nbr/api db:seed</pre>
+
+  <p>On every later release, run <code>db:migrate</code> again after the deploy. Migrations
+  are written to be additive, so most releases need no maintenance window.</p>
+
+  <div class="note">
+    <p>If Coolify's terminal is awkward for your setup, the same two commands work as a
+    <strong>pre-deployment command</strong> on the API application. Make it
+    <code>db:migrate</code> only — seeding on every deploy is harmless because it is
+    idempotent, but it is noise you do not need.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 10 -->
+<section id="legacy">
+  <h3><span class="num">10</span> Changes on nationalbookofrecords.org</h3>
+  <p class="sub">The complete list. It is short because the brief was that the
+  customer-facing system keeps behaving exactly as it does today.</p>
+
+  <h4>10.1 — Environment: nothing to change <span class="pill p-ok">no action</span></h4>
+  <div class="ok">
+    <p><strong>The connector reads no environment variables.</strong> Its three settings —
+    whether sync is on, the CRM's address, and the shared secret — are rows in the
+    <code>site_settings</code> table, edited through the admin panel. Every existing
+    variable on that site — <code>DATABASE_URL</code>, <code>JWT_SECRET</code>, the R2
+    keys, SMTP, Razorpay, Redis — stays exactly as it is.</p>
+  </div>
+  <p>Two existing variables are worth <em>confirming</em> rather than changing, because the
+  links the CRM shows back into the site are built from them:</p>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Should be</th></tr></thead>
+      <tbody>
+        <tr><td><code>API_URL</code></td><td>The site's real public API address on <code>nationalbookofrecords.org</code>.</td></tr>
+        <tr><td><code>FRONTEND_URL</code></td><td><code>https://nationalbookofrecords.org</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>10.2 — Deploy the connector branch <span class="pill p-warn">action</span></h4>
+  <p>It adds files and appends one line to a few existing handlers. No existing endpoint
+  changes its request or response shape.</p>
   <div class="tbl-scroll">
     <table>
       <thead><tr><th>What it adds</th><th>Where</th></tr></thead>
       <tbody>
         <tr><td>Signing, verification and push helpers</td><td><code>backend/src/lib/crmSync.ts</code>, <code>crmSyncPayload.ts</code></td></tr>
         <tr><td>The connector routes</td><td><code>backend/src/routes/crmConnector.ts</code></td></tr>
-        <tr><td>One line each in approve, manual payment, certificate issue, payment settle, dispatch update</td><td>existing route files</td></tr>
+        <tr><td>One fire-and-forget line each in approve, manual payment, certificate issue, payment settle and dispatch update</td><td>existing route files</td></tr>
         <tr><td>The Internal CRM settings tab</td><td><code>src/pages/admin/AdminSettings.tsx</code>, <code>CrmSyncPanel.tsx</code></td></tr>
       </tbody>
     </table>
   </div>
   <div class="ok">
     <p><strong>The hooks cannot break the site.</strong> Each is a single non-throwing,
-    fire-and-forget call. If the CRM is down, unreachable or misconfigured, the approval
-    or payment on the website still succeeds and the failure is written to the sync log.</p>
+    detached call. If the CRM is down, unreachable or misconfigured, the approval or
+    payment still succeeds and the failure is written to the sync log.</p>
   </div>
 
-  <h4>8.3 — Run the migration <span class="pill p-amber">action</span></h4>
-<pre>cd backend
-pnpm db:migrate</pre>
-  <p>Additive only. It creates the <code>crm_sync_log</code> table and inserts three
-  rows into <code>site_settings</code> — <code>crm_sync_enabled</code> (<code>false</code>),
+  <h4>10.3 — Run the migration <span class="pill p-warn">action</span></h4>
+<pre>cd backend &amp;&amp; pnpm db:migrate</pre>
+  <p>Additive only: it creates <code>crm_sync_log</code> and inserts three
+  <code>site_settings</code> rows — <code>crm_sync_enabled</code> (<code>false</code>),
   <code>crm_base_url</code> (empty), <code>crm_secret</code> (empty). No existing table is
-  altered and no existing row is touched. With sync left off, the site behaves precisely
-  as before.</p>
+  altered. With sync left off, the site behaves precisely as before.</p>
 
-  <h4>8.4 — Allow outbound access <span class="pill p-amber">action</span></h4>
-  <p>The website's server must be able to reach the CRM over HTTPS, and the CRM must be
-  able to reach the website. If you put the CRM behind an IP allowlist, add the website
-  server's egress addresses to it.</p>
+  <h4>10.4 — Allow outbound access <span class="pill p-warn">action</span></h4>
+  <p>The <code>.org</code> server must be able to reach
+  <code>https://api.codenitti.in</code>, and the CRM container must be able to reach
+  <code>https://nationalbookofrecords.org</code>. If you put Coolify behind an IP
+  allowlist, add the <code>.org</code> server's egress addresses to it.</p>
 
-  <h4>8.5 — Check the clock <span class="pill p-amber">action</span></h4>
+  <h4>10.5 — Check the clocks <span class="pill p-warn">action</span></h4>
   <p>Signatures are rejected outside a 300-second window. Confirm NTP is running on both
-  servers. The <em>Test connection</em> button reports the measured difference, so you
-  will know immediately if this is the problem.</p>
+  hosts. The <em>Test connection</em> button reports the measured difference, so this
+  diagnoses itself.</p>
 </section>
 
-<!-- ══════════════════════════════════════════════════════════ 9 -->
+<!-- ══════════════════════════════════════════════════════════ 11 -->
 <section id="connect">
-  <h3><span class="num">09</span> Connecting the two</h3>
-  <p class="sub">Do the CRM side first, so the website has something to talk to.</p>
+  <h3><span class="num">11</span> Connecting the two</h3>
+  <p class="sub">CRM side first, so the <code>.org</code> site has something to talk to.</p>
 
-  <h4>On the CRM</h4>
+  <h4>On the CRM — <code>https://crm.codenitti.in</code></h4>
   <ol class="steps">
-    <li>Sign in as the Super Admin and change the temporary password.</li>
-    <li>Open <strong>Settings</strong> and set the integration to the website's base URL
-        (for example <code>https://nationalbookofrecords.in</code>), paste the
-        <strong>same shared secret</strong> that is in <code>NBR_WEBHOOK_SECRET</code>,
-        and switch it on.</li>
-    <li>Run <strong>sync packages</strong> and <strong>sync categories</strong> so the
-        CRM's dropdowns mirror the website's. Do this before anyone raises a payment —
-        otherwise operators are offered prices the website will reject.</li>
+    <li>Sign in as the Super Admin and change the temporary password. This signs you out
+        everywhere; sign in again with the new one.</li>
+    <li>Open <strong>Settings</strong> and set the integration base URL to
+        <code>https://nationalbookofrecords.org</code>, paste the <strong>same shared
+        secret</strong> that is in <code>NBR_WEBHOOK_SECRET</code>, and switch it on.</li>
+    <li>Run <strong>sync packages</strong> and <strong>sync categories</strong>, so the
+        CRM's dropdowns mirror the website's. Do this <em>before</em> anyone raises a
+        payment — otherwise operators are offered prices the <code>.org</code> site will
+        reject.</li>
   </ol>
 
-  <h4>On the website</h4>
+  <h4>On the .org admin</h4>
   <ol class="steps">
-    <li>Sign in to the admin panel and open <strong>Settings → Internal CRM</strong>.</li>
-    <li>Enter the CRM base URL (for example <code>https://crm.example.in</code>) and the
-        same shared secret. No trailing slash, no quotes, no stray whitespace.</li>
-    <li>Switch sync on and save.</li>
-    <li>Press <strong>Test connection</strong>. Compare the two secret fingerprints if it
-        fails — if they differ, the secrets differ.</li>
+    <li>Open <strong>Settings → Internal CRM</strong>.</li>
+    <li>Set the CRM base URL to <code>https://api.codenitti.in</code>
+        <span class="pill p-warn">not crm.</span> — this is the server-to-server hop, and
+        it posts to <code>/api/v1/integrations/nbr-website/applications</code> under that
+        host. No trailing slash, no quotes, no stray whitespace.</li>
+    <li>Paste the same shared secret and switch sync on.</li>
+    <li>Press <strong>Test connection</strong>. If it fails, compare the two secret
+        fingerprints — if they differ, the secrets differ.</li>
     <li>Press <strong>Backfill</strong> to send every approved-and-beyond application.
         Safe to re-run; nothing is duplicated.</li>
   </ol>
 
   <div class="warn">
     <p><strong>Backfill sends approved applications and everything past that point.</strong>
-    Pending, under-review and draft applications are deliberately excluded — they belong
-    to the website until somebody approves them.</p>
+    Pending, under-review and draft applications are deliberately excluded — they belong to
+    the <code>.org</code> site until somebody approves them.</p>
   </div>
-</section>
-
-<!-- ══════════════════════════════════════════════════════════ 10 -->
-<section id="verify">
-  <h3><span class="num">10</span> Verifying the deployment</h3>
-  <p class="sub">Work down this list before handing over. Each item has failed in
-  testing at least once, which is why it is here.</p>
-
-  <h5>The CRM alone</h5>
-  <ul class="check">
-    <li>The API starts with no environment complaints.</li>
-    <li>Signing in works, and the first login forces a password change.</li>
-    <li>Changing the password signs you out everywhere, and the new one works.</li>
-    <li>Creating an applicant succeeds and the category list shows the website's categories.</li>
-    <li>Uploading a file succeeds and downloading it back returns the same file.</li>
-    <li>A test email arrives and is not marked as spam.</li>
-  </ul>
-
-  <h5>Website → CRM</h5>
-  <ul class="check">
-    <li><strong>Test connection</strong> reports success.</li>
-    <li>Approving an application on the website makes it appear in the CRM within seconds, at <em>Selected</em>.</li>
-    <li>Recording a manual payment on the website shows it in the CRM against the correct package and price.</li>
-    <li>Updating dispatch on the website updates the CRM's dispatch tab.</li>
-  </ul>
-
-  <h5>CRM → website</h5>
-  <ul class="check">
-    <li>Recording a payment in the CRM shows it on the website's application.</li>
-    <li>Issuing a certificate in the CRM puts the number on the website.</li>
-    <li>Updating dispatch in the CRM mirrors the courier and tracking number.</li>
-    <li>An applicant created in the CRM does <strong>not</strong> appear on the website. This is correct.</li>
-  </ul>
-
-  <h5>The sync log</h5>
-  <ul class="check">
-    <li>Settings → Internal CRM → sync log shows both directions with successful outcomes and no errors.</li>
-  </ul>
-</section>
-
-<!-- ══════════════════════════════════════════════════════════ 11 -->
-<section id="ops">
-  <h3><span class="num">11</span> Backups, upgrades and rotation</h3>
-
-  <h4>Back up</h4>
-  <div class="tbl-scroll">
-    <table>
-      <thead><tr><th>What</th><th>How often</th><th>Note</th></tr></thead>
-      <tbody>
-        <tr><td>PostgreSQL</td><td>Daily, retained per policy</td><td>Test a restore before you need one.</td></tr>
-        <tr><td>Object storage bucket</td><td>Versioning or scheduled copy</td><td>Certificates and evidence are not reproducible.</td></tr>
-        <tr><td><code>PII_ENCRYPTION_KEY</code></td><td>Once, held securely</td><td><strong>Store it apart from the database backup.</strong> A backup you cannot decrypt is not a backup.</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <h4>Upgrading</h4>
-<pre>git pull
-pnpm install --frozen-lockfile
-pnpm build
-pnpm db:migrate        <span class="c"># additive; safe to re-run</span>
-<span class="c"># restart the API service</span></pre>
-  <p>Redeploy <code>apps/web/dist</code> alongside it. Migrations are written to be
-  additive, so the API can be restarted after they run without a maintenance window for
-  most releases.</p>
-
-  <h4>Rotating the shared secret</h4>
-  <p>There is a brief window where the two sides disagree, so do this out of hours.</p>
-  <ol class="steps">
-    <li>Generate a new secret.</li>
-    <li>Update <code>NBR_WEBHOOK_SECRET</code> in the CRM environment and restart the API.</li>
-    <li>Update the CRM's own integration secret in Settings.</li>
-    <li>Update the website's shared secret in Settings → Internal CRM.</li>
-    <li>Press <strong>Test connection</strong>, then re-sync any application that failed during the gap.</li>
-  </ol>
-
-  <h4>Rotating the encryption key</h4>
-  <p>Move the current <code>PII_ENCRYPTION_KEY</code> into
-  <code>PII_ENCRYPTION_KEY_PREVIOUS</code>, put the new key in
-  <code>PII_ENCRYPTION_KEY</code>, and restart. Existing rows stay readable through the
-  previous key while the re-encryption job works through them. Clear the previous key
-  only once it has finished.</p>
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ 12 -->
+<section id="verify">
+  <h3><span class="num">12</span> Verifying</h3>
+
+  <h4>First, prove the routing</h4>
+  <p>This is the check that decides between Option A and Option B in section 7. Run it
+  before anything else:</p>
+
+<pre><span class="c"># Expect an HTTP 401 with a JSON envelope — that means the request reached the app.</span>
+<span class="c"># A 404 means the path prefix is being stripped or not routed. Go to Option B.</span>
+curl -i https://crm.codenitti.in/api/v1/auth/me
+
+<span class="c"># The API's own health route, on its server-to-server hostname.</span>
+<span class="c"># Note it is NOT under /api/v1 — health is excluded from the global prefix.</span>
+curl -i https://api.codenitti.in/health</pre>
+
+  <h5>The CRM alone</h5>
+  <ul class="check">
+    <li>The API container starts with no environment complaints in the deploy log.</li>
+    <li><code>https://crm.codenitti.in</code> loads the sign-in screen.</li>
+    <li>Signing in works — and stays signed in after a page refresh. <strong>If it signs
+        you straight back out, the routing in section 2 is wrong.</strong></li>
+    <li>Refreshing on a deep link such as <code>/applicants</code> loads the page rather
+        than a 404, confirming the SPA fallback.</li>
+    <li>First login forces a password change, and the new password works.</li>
+    <li>Creating an applicant succeeds and the category list shows the <code>.org</code>
+        site's categories.</li>
+    <li>Uploading a file succeeds and downloading it returns the same file.</li>
+    <li>A test email arrives and is not marked as spam.</li>
+  </ul>
+
+  <h5>.org → CRM</h5>
+  <ul class="check">
+    <li><strong>Test connection</strong> reports success.</li>
+    <li>Approving an application on the <code>.org</code> site makes it appear in the CRM
+        within seconds, at <em>Selected</em>.</li>
+    <li>Recording a manual payment there shows it in the CRM against the right package and
+        price.</li>
+    <li>Updating dispatch there updates the CRM's Dispatch tab.</li>
+  </ul>
+
+  <h5>CRM → .org</h5>
+  <ul class="check">
+    <li>Recording a payment in the CRM shows it on the <code>.org</code> application.</li>
+    <li>Issuing a certificate in the CRM puts the number on the <code>.org</code> site.</li>
+    <li>Updating dispatch in the CRM mirrors the courier and tracking number.</li>
+    <li>An applicant created in the CRM does <strong>not</strong> appear on the
+        <code>.org</code> site. This is correct and deliberate.</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 13 -->
 <section id="trouble">
-  <h3><span class="num">12</span> Troubleshooting</h3>
+  <h3><span class="num">13</span> Troubleshooting</h3>
 
   <div class="tbl-scroll">
     <table>
       <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
       <tbody>
-        <tr><td>API exits at startup with a list of variables</td>
-            <td>Environment validation failed.</td>
-            <td>Fix each line it names. It reports every problem at once.</td></tr>
-        <tr><td><code>JWT_REFRESH_SECRET must differ</code></td>
-            <td>Both JWT secrets are the same value.</td>
+        <tr><td>Sign-in succeeds, next request is 401, back to the login screen</td>
+            <td>The browser is reaching the API on a different origin, so
+                <code>credentials: 'same-origin'</code> sends no cookies.</td>
+            <td>Route <code>/api</code> through <code>crm.codenitti.in</code> — section 2 and section 7.</td></tr>
+        <tr><td><code>curl https://crm.codenitti.in/api/v1/auth/me</code> returns 404</td>
+            <td>The proxy is stripping the <code>/api</code> prefix, or not routing that path.</td>
+            <td>Remove the strip-prefix middleware, or switch to Option B in section 7.</td></tr>
+        <tr><td>Container exits at startup listing variables</td>
+            <td>Environment validation failed — it reports every problem at once.</td>
+            <td>Fix each line it names. It is telling you exactly what is wrong.</td></tr>
+        <tr><td><code>JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET</code></td>
+            <td>Both JWT secrets hold the same value.</td>
             <td>Generate a second, different one.</td></tr>
-        <tr><td><code>COOKIE_SECURE must be true</code></td>
-            <td>Production without TLS.</td>
-            <td>Terminate TLS and set it to <code>true</code>. Do not disable the check.</td></tr>
-        <tr><td>Boot refuses on data region</td>
-            <td>Database host outside the permitted region.</td>
-            <td>Move the database to India. Do not weaken <code>DPDP_DATA_REGION</code>.</td></tr>
+        <tr><td><code>COOKIE_SECURE must be true in production</code></td>
+            <td>Production without secure cookies.</td>
+            <td>Set it to <code>true</code>. Coolify terminates TLS for you. Do not disable the check.</td></tr>
+        <tr><td>Health check never goes green</td>
+            <td>Coolify is checking <code>/api/v1/health</code>.</td>
+            <td>Use <code>/health</code> — it is excluded from the global prefix.</td></tr>
+        <tr><td>Build fails on a missing <code>@nbr/shared</code> type</td>
+            <td>The shared package was not built before the app that imports it.</td>
+            <td>Keep <code>pnpm --filter @nbr/shared build</code> first in the build command.</td></tr>
+        <tr><td>Refreshing a deep link gives 404</td>
+            <td>No SPA fallback on the static site.</td>
+            <td>Enable SPA mode, or the <code>try_files</code> line in Option B.</td></tr>
         <tr><td><code>WEBHOOK_SIGNATURE_INVALID</code> (401)</td>
-            <td>The secrets differ, or a proxy rewrote the body.</td>
-            <td>Compare fingerprints on both sides. Check for a second <code>.env</code>. Ensure the proxy does not modify request bodies.</td></tr>
+            <td>The secrets differ, or a proxy rewrote the request body.</td>
+            <td>Compare fingerprints on both sides. Ensure nothing in front of the API modifies bodies.</td></tr>
         <tr><td><code>timestamp outside tolerance</code></td>
-            <td>Clock drift over 300 seconds.</td>
-            <td>Fix NTP on both servers. <em>Test connection</em> shows the measured difference.</td></tr>
-        <tr><td>Sign-in succeeds then immediately fails</td>
-            <td>SPA and API on different origins, so <code>SameSite=strict</code> cookies are dropped.</td>
-            <td>Serve both from one hostname as in section 7.</td></tr>
-        <tr><td>Uploads fail on large files</td>
-            <td>Proxy body limit below <code>MAX_UPLOAD_MB</code>.</td>
-            <td>Raise <code>client_max_body_size</code> above 200 MB.</td></tr>
-        <tr><td>Payment push rejected by the website</td>
-            <td>The package is CRM-only and has no plan code.</td>
-            <td>Run the package sync so the catalogues match.</td></tr>
+            <td>Clock drift beyond 300 seconds.</td>
+            <td>Fix NTP on both hosts. <em>Test connection</em> reports the measured difference.</td></tr>
+        <tr><td>Large uploads fail</td>
+            <td>A proxy body limit below <code>MAX_UPLOAD_MB</code>.</td>
+            <td>Raise it above 200 MB on whatever sits in front of the API.</td></tr>
+        <tr><td>Payment push rejected by the .org site</td>
+            <td>The package is CRM-only and carries no plan code.</td>
+            <td>Run the package sync so both catalogues match.</td></tr>
         <tr><td>Everyone signed out at once</td>
             <td>Redis restarted or was flushed.</td>
-            <td>Expected — sessions live in Redis. Users sign in again.</td></tr>
-        <tr><td>Duplicate evening sales reports</td>
-            <td>More than one API instance running the scheduler.</td>
-            <td>Run a single instance.</td></tr>
+            <td>Expected — sessions live there. Users sign in again.</td></tr>
+        <tr><td>Two evening sales reports</td>
+            <td>More than one API replica running the scheduler.</td>
+            <td>Scale the API application back to one instance.</td></tr>
       </tbody>
     </table>
   </div>
 
-  <h4>Where to look first</h4>
+  <h4>Where to look, in order</h4>
   <ol class="steps">
-    <li><strong>Website → Settings → Internal CRM → sync log.</strong> Both directions, with the outcome and reason for each.</li>
-    <li><strong>The API log.</strong> Every failed push is logged with its HTTP status and the response body.</li>
-    <li><strong>CRM → Audit Logs.</strong> Confirms whether the action was recorded at all, and who performed it.</li>
+    <li><strong>Coolify → the API application → Logs.</strong> Every failed push is logged
+        with its HTTP status and the response body.</li>
+    <li><strong>.org admin → Settings → Internal CRM → sync log.</strong> Both directions,
+        with the outcome and reason for each.</li>
+    <li><strong>CRM → Audit Logs.</strong> Confirms whether the action was recorded at all,
+        and who performed it.</li>
   </ol>
 </section>
 
@@ -727,7 +917,7 @@ pnpm db:migrate        <span class="c"># additive; safe to re-run</span>
 
 <footer>
   <div class="wrap">
-    <span>National Book of Records — Backend CRM deployment manual</span>
+    <span>National Book of Records — Coolify deployment manual</span>
     <span>Internal document · Contains no secrets — keep it that way</span>
   </div>
 </footer>
