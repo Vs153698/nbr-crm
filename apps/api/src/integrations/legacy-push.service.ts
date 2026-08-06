@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 import { toRupees } from '@nbr/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, notInArray } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ValidationError } from '../common/errors';
 import { CacheService, CacheTag } from '../redis/cache.service';
@@ -24,8 +24,9 @@ const LEGACY_PATHS = {
   certificate: '/api/crm-connector/certificate',
 } as const;
 
-/** Read-only endpoint carrying the website's plan catalogue. */
+/** Read-only endpoints carrying the website's reference data. */
 const LEGACY_PLANS_PATH = '/api/crm-connector/plans';
+const LEGACY_CATEGORIES_PATH = '/api/crm-connector/categories';
 
 /** GST the website charges. Its plan prices are inclusive, with no separate line. */
 const LEGACY_GST_PERCENT = '0.00';
@@ -40,11 +41,28 @@ interface LegacyPlan {
   readonly acceptedByPaymentsTable: boolean;
 }
 
+interface LegacyCategory {
+  readonly name: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly isActive: boolean;
+  readonly sortOrder: number;
+}
+
 export interface PackageSyncResult {
   readonly imported: number;
   readonly updated: number;
   readonly skipped: number;
+  /** CRM-only entries switched off, because the website never offered them. */
+  readonly retired: number;
   readonly packages: Array<{ name: string; legacyCode: string; amount: string }>;
+}
+
+export interface CategorySyncResult {
+  readonly imported: number;
+  readonly updated: number;
+  readonly retired: number;
+  readonly categories: string[];
 }
 
 const PUSH_TIMEOUT_MS = 15_000;
@@ -297,7 +315,7 @@ export class LegacyPushService {
     const body = (await response.json()) as { data?: LegacyPlan[] };
     const plans = body.data ?? [];
 
-    const result: PackageSyncResult = { imported: 0, updated: 0, skipped: 0, packages: [] };
+    const result: PackageSyncResult = { imported: 0, updated: 0, skipped: 0, retired: 0, packages: [] };
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -313,19 +331,41 @@ export class LegacyPushService {
       }
 
       const amount = toRupees(plan.amountPaise);
-      const name = `${plan.label} (website)`;
+      // The website's own label, unqualified. Once the CRM-only packages below
+      // are retired this is the whole catalogue, so a "(website)" suffix on
+      // every row would only add noise to the Raise Payment dropdown.
+      const name = plan.label;
 
-      const [existing] = await this.db
-        .select({ id: schema.packages.id })
-        .from(schema.packages)
-        .where(eq(schema.packages.legacyCode, plan.code))
-        .limit(1);
+      // Match on the website's code first. Failing that, adopt a package of the
+      // same name: the CRM shipped with its own "Basic" and "Premium", and
+      // package names are uniquely indexed, so inserting alongside them would
+      // just fail. Adopting rewrites that row to the website's price and code,
+      // which leaves one "Basic" in the dropdown at the price the applicant was
+      // actually quoted — better than a rename that would read as two packages.
+      const [existing] =
+        (await this.db
+          .select({ id: schema.packages.id })
+          .from(schema.packages)
+          .where(eq(schema.packages.legacyCode, plan.code))
+          .limit(1)) ??
+        [];
 
-      if (existing) {
+      const [byName] = existing
+        ? []
+        : await this.db
+            .select({ id: schema.packages.id })
+            .from(schema.packages)
+            .where(eq(schema.packages.name, name))
+            .limit(1);
+
+      const target = existing ?? byName;
+
+      if (target) {
         await this.db
           .update(schema.packages)
           .set({
             name,
+            legacyCode: plan.code,
             amount,
             // The website's prices are all-inclusive with no separate GST line,
             // so mirroring them at 18% would overstate every invoice by 18%.
@@ -334,7 +374,7 @@ export class LegacyPushService {
             isActive: plan.isActive,
             sortOrder: plan.sortOrder,
           })
-          .where(eq(schema.packages.id, existing.id));
+          .where(eq(schema.packages.id, target.id));
         updated++;
       } else {
         await this.db.insert(schema.packages).values({
@@ -352,10 +392,132 @@ export class LegacyPushService {
       packages.push({ name, legacyCode: plan.code, amount });
     }
 
+    // Retire anything the website does not offer.
+    //
+    // An operator picking a CRM-only package raises an invoice at a price no
+    // applicant was ever quoted, and the push back to the website has no plan
+    // code to carry, so it degrades to a name-and-amount match that the
+    // website's three-value CHECK constraint then rejects. Leaving these in the
+    // dropdown is offering the operator a way to get it wrong.
+    //
+    // Switched off rather than deleted: payments already raised against them
+    // must keep resolving, and their package name is stored on the payment row.
+    let retired = 0;
+    if (packages.length > 0) {
+      const retiredRows = await this.db
+        .update(schema.packages)
+        .set({ isActive: false })
+        .where(and(isNull(schema.packages.legacyCode), eq(schema.packages.isActive, true)))
+        .returning({ id: schema.packages.id });
+      retired = retiredRows.length;
+    }
+
     await this.cache.invalidateTags(CacheTag.settings());
 
-    this.logger.log(`Package sync: ${imported} imported, ${updated} updated, ${skipped} skipped`);
-    return { ...result, imported, updated, skipped, packages };
+    this.logger.log(
+      `Package sync: ${imported} imported, ${updated} updated, ${skipped} skipped, ${retired} retired`,
+    );
+    return { ...result, imported, updated, skipped, retired, packages };
+  }
+
+  /**
+   * Mirror the website's category list into the CRM.
+   *
+   * Applications are created on the website, against the website's categories.
+   * When the CRM keeps its own list, every arriving application carries a name
+   * the CRM cannot match — "Sports" against "Sports & Adventure" — and raises an
+   * operator alert about a mismatch nobody can resolve, because the applicant
+   * only ever saw the website's list.
+   *
+   * Matched on slug, so renaming a category on the website updates the CRM row
+   * instead of orphaning it and creating a duplicate.
+   */
+  async syncCategories(): Promise<CategorySyncResult> {
+    const config = await this.getConfig();
+    if (!config.enabled) {
+      throw new ValidationError({
+        integration: ['Set the website URL and secret, and switch the integration on, first.'],
+      });
+    }
+
+    const signedEmptyBody = '{}';
+    const response = await fetch(`${config.baseUrl}${LEGACY_CATEGORIES_PATH}`, {
+      method: 'GET',
+      headers: { 'X-NBR-Signature': this.sign(signedEmptyBody, config.secret) },
+      signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new ValidationError({
+        integration: [
+          `The website returned HTTP ${response.status} for its category list${detail ? `: ${detail.slice(0, 200)}` : ''}.`,
+        ],
+      });
+    }
+
+    const body = (await response.json()) as { data?: LegacyCategory[] };
+    const remote = body.data ?? [];
+
+    let imported = 0;
+    let updated = 0;
+    const names: string[] = [];
+
+    for (const category of remote) {
+      const [existing] = await this.db
+        .select({ id: schema.categories.id })
+        .from(schema.categories)
+        .where(eq(schema.categories.slug, category.slug))
+        .limit(1);
+
+      if (existing) {
+        await this.db
+          .update(schema.categories)
+          .set({
+            name: category.name,
+            description: category.description,
+            isActive: category.isActive,
+            sortOrder: category.sortOrder,
+          })
+          .where(eq(schema.categories.id, existing.id));
+        updated++;
+      } else {
+        await this.db.insert(schema.categories).values({
+          name: category.name,
+          slug: category.slug,
+          description: category.description,
+          isActive: category.isActive,
+          sortOrder: category.sortOrder,
+        });
+        imported++;
+      }
+
+      names.push(category.name);
+    }
+
+    // Same reasoning as packages: a category the website does not offer cannot
+    // arrive on an application, so leaving it selectable only creates records
+    // the website will never recognise. Deactivated, never deleted — existing
+    // records point at these rows.
+    let retired = 0;
+    if (remote.length > 0) {
+      const slugs = remote.map((category) => category.slug);
+      const retiredRows = await this.db
+        .update(schema.categories)
+        .set({ isActive: false })
+        .where(
+          and(eq(schema.categories.isActive, true), notInArray(schema.categories.slug, slugs)),
+        )
+        .returning({ id: schema.categories.id });
+      retired = retiredRows.length;
+    }
+
+    await this.cache.invalidateTags(CacheTag.settings());
+
+    this.logger.log(
+      `Category sync: ${imported} imported, ${updated} updated, ${retired} retired`,
+    );
+    return { imported, updated, retired, categories: names };
   }
 
   // ── Typed helpers for the three mirrored events ───────────────────────────

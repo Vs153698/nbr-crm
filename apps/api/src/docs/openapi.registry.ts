@@ -1589,6 +1589,7 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
         imported: { type: 'integer' },
         updated: { type: 'integer' },
         skipped: { type: 'integer' },
+        retired: { type: 'integer' },
         packages: arrayOf({ name: { type: 'string' }, legacyCode: { type: 'string' }, amount: { type: 'string' } }),
       },
     },
@@ -1600,6 +1601,32 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'own payments table are skipped rather than offered as packages that would silently ' +
       'degrade on push. Prices are mirrored at 0% GST because the website quotes ' +
       'all-inclusive figures with no separate tax line.',
+    errors: {
+      '422': { description: 'The integration is not configured, or the website rejected the request.' },
+    },
+  },
+  'IntegrationsController.syncCategories': {
+    tag: 'Integration',
+    summary: 'Sync categories from the website',
+    description:
+      "Mirrors the public website's category list into this system, matched on slug. " +
+      'Categories the website does not offer are deactivated, never deleted.',
+    response: {
+      type: 'object',
+      properties: {
+        imported: { type: 'integer' },
+        updated: { type: 'integer' },
+        retired: { type: 'integer' },
+        categories: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    notes:
+      'Applications are created on the website against its own categories. Any list held ' +
+      'here that differs means every import arrives with a category name this system ' +
+      'cannot match — "Sports" against "Sports & Adventure" — raising an operator alert ' +
+      'for a mismatch nobody can resolve, since the applicant only ever saw the ' +
+      "website's list. Matched on slug so a rename over there updates the row here " +
+      'rather than orphaning it.',
     errors: {
       '422': { description: 'The integration is not configured, or the website rejected the request.' },
     },

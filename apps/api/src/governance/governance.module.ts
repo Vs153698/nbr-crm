@@ -274,6 +274,21 @@ class IntegrationsController {
   }
 
   /**
+   * Mirror the website's category list into ours.
+   *
+   * Applications are created against the website's categories, so any category
+   * we hold that it does not raises an unmatched-category alert on every import
+   * — a mismatch the operator cannot resolve, because the applicant only ever
+   * saw the website's list.
+   */
+  @Post('sync-categories')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async syncCategories() {
+    return this.legacyPush.syncCategories();
+  }
+
+  /**
    * Fingerprint of the webhook secret, for comparing against the sender's.
    * Turns a 401 into a definite answer about whether the secrets match.
    */
