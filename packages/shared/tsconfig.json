@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2023", "DOM"],
+    // CommonJS output so the NestJS API can require it directly. The web app
+    // does not consume this build at all — Vite aliases @nbr/shared straight to
+    // src/, which keeps ESM tree-shaking and instant HMR on shared changes.
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "isolatedModules": false
+  },
+  "include": ["src/**/*.ts"]
+}

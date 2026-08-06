@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# A newer push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.15.1'
+
+jobs:
+  # ── Fast feedback: types and lint, no services needed ────────────────────
+  static:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The API and web both consume @nbr/shared's build output, so it has to
+      # exist before anything else can typecheck.
+      - name: Build shared package
+        run: pnpm --filter @nbr/shared build
+
+      - name: Typecheck all packages
+        run: pnpm -r typecheck
+
+  # ── Unit + integration tests against real Postgres and Redis ─────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nbr
+          POSTGRES_PASSWORD: nbr_test_password
+          POSTGRES_DB: nbr_crm_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U nbr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://nbr:nbr_test_password@localhost:5432/nbr_crm_test
+      REDIS_URL: redis://localhost:6379
+      # Test-only secrets. Real ones never appear in CI config — the env schema
+      # rejects placeholder values when NODE_ENV=production, so these cannot be
+      # mistaken for deployable settings.
+      JWT_ACCESS_SECRET: dGVzdC1hY2Nlc3Mtc2VjcmV0LWZvci1jaS1vbmx5LW5vdC1yZWFsLTEyMzQ1Ng==
+      JWT_REFRESH_SECRET: dGVzdC1yZWZyZXNoLXNlY3JldC1mb3ItY2ktb25seS1ub3QtcmVhbC02NTQzMjE=
+      PII_ENCRYPTION_KEY: dGVzdC1waWkta2V5LTMyLWJ5dGVzLWV4YWN0bHktb2sh
+      NBR_WEBHOOK_SECRET: test-webhook-secret-for-ci-only-not-real
+      SUPER_ADMIN_EMAIL: ci@example.com
+      SUPER_ADMIN_PASSWORD: CiTestPassword!2026
+      MAIL_FROM_ADDRESS: no-reply@example.com
+      DPDP_GRIEVANCE_OFFICER_EMAIL: grievance@example.com
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: nbr-vault-test
+      S3_ACCESS_KEY_ID: ci
+      S3_SECRET_ACCESS_KEY: ci-secret
+      CORS_ORIGINS: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @nbr/shared build
+
+      # pg_trgm and the immutable-unaccent helper the schema depends on.
+      - name: Install Postgres extensions
+        run: |
+          PGPASSWORD=nbr_test_password psql -h localhost -U nbr -d nbr_crm_test \
+            -f infra/postgres/init/01-extensions.sql
+
+      - name: Run migrations
+        run: pnpm db:migrate
+
+      - name: Seed reference data
+        run: pnpm db:seed
+
+      - name: Run tests
+        run: pnpm -r test
+
+  # ── Production build, so a broken bundle fails CI rather than a deploy ───
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [static]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build everything
+        run: pnpm build
+
+      # The plan sets a < 150 KB gzipped budget for the initial JS payload.
+      # Failing the build is the only way a budget stays real.
+      - name: Check bundle budget
+        run: node scripts/check-bundle-budget.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 7
+
+  # ── Secret scanning on every PR ──────────────────────────────────────────
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail on committed .env
+        run: |
+          if git ls-files --error-unmatch .env 2>/dev/null; then
+            echo "::error::.env is tracked in git — it must never be committed."
+            exit 1
+          fi
+          echo "No tracked .env files."
+
+      - name: Scan for obvious secret patterns
+        run: |
+          # Deliberately narrow: high-signal patterns only, so this gate is
+          # trusted rather than routinely overridden.
+          if git grep -nIE '(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[a-zA-Z0-9]{32,})' \
+             -- ':!*.lock' ':!pnpm-lock.yaml' ':!.github/workflows/*'; then
+            echo "::error::Possible secret committed."
+            exit 1
+          fi
+          echo "No secret patterns found."

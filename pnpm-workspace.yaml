@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  # Native/postinstall builds we explicitly trust.
+  '@swc/core': true # SWC binary for the Vite React plugin
+  argon2: true # native argon2id — the password hashing we depend on
+  esbuild: true # Vite bundler binary
+  msgpackr-extract: true # BullMQ payload serialisation fast path
+  '@scarf/scarf': false # analytics ping only — no build needed

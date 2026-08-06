@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBR — User manual</title>
+<style>
+  :root {
+    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
+    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
+    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
+    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
+    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
+    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
+    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  /* Light only, deliberately: this is printed and handed to staff, and the
+     browser must not restyle the canvas to match a dark OS theme. */
+  html{scroll-behavior:smooth;color-scheme:light}
+  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
+    font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  header.top{
+    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
+               linear-gradient(160deg,var(--navy),var(--navy-soft));
+    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand .mark{width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(145deg,#F0C64E,var(--gold));
+    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
+  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
+  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
+  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
+  header.top .lede{margin:0;color:#B6C4E2;max-width:74ch}
+
+  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
+    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
+  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+
+  section{margin-bottom:44px;scroll-margin-top:16px}
+  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
+  h4{font-size:14.5px;margin:26px 0 8px}
+  h5{font-size:13px;margin:18px 0 6px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
+  p{max-width:78ch}
+
+  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
+    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.7;margin:12px 0}
+  pre .c{color:#7B8DB5;font-style:italic}
+  code{font-family:var(--mono);font-size:.88em;background:var(--slate-tint);
+    padding:1.5px 5px;border-radius:4px;color:var(--navy)}
+  pre code{background:none;padding:0;color:inherit}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;box-shadow:var(--shadow);margin:14px 0}
+
+  .tbl-scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:13.2px;min-width:520px}
+  th{text-align:left;padding:10px 14px;background:var(--slate-tint);color:var(--ink-2);
+    font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+
+  .note{border-left:3px solid var(--blue);background:var(--blue-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .warn{border-left:3px solid var(--amber);background:var(--amber-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .danger{border-left:3px solid var(--red);background:var(--red-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .ok{border-left:3px solid var(--green);background:var(--green-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .note p,.warn p,.danger p,.ok p{margin:0}
+  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:8px}
+
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;
+    border-radius:20px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+  .p-blue{background:var(--blue-tint);color:var(--blue)}
+  .p-green{background:var(--green-tint);color:var(--green)}
+  .p-amber{background:var(--amber-tint);color:var(--amber)}
+  .p-red{background:var(--red-tint);color:var(--red)}
+  .p-purple{background:var(--purple-tint);color:var(--purple)}
+  .p-slate{background:var(--slate-tint);color:var(--slate)}
+
+  ol,ul{max-width:78ch;padding-left:22px}
+  li{margin:5px 0}
+  ol.steps{counter-reset:s;list-style:none;padding-left:0}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:34px;margin:12px 0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;
+    width:23px;height:23px;border-radius:50%;background:var(--blue);color:#fff;
+    font-size:11.5px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:16px 0;
+    padding:16px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow)}
+  .flow .step{background:var(--slate-tint);border-radius:6px;padding:5px 11px;
+    font-size:12.3px;font-weight:600;white-space:nowrap}
+  .flow .step.hi{background:var(--blue);color:#fff}
+  .flow .arr{color:var(--ink-3);font-size:13px}
+
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin:14px 0}
+
+  footer{border-top:1px solid var(--line);padding:22px clamp(18px,4vw,48px);
+    color:var(--ink-3);font-size:12.5px;background:var(--card)}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  @media print{
+    body{background:#fff;font-size:11pt}
+    header.top{background:var(--navy)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    nav.toc{display:none}
+    section{break-inside:avoid}
+    pre{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">N</div>
+      <div>
+        <h1>National Book of Records</h1>
+        <p>Backend CRM · Internal System</p>
+      </div>
+    </div>
+    <h2>User manual</h2>
+    <p class="lede">
+      Every screen, tab and button in the internal CRM, and how each one relates to
+      the public website's admin panel. Written for the people who will run the
+      day, not for developers.
+    </p>
+  </div>
+</header>
+
+<main>
+
+<nav class="toc">
+  <a href="#two-systems">1 · Two systems</a>
+  <a href="#signing-in">2 · Signing in</a>
+  <a href="#dashboard">3 · Dashboard</a>
+  <a href="#applicants">4 · Applicants</a>
+  <a href="#profile">5 · The applicant profile</a>
+  <a href="#queues">6 · Pipeline queues</a>
+  <a href="#sales">7 · Sales &amp; leads</a>
+  <a href="#workspace">8 · Tasks, blacklist, reports</a>
+  <a href="#employees">9 · Employees</a>
+  <a href="#admin">10 · Administration</a>
+  <a href="#legacy">11 · The website admin panel</a>
+  <a href="#sync">12 · What syncs, and when</a>
+  <a href="#troubleshooting">13 · When something looks wrong</a>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════ 1 -->
+<section id="two-systems">
+  <h3><span class="num">01</span> Two systems, one set of records</h3>
+  <p class="sub">Read this section before anything else. Almost every question about
+  "why did that not appear" is answered here.</p>
+
+  <div class="cols">
+    <div class="card">
+      <h4 style="margin-top:0">The website <span class="pill p-purple">public</span></h4>
+      <p style="margin:6px 0 0">
+        <code>nationalbookofrecords.in</code> and its admin panel. Applicants apply here,
+        pay here, and verify their certificate here. <strong>It is the source of truth
+        for anything the public can see.</strong>
+      </p>
+    </div>
+    <div class="card">
+      <h4 style="margin-top:0">The CRM <span class="pill p-blue">internal</span></h4>
+      <p style="margin:6px 0 0">
+        This system. Staff-only. It mirrors website applications and adds the work
+        the website has no concept of: verification queues, tasks, sales calls,
+        internal notes, reports.
+      </p>
+    </div>
+  </div>
+
+  <h4>The one rule that explains everything</h4>
+  <div class="note">
+    <p><strong>An application only appears in the CRM once it has been approved on the
+    website.</strong> Applications sitting at <em>pending</em>, <em>under review</em> or
+    <em>draft</em> are deliberately not sent across. If a colleague says "I submitted it
+    but it is not in the CRM", the answer is nearly always that nobody has approved it yet.</p>
+  </div>
+
+  <h4>Which system owns what</h4>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Thing</th><th>Owned by</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td>Application intake, approval, rejection</td><td>Website</td>
+            <td>Do it on the website. The CRM receives the result.</td></tr>
+        <tr><td>Payment</td><td>Both</td>
+            <td>Record it in either system; it appears in the other within seconds.</td></tr>
+        <tr><td>Certificate</td><td>Both</td>
+            <td>Issue in either; the number and link reach the other.</td></tr>
+        <tr><td>Dispatch &amp; tracking</td><td>Both</td>
+            <td>Update in either; courier, tracking and delivery mirror across.</td></tr>
+        <tr><td>Public awardee page, verification page</td><td>Website</td>
+            <td>Served from the website. The CRM links to it, never replaces it.</td></tr>
+        <tr><td>Verification queue, tasks, notes, sales, reports</td><td>CRM</td>
+            <td>Internal only. Never sent to the website.</td></tr>
+        <tr><td>Applicants created directly in the CRM</td><td>CRM</td>
+            <td>Stay in the CRM. They are never pushed to the public site.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="warn">
+    <p><strong>Records you create in the CRM do not appear on the website.</strong>
+    That is intentional. Use <em>New Applicant</em> in the CRM for walk-ins, offline
+    entries and historic record-holders you are backfilling. If a person needs a public
+    profile and a public certificate page, their application has to originate on the
+    website.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 2 -->
+<section id="signing-in">
+  <h3><span class="num">02</span> Signing in</h3>
+  <p class="sub">The CRM is staff-only and every action is written to an audit log
+  against your name.</p>
+
+  <ol class="steps">
+    <li>Open the CRM address your administrator gave you and sign in with your
+        <strong>work email or employee ID</strong> plus your password.</li>
+    <li>If this is your first login, you are sent straight to <strong>Set your
+        password</strong>. Nothing else in the system opens until you change it —
+        the temporary password you were issued is treated as compromised.</li>
+    <li>Changing your password <strong>signs you out everywhere</strong>, including
+        the browser you are using. Sign in again with the new one.</li>
+  </ol>
+
+  <h5>Things worth knowing</h5>
+  <ul>
+    <li><strong>Five wrong passwords locks the account for 15 minutes.</strong>
+        Wait it out or ask an administrator.</li>
+    <li><strong>Sessions end after 30 minutes idle.</strong> You will be returned to
+        the sign-in screen; nothing is lost.</li>
+    <li><strong>Forgot password</strong> emails a link valid for 30 minutes and usable
+        once. The confirmation message is the same whether or not the address exists,
+        so it cannot be used to discover who has an account.</li>
+  </ul>
+
+  <h5>What you can see depends on your role</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Role</th><th>Broadly can</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill p-red">Super Admin</span></td><td>Everything, including roles, settings, audit and the integration.</td></tr>
+        <tr><td><span class="pill p-purple">Admin</span></td><td>All day-to-day work plus users and templates.</td></tr>
+        <tr><td><span class="pill p-blue">Sales</span></td><td>Leads, calls, follow-ups, applicant intake.</td></tr>
+        <tr><td><span class="pill p-amber">Verification</span></td><td>The verification queue, evidence, status decisions.</td></tr>
+        <tr><td><span class="pill p-green">Accounts</span></td><td>Payments, invoices, financial reports.</td></tr>
+        <tr><td><span class="pill p-slate">Operations</span></td><td>Certificates, publications, dispatch.</td></tr>
+        <tr><td><span class="pill p-slate">Viewer</span></td><td>Read-only. No buttons that change anything.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Menu items you have no permission for are hidden entirely. If a colleague can
+  see a screen you cannot, that is a role difference, not a fault.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 3 -->
+<section id="dashboard">
+  <h3><span class="num">03</span> Dashboard</h3>
+  <p class="sub"><code>/dashboard</code> — where the day starts.</p>
+  <p>Counts across the pipeline, what is overdue, and recent activity. Every tile is a
+  link: clicking a count opens the queue behind it already filtered. Use it to decide
+  what to work on, not as a report — <a href="#workspace">Reports</a> is for numbers
+  you intend to quote.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 4 -->
+<section id="applicants">
+  <h3><span class="num">04</span> Applicants</h3>
+  <p class="sub"><code>/applicants</code> — every person in the system, whether they
+  came from the website or were added here.</p>
+
+  <h4>The list</h4>
+  <ul>
+    <li><strong>Search</strong> by name, mobile, email, applicant ID or record number.</li>
+    <li><strong>Filter</strong> by status, category and date. Filters are held in the
+        address bar, so a filtered list can be copied to a colleague and it opens the
+        same way for them.</li>
+    <li><strong>The three-dot menu</strong> at the end of each row holds that row's
+        actions — open, edit, add a note, change status. Actions you lack permission
+        for are greyed out with the reason on hover.</li>
+  </ul>
+  <p>The global search box in the top bar (or <code>⌘K</code> / <code>Ctrl K</code>)
+  jumps straight to a person from anywhere in the system.</p>
+
+  <h4>New Applicant</h4>
+  <p><code>/applicants/new</code>. Use this for a walk-in, a phone enquiry that is ready
+  to become an application, or a historic record-holder being entered after the fact.</p>
+  <ol class="steps">
+    <li>Fill in the applicant's details. <strong>Name and mobile are required</strong>;
+        everything else can follow later.</li>
+    <li>Fill in the record: title, category, description, date achieved, location.</li>
+    <li>Tick <strong>"This record was already awarded"</strong> for a back-entry, and
+        supply the existing record number and certificate date. This skips the pipeline
+        rather than pretending the record is new.</li>
+    <li><strong>Save &amp; open profile.</strong> The system checks for a duplicate on
+        mobile and warns you before creating a second file for the same person.</li>
+  </ol>
+  <div class="note">
+    <p>The category list here is the <strong>website's</strong> category list, kept in
+    step automatically. If a category you expect is missing, it was retired on the
+    website — add it there, not here.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 5 -->
+<section id="profile">
+  <h3><span class="num">05</span> The applicant profile</h3>
+  <p class="sub"><code>/applicants/:id</code> — the screen you will spend most of the
+  day on. One person, all their records, every tab.</p>
+
+  <h4>The header</h4>
+  <p>Name, applicant ID, contact details and six status chips —
+  <strong>Application</strong>, <strong>Payment</strong>, <strong>Certificate</strong>,
+  <strong>Publication</strong>, <strong>Dispatch</strong>, <strong>Blacklist</strong> —
+  so the state of the whole file is readable without opening a tab.
+  <strong>Edit</strong>, <strong>Export PDF</strong> and <strong>New record</strong> sit
+  top-right. A person may hold several records; the record selector below the header
+  switches between them.</p>
+
+  <h4>Smart Actions</h4>
+  <p>The panel on the right offers only what makes sense for the record's current
+  status, so you are never choosing from a list of things that would fail.
+  At <em>Selected</em>, for example:</p>
+  <div class="cols">
+    <div class="card" style="margin:0">
+      <strong>Send selection email</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">Sends the selection
+      template to the applicant and logs it on the timeline.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <strong>Send selection WhatsApp</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">Opens WhatsApp with
+      the message prefilled; mark it sent to record it.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <strong>Download selection letter</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">Generates the PDF
+      letter on official letterhead.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <strong>Set payment deadline</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">Starts the clock and
+      schedules the reminders.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <strong>Add internal note</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">Staff-only. Never
+      visible to the applicant.</p>
+    </div>
+    <div class="card" style="margin:0">
+      <strong>Change status manually</strong>
+      <p style="margin:5px 0 0;color:var(--ink-2);font-size:13.2px">For when the normal
+      route does not fit. Asks for a reason.</p>
+    </div>
+  </div>
+
+  <h4>The tabs</h4>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Tab</th><th>What it holds</th><th>What you can do</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Overview</strong></td><td>Applicant summary, record summary, contact, fulfilment at a glance.</td><td>Read. Everything here is editable from its own tab.</td></tr>
+        <tr><td><strong>Application</strong></td><td>The submitted form as it arrived, including where it came from.</td><td>Edit the application details.</td></tr>
+        <tr><td><strong>Achievement</strong></td><td>Record title, category, description, date, location, measurements.</td><td>Edit; corrections are written to the timeline.</td></tr>
+        <tr><td><strong>Evidence</strong></td><td>Photos, videos, documents and witness statements.</td><td>Upload, preview, download, mark verified or rejected with a reason.</td></tr>
+        <tr><td><strong>Payment</strong></td><td>The payment plan and every transaction against it.</td><td><strong>Raise payment</strong>, <strong>record a transaction</strong> (part payments allowed), reverse an entry, generate the invoice PDF.</td></tr>
+        <tr><td><strong>Certificate</strong></td><td>Every issued version, newest first.</td><td>Upload a certificate, download any version. Re-issuing adds a version and asks why — nothing is overwritten.</td></tr>
+        <tr><td><strong>Publications</strong></td><td>Magazine features, web listings, press.</td><td>Add an entry with the issue, page and link; attach the artwork.</td></tr>
+        <tr><td><strong>Dispatch</strong></td><td>Courier, tracking number, dispatch and delivery dates, proof of delivery.</td><td>Update dispatch, mark delivered, attach the POD, optionally notify the applicant.</td></tr>
+        <tr><td><strong>Timeline</strong></td><td>Everything that ever happened, in order, with who did it.</td><td>Read only, by design. Entries marked <em>integration</em> came from the website.</td></tr>
+        <tr><td><strong>Notes</strong></td><td>Internal staff notes.</td><td>Add and pin. Never shown to the applicant.</td></tr>
+        <tr><td><strong>Tasks</strong></td><td>Follow-ups attached to this person.</td><td>Create, assign, set a due date, complete.</td></tr>
+        <tr><td><strong>Communication</strong></td><td>Every email, WhatsApp and logged call.</td><td>Send an email from a template, log a call with its outcome and summary, retry a failed send.</td></tr>
+        <tr><td><strong>Attachments</strong></td><td>Anything that is not evidence — ID copies, correspondence, receipts.</td><td>Upload and download.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>The pipeline, in order</h4>
+  <div class="flow">
+    <span class="step">New Lead</span><span class="arr">→</span>
+    <span class="step">Application Submitted</span><span class="arr">→</span>
+    <span class="step">Under Review</span><span class="arr">→</span>
+    <span class="step">Verification Pending</span><span class="arr">→</span>
+    <span class="step hi">Selected</span><span class="arr">→</span>
+    <span class="step">Payment Pending</span><span class="arr">→</span>
+    <span class="step">Payment Received</span><span class="arr">→</span>
+    <span class="step">Certificate Pending</span><span class="arr">→</span>
+    <span class="step">Certificate Uploaded</span><span class="arr">→</span>
+    <span class="step">Publication</span><span class="arr">→</span>
+    <span class="step">Dispatch Pending</span><span class="arr">→</span>
+    <span class="step">Dispatched</span><span class="arr">→</span>
+    <span class="step">Delivered</span><span class="arr">→</span>
+    <span class="step">Completed</span>
+  </div>
+  <p><strong>On Hold</strong>, <strong>Rejected</strong> and <strong>Closed</strong> sit
+  outside the line and can be reached from most points. A record that arrives from the
+  website lands on <em>Selected</em> — approved, awaiting money.</p>
+
+  <div class="warn">
+    <p><strong>Statuses move forward, not backward.</strong> If you genuinely need to
+    step a record back, use <em>Change status manually</em> and give a reason. The
+    reason is recorded against your name and shows on the timeline.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 6 -->
+<section id="queues">
+  <h3><span class="num">06</span> Pipeline queues</h3>
+  <p class="sub">Five worklists. Each one answers "what is waiting for my team right now".</p>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Queue</th><th>Shows</th><th>Typical action</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Verification</strong><br><code>/verification</code></td>
+            <td>Records with evidence awaiting a decision.</td>
+            <td>Open, review the evidence, select or reject with a reason.</td></tr>
+        <tr><td><strong>Payments</strong><br><code>/payments</code></td>
+            <td>Raised but unpaid, part-paid, and overdue.</td>
+            <td>Record a payment, chase an overdue one, generate an invoice.</td></tr>
+        <tr><td><strong>Certificates</strong><br><code>/certificates</code></td>
+            <td>Paid records with no certificate yet.</td>
+            <td>Upload the certificate PDF and its number.</td></tr>
+        <tr><td><strong>Publications</strong><br><code>/publications</code></td>
+            <td>Records due to appear in a magazine or listing.</td>
+            <td>Record the publication once it runs.</td></tr>
+        <tr><td><strong>Dispatch</strong><br><code>/dispatch</code></td>
+            <td>Certificates ready to post, and parcels in transit.</td>
+            <td>Enter courier and tracking, then mark delivered.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Every queue supports the same search, filters and three-dot row actions as the
+  applicant list, and every row opens the full profile.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 7 -->
+<section id="sales">
+  <h3><span class="num">07</span> Sales &amp; leads</h3>
+  <p class="sub">Outbound calling. This is <em>separate</em> from the applicant
+  pipeline — these are people being called to invite them to apply.</p>
+
+  <h4>Leads <code>/leads</code></h4>
+  <p>One row per person being called. The single filter bar combines status, owner,
+  follow-up window and search, so you are not reconciling four controls.</p>
+
+  <h5>Lead statuses</h5>
+  <p>
+    <span class="pill p-slate">New</span>
+    <span class="pill p-blue">Contacted</span>
+    <span class="pill p-green">Interested</span>
+    <span class="pill p-amber">Callback</span>
+    <span class="pill p-red">Not interested</span>
+    <span class="pill p-slate">Unqualified</span>
+    <span class="pill p-purple">Converted</span>
+    <span class="pill p-red">Lost</span>
+  </p>
+
+  <h5>Logging a call</h5>
+  <ol class="steps">
+    <li>Open the lead, or use <strong>Log call</strong> from the row's three-dot menu.</li>
+    <li>Pick the <strong>outcome</strong>: connected, no answer, busy, wrong number,
+        switched off, callback requested, interested, not interested.</li>
+    <li>Enter the <strong>duration</strong> and a <strong>summary</strong> of what was said.</li>
+    <li>Set a <strong>follow-up date</strong> if you promised to call back. This creates a
+        task automatically — the promise is not left in a text field where it will be missed.</li>
+    <li>Save. The call joins the lead's call history with your name and the time.</li>
+  </ol>
+  <p>The lead detail view shows <strong>every previous call</strong> — date, caller,
+  outcome, duration and summary — so whoever picks up the phone next knows what was
+  already said.</p>
+
+  <div class="ok">
+    <p><strong>Converting a lead</strong> creates the applicant and record, and carries
+    the entire call history onto the new applicant's timeline with the original dates
+    and callers. Nothing is stranded on a closed lead.</p>
+  </div>
+
+  <h4>Sales Dashboard <code>/sales</code></h4>
+  <p>Per-person figures for a chosen day: calls made, connected, minutes on the phone,
+  interested, new leads, converted, and follow-ups missed. Below it, the pipeline by
+  stage.</p>
+  <p><strong>Send report now</strong> emails the same figures immediately. The same
+  report goes out automatically each evening at the time set in Settings. The numbers in
+  the email and the numbers on this screen come from the same place, so they always agree.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 8 -->
+<section id="workspace">
+  <h3><span class="num">08</span> Tasks, blacklist and reports</h3>
+
+  <h4>Tasks &amp; Follow-ups <code>/tasks</code></h4>
+  <p>A board of everything assigned, grouped by due date, with overdue first. Tasks
+  arrive here from three places: created by hand, generated when you promise a
+  follow-up on a call, and raised by the system when something needs attention.
+  Assign, re-assign, change the due date, or complete.</p>
+
+  <h4>Blacklist <code>/blacklist</code></h4>
+  <p>People or organisations who must not be processed. Add an entry with the reason
+  and supporting detail. Once listed, their file shows a clear warning at the top and
+  the pipeline actions are blocked. <strong>Lift</strong> removes the block and asks for
+  a reason; the original entry is kept, not deleted.</p>
+
+  <h4>Reports <code>/reports</code></h4>
+  <p>Applications over time, conversion, revenue, category mix, dispatch performance,
+  staff activity. Choose a date range and export to CSV or PDF. These are the figures
+  to quote externally — the dashboard is for triage.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 9 -->
+<section id="employees">
+  <h3><span class="num">09</span> Employees</h3>
+  <p class="sub"><code>/employees</code> — the staff directory.</p>
+  <p>Employee code, name, designation, department, reporting manager, work email,
+  personal contact, date of joining and status. Add, edit and deactivate from the
+  three-dot menu on each row.</p>
+  <div class="note">
+    <p><strong>An employee is not a login.</strong> This directory is a record of who
+    works here. Access to the CRM is granted separately under
+    <a href="#admin">Users &amp; Roles</a>. Someone can appear here without an account,
+    and deactivating them here does not revoke their access — do that in Users &amp; Roles.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 10 -->
+<section id="admin">
+  <h3><span class="num">10</span> Administration</h3>
+
+  <h4>Users &amp; Roles <code>/admin/users</code></h4>
+  <p>Create an account, assign a role, reset a password, deactivate. A new user is
+  issued a temporary password and forced to change it at first login. Deactivating
+  revokes their sessions immediately.</p>
+
+  <h4>Templates <code>/admin/templates</code></h4>
+  <p>Email and WhatsApp templates. System templates that drive the pipeline can be
+  edited but not deleted, so an automatic message can never be left with nothing to
+  send. <strong>Custom templates</strong> can be created and deleted freely. Placeholders
+  such as the applicant's name and record number are substituted when sent.</p>
+
+  <h4>Settings <code>/admin/settings</code></h4>
+  <p>Organisation details, packages, categories, couriers, statuses, the evening sales
+  report time and its recipients, and the DPDP consent notice.</p>
+  <div class="warn">
+    <p><strong>Packages and categories are mirrored from the website</strong> and should
+    be changed there, not here. Editing them locally puts a price or a category in front
+    of an operator that the website will reject.</p>
+  </div>
+
+  <h4>Audit Logs <code>/admin/audit</code></h4>
+  <p>Who did what, when, from where. Filterable by user, module, action and date.
+  Append-only — entries cannot be edited or removed by anyone, including a Super Admin.
+  Viewing an unmasked Aadhaar or passport number is itself an audited event.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 11 -->
+<section id="legacy">
+  <h3><span class="num">11</span> The website admin panel</h3>
+  <p class="sub">What you still do on the public site, and where.</p>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Screen</th><th>Use it for</th><th>Reaches the CRM?</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Applications</strong></td><td>The full submission list, filterable by status.</td><td>—</td></tr>
+        <tr><td><strong>Application detail</strong></td><td>Review evidence and <strong>Approve</strong> or reject. Approval is what admits a record to the CRM.</td><td><span class="pill p-green">Yes</span></td></tr>
+        <tr><td><strong>Manual payment</strong></td><td>Record an offline payment — UPI, NEFT, RTGS, DD, cheque, cash.</td><td><span class="pill p-green">Yes</span></td></tr>
+        <tr><td><strong>Certificates</strong></td><td>Issue and manage certificates; the public verification page.</td><td><span class="pill p-green">Yes</span></td></tr>
+        <tr><td><strong>Dispatch</strong></td><td>Courier, tracking, delivery status.</td><td><span class="pill p-green">Yes</span></td></tr>
+        <tr><td><strong>Awardees</strong></td><td>Public awardee profiles.</td><td>—</td></tr>
+        <tr><td><strong>Awards, Categories, Records</strong></td><td>The public catalogue. Categories here drive the CRM's list.</td><td><span class="pill p-blue">Categories</span></td></tr>
+        <tr><td><strong>Contests, Magazine, Testimonials</strong></td><td>Public content.</td><td>—</td></tr>
+        <tr><td><strong>Complaints, Partner &amp; Adjudicator applications</strong></td><td>Public-facing enquiries.</td><td>—</td></tr>
+        <tr><td><strong>Settings → Internal CRM</strong></td><td>The connector: switch it on, set the CRM address and shared secret, test, backfill, re-sync.</td><td>n/a</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Settings → Internal CRM, in detail</h4>
+  <ul>
+    <li><strong>Test connection</strong> — sends a signed test push and reports exactly
+        what came back. If the secrets differ it says so, and shows a fingerprint of each
+        so you can compare without revealing either.</li>
+    <li><strong>Backfill</strong> — sends every approved-and-beyond application that the
+        CRM has not seen. Safe to run repeatedly; applications already there are updated,
+        not duplicated.</li>
+    <li><strong>Re-sync this application</strong> — on a single application, for when one
+        record looks out of step.</li>
+    <li><strong>Sync log</strong> — the last events in both directions with their outcome.
+        This is the first place to look when something has not arrived.</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 12 -->
+<section id="sync">
+  <h3><span class="num">12</span> What syncs, and when</h3>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Event</th><th>Direction</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Application approved on the website</td><td>Website → CRM</td>
+            <td>Applicant and record created, status <strong>Selected</strong>, consent and evidence carried across.</td></tr>
+        <tr><td>Payment recorded in the CRM</td><td>CRM → Website</td>
+            <td>Payment appears on the website; the application moves to <em>paid</em>.</td></tr>
+        <tr><td>Payment recorded on the website</td><td>Website → CRM</td>
+            <td>Payment banked against the record, matched to the right package.</td></tr>
+        <tr><td>Certificate issued in either system</td><td>Both ways</td>
+            <td>Number and issue date mirrored; the public verification page stays authoritative.</td></tr>
+        <tr><td>Dispatch updated in either system</td><td>Both ways</td>
+            <td>Courier, tracking number, tracking link and delivery date mirrored.</td></tr>
+        <tr><td>Status changed in the CRM</td><td class="p-slate">CRM only</td>
+            <td>Internal statuses such as <em>Completed</em> have no counterpart on the website and are not sent.</td></tr>
+        <tr><td>Notes, tasks, leads, calls</td><td class="p-slate">CRM only</td>
+            <td>Never leave the CRM.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ok">
+    <p><strong>You cannot break it by doing the same thing twice.</strong> Recording the
+    same payment in both systems does not double-count it, and re-sending a record does
+    not create a duplicate. The two systems compare content and settle on the same
+    answer.</p>
+  </div>
+
+  <p>Sync is normally a matter of seconds. If the receiving system is briefly down the
+  sender retries; if it still fails, the failure is written to the sync log with the
+  reason rather than disappearing.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 13 -->
+<section id="troubleshooting">
+  <h3><span class="num">13</span> When something looks wrong</h3>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>What you see</th><th>Almost always because</th><th>Do this</th></tr></thead>
+      <tbody>
+        <tr><td>An application is not in the CRM</td>
+            <td>It has not been approved on the website yet.</td>
+            <td>Check its status there. Approve it, and it arrives within seconds.</td></tr>
+        <tr><td>A CRM-created applicant is not on the website</td>
+            <td>Working as intended — CRM records are internal.</td>
+            <td>Nothing. If it must be public, it has to start on the website.</td></tr>
+        <tr><td>A payment shows in one system only</td>
+            <td>A sync failure was recorded.</td>
+            <td>Website → Settings → Internal CRM → Sync log. Then <em>Re-sync this application</em>.</td></tr>
+        <tr><td>"Signature could not be verified"</td>
+            <td>The shared secret differs between the two systems.</td>
+            <td>Ask an administrator to compare the fingerprints on the Internal CRM tab.</td></tr>
+        <tr><td>A category is missing when adding a record</td>
+            <td>It is retired, or not on the website's list.</td>
+            <td>Add it on the website; the CRM picks it up on the next sync.</td></tr>
+        <tr><td>A package price looks wrong</td>
+            <td>Prices come from the website and are quoted all-inclusive.</td>
+            <td>Change the price on the website, then re-sync packages.</td></tr>
+        <tr><td>A button is greyed out</td>
+            <td>Your role does not allow it, or the record's status does not.</td>
+            <td>Hover for the reason. Ask an administrator if you need the permission.</td></tr>
+        <tr><td>Signed out unexpectedly</td>
+            <td>30 minutes idle, or someone changed your password.</td>
+            <td>Sign in again.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="danger">
+    <p><strong>Never share your login.</strong> Every action is recorded against the
+    account that performed it, including who viewed an applicant's Aadhaar or passport
+    number. A shared account makes that record meaningless and puts the organisation's
+    DPDP obligations at risk.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>National Book of Records — Backend CRM user manual</span>
+    <span>Internal document · Do not circulate outside the organisation</span>
+  </div>
+</footer>
+
+</body>
+</html>

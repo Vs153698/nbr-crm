@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans text-sm antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* A visible, consistent focus ring everywhere — keyboard users must always
+     be able to see where they are. Only shown for keyboard focus so mouse
+     clicks don't leave rings behind.
+
+     No offset by default. An offset assumes it knows the colour behind the
+     element, and it doesn't: the same rule runs on the white workspace, the
+     navy sidebar and the sign-in card, where a white gap reads as a defect.
+     Controls that genuinely need separation — a focused orange button on an
+     orange surface — declare their own offset and its colour. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-nbr-orange;
+  }
+
+  /* Numbers in tables and stat cards must not jitter as they change. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-brand/20;
+  }
+
+  /* Slim scrollbars inside panels so a scrollable table doesn't gain a
+     chunky OS scrollbar in the middle of the layout. */
+  .scrollbar-slim::-webkit-scrollbar {
+    @apply h-2 w-2;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink-4/40;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+}
+
+@layer components {
+  /* Skeleton shimmer used by every loading state. */
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-slate2-tint;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full;
+    content: '';
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0.7) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+/* Respect the user's motion preference — §accessibility. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,377 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { EVIDENCE_KIND, TIMELINE_EVENT } from '@nbr/shared';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { AUDIT, AuditService } from '../audit/audit.service';
+import { ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
+import { requireActor } from '../common/request-context';
+import type { Database } from '../database/client';
+import { DB } from '../database/database.tokens';
+import * as schema from '../database/schema';
+import { CacheService, CacheTag } from '../redis/cache.service';
+import { StorageService, type UploadScope } from '../storage/storage.service';
+import { TimelineService } from '../timeline/timeline.service';
+
+export interface EvidenceItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly fileName: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  readonly description: string | null;
+  readonly isSensitive: boolean;
+  readonly scanStatus: string;
+  readonly uploadedByName: string | null;
+  readonly createdAt: string;
+}
+
+/**
+ * Evidence vault and general attachments (§7, §16, P1-12, P1-13).
+ *
+ * The requirement is unusually strict: "Files should remain attached
+ * permanently. No overwriting. Multiple uploads should be allowed."
+ *
+ * That is implemented three ways, so no single mistake can break it:
+ *  1. Storage keys carry a UUID, so the same filename never collides.
+ *  2. There is no delete endpoint on this service at all.
+ *  3. A database trigger rejects DELETE on `evidence_files` outright.
+ */
+@Injectable()
+export class VaultService {
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly storage: StorageService,
+    private readonly timeline: TimelineService,
+    private readonly audit: AuditService,
+    private readonly cache: CacheService,
+  ) {}
+
+  /**
+   * Step 1 of an upload: hand the browser a presigned URL and remember that we
+   * did. The intent row lets a nightly job find objects that were uploaded but
+   * never confirmed, and caps what an authenticated user can push into the
+   * bucket before any metadata row exists.
+   */
+  async presign(input: {
+    scope: UploadScope;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    recordId?: string;
+    applicantId?: string;
+  }) {
+    const actor = requireActor();
+
+    const ownerId = input.recordId ?? input.applicantId ?? actor.userId;
+    const presigned = await this.storage.presignUpload({
+      scope: input.scope,
+      ownerId,
+      fileName: input.fileName,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+    });
+
+    await this.db.insert(schema.uploadIntents).values({
+      userId: actor.userId,
+      scope: input.scope,
+      storageKey: presigned.storageKey,
+      fileName: input.fileName,
+      contentType: input.contentType,
+      declaredSizeBytes: input.sizeBytes,
+      recordId: input.recordId ?? null,
+      applicantId: input.applicantId ?? null,
+      expiresAt: new Date(Date.now() + presigned.expiresInSeconds * 1000),
+    });
+
+    return presigned;
+  }
+
+  /**
+   * Step 2: the browser reports the upload finished, and we record it.
+   *
+   * The object is verified against storage first — its real size and type, not
+   * the client's claim. Otherwise the metadata row is unfounded, and a caller
+   * could register a file that was never uploaded at all.
+   */
+  async confirmEvidence(input: {
+    recordId: string;
+    kind: string;
+    storageKey: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    checksumSha256?: string;
+    description?: string;
+  }): Promise<{ id: string }> {
+    const [record] = await this.db
+      .select({
+        id: schema.records.id,
+        applicantId: schema.records.applicantId,
+        recordCode: schema.records.recordCode,
+      })
+      .from(schema.records)
+      .where(and(eq(schema.records.id, input.recordId), isNull(schema.records.deletedAt)))
+      .limit(1);
+
+    if (!record) throw new NotFoundError('Record');
+
+    await this.assertIntentBelongsToCaller(input.storageKey);
+
+    const head = await this.storage.verifyUploaded(input.storageKey);
+    if (!head.exists) {
+      throw new ValidationError({
+        storageKey: ['That upload did not complete. Please try uploading the file again.'],
+      });
+    }
+
+    // ID proofs and consent forms are the most sensitive objects in the vault;
+    // flagging them here is what gates their download on `pii:reveal`.
+    const isSensitive =
+      input.kind === EVIDENCE_KIND.ID_PROOF || input.kind === EVIDENCE_KIND.CONSENT_FORM;
+
+    const [inserted] = await this.db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(schema.evidenceFiles)
+        .values({
+          recordId: record.id,
+          applicantId: record.applicantId,
+          kind: input.kind,
+          storageKey: input.storageKey,
+          fileName: input.fileName,
+          contentType: head.contentType ?? input.contentType,
+          // Trust storage over the client for the real byte count.
+          sizeBytes: head.sizeBytes || input.sizeBytes,
+          checksumSha256: input.checksumSha256 ?? null,
+          description: input.description ?? null,
+          isSensitive,
+          uploadedByUserId: requireActor().userId,
+        })
+        .returning({ id: schema.evidenceFiles.id });
+
+      // Denormalised counter feeds the list view and the has_evidence guard
+      // without a COUNT per row.
+      await tx
+        .update(schema.records)
+        .set({ evidenceCount: sql`${schema.records.evidenceCount} + 1` })
+        .where(eq(schema.records.id, record.id));
+
+      await tx
+        .update(schema.uploadIntents)
+        .set({ confirmedAt: new Date() })
+        .where(eq(schema.uploadIntents.storageKey, input.storageKey));
+
+      await this.timeline.write(
+        {
+          applicantId: record.applicantId,
+          recordId: record.id,
+          eventType: TIMELINE_EVENT.EVIDENCE_UPLOADED,
+          summary: `Evidence uploaded — ${input.fileName}`,
+          meta: { kind: input.kind, fileName: input.fileName, sizeBytes: head.sizeBytes },
+        },
+        tx,
+      );
+
+      await this.audit.record(
+        {
+          action: AUDIT.EVIDENCE_UPLOADED,
+          entityType: 'evidence',
+          entityId: rows[0]!.id,
+          entityLabel: `${record.recordCode} — ${input.fileName}`,
+          meta: { kind: input.kind, sensitive: isSensitive },
+        },
+        tx,
+      );
+
+      return rows;
+    });
+
+    await this.cache.invalidateTags(
+      CacheTag.record(record.id),
+      CacheTag.applicant(record.applicantId),
+      CacheTag.applicantList(),
+    );
+
+    return { id: inserted!.id };
+  }
+
+  async listEvidence(recordId: string): Promise<EvidenceItem[]> {
+    const rows = await this.db
+      .select({
+        id: schema.evidenceFiles.id,
+        kind: schema.evidenceFiles.kind,
+        fileName: schema.evidenceFiles.fileName,
+        contentType: schema.evidenceFiles.contentType,
+        sizeBytes: schema.evidenceFiles.sizeBytes,
+        description: schema.evidenceFiles.description,
+        isSensitive: schema.evidenceFiles.isSensitive,
+        scanStatus: schema.evidenceFiles.scanStatus,
+        uploadedByName: schema.users.fullName,
+        createdAt: schema.evidenceFiles.createdAt,
+      })
+      .from(schema.evidenceFiles)
+      .leftJoin(schema.users, eq(schema.evidenceFiles.uploadedByUserId, schema.users.id))
+      .where(eq(schema.evidenceFiles.recordId, recordId))
+      .orderBy(desc(schema.evidenceFiles.createdAt));
+
+    return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
+  /**
+   * Issue a short-lived download URL.
+   *
+   * A file flagged sensitive requires `pii:reveal` and writes to the PII access
+   * log — downloading someone's Aadhaar scan is the same act as decrypting
+   * their Aadhaar number, and is treated the same way.
+   */
+  async getDownloadUrl(evidenceId: string): Promise<{ url: string; fileName: string }> {
+    const actor = requireActor();
+
+    const [file] = await this.db
+      .select()
+      .from(schema.evidenceFiles)
+      .where(eq(schema.evidenceFiles.id, evidenceId))
+      .limit(1);
+
+    if (!file) throw new NotFoundError('File');
+
+    if (file.isSensitive && !actor.isSuperAdmin && !actor.permissions.has('pii:reveal')) {
+      throw new ForbiddenError('You do not have permission to open identity documents.');
+    }
+
+    if (file.isSensitive) {
+      await this.audit.recordPiiAccess({
+        applicantId: file.applicantId,
+        field: file.kind,
+        accessType: 'download',
+        reason: `Downloaded ${file.fileName}`,
+      });
+    }
+
+    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
+    return { url, fileName: file.fileName };
+  }
+
+  // ── General attachments (§16) ──────────────────────────────────────────────
+
+  async confirmAttachment(input: {
+    applicantId?: string;
+    recordId?: string;
+    kind: string;
+    storageKey: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    description?: string;
+  }): Promise<{ id: string }> {
+    const actor = requireActor();
+    await this.assertIntentBelongsToCaller(input.storageKey);
+
+    const head = await this.storage.verifyUploaded(input.storageKey);
+    if (!head.exists) {
+      throw new ValidationError({ storageKey: ['That upload did not complete.'] });
+    }
+
+    let applicantId = input.applicantId;
+    if (!applicantId && input.recordId) {
+      const [record] = await this.db
+        .select({ applicantId: schema.records.applicantId })
+        .from(schema.records)
+        .where(eq(schema.records.id, input.recordId))
+        .limit(1);
+      if (!record) throw new NotFoundError('Record');
+      applicantId = record.applicantId;
+    }
+
+    if (!applicantId) throw new ValidationError({ applicantId: ['An applicant is required.'] });
+
+    const [inserted] = await this.db
+      .insert(schema.attachments)
+      .values({
+        applicantId,
+        recordId: input.recordId ?? null,
+        kind: input.kind,
+        storageKey: input.storageKey,
+        fileName: input.fileName,
+        contentType: head.contentType ?? input.contentType,
+        sizeBytes: head.sizeBytes || input.sizeBytes,
+        description: input.description ?? null,
+        uploadedByUserId: actor.userId,
+      })
+      .returning({ id: schema.attachments.id });
+
+    await this.timeline.write({
+      applicantId,
+      recordId: input.recordId ?? null,
+      eventType: TIMELINE_EVENT.ATTACHMENT_UPLOADED,
+      summary: `Attachment added — ${input.fileName}`,
+      meta: { kind: input.kind },
+    });
+
+    await this.audit.record({
+      action: AUDIT.ATTACHMENT_UPLOADED,
+      entityType: 'attachment',
+      entityId: inserted!.id,
+      entityLabel: input.fileName,
+    });
+
+    return { id: inserted!.id };
+  }
+
+  async listAttachments(applicantId: string) {
+    const rows = await this.db
+      .select({
+        id: schema.attachments.id,
+        kind: schema.attachments.kind,
+        fileName: schema.attachments.fileName,
+        contentType: schema.attachments.contentType,
+        sizeBytes: schema.attachments.sizeBytes,
+        description: schema.attachments.description,
+        recordId: schema.attachments.recordId,
+        uploadedByName: schema.users.fullName,
+        createdAt: schema.attachments.createdAt,
+      })
+      .from(schema.attachments)
+      .leftJoin(schema.users, eq(schema.attachments.uploadedByUserId, schema.users.id))
+      .where(eq(schema.attachments.applicantId, applicantId))
+      .orderBy(desc(schema.attachments.createdAt));
+
+    return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
+  async getAttachmentDownloadUrl(attachmentId: string): Promise<{ url: string; fileName: string }> {
+    const [file] = await this.db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, attachmentId))
+      .limit(1);
+
+    if (!file) throw new NotFoundError('File');
+
+    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
+    return { url, fileName: file.fileName };
+  }
+
+  /**
+   * A confirm call may only reference a key this user was actually issued.
+   * Without this, one user could register another's in-flight upload — or
+   * fabricate a metadata row pointing at an arbitrary object in the bucket.
+   */
+  private async assertIntentBelongsToCaller(storageKey: string): Promise<void> {
+    const actor = requireActor();
+
+    const [intent] = await this.db
+      .select({ userId: schema.uploadIntents.userId, confirmedAt: schema.uploadIntents.confirmedAt })
+      .from(schema.uploadIntents)
+      .where(eq(schema.uploadIntents.storageKey, storageKey))
+      .limit(1);
+
+    if (!intent) {
+      throw new ValidationError({ storageKey: ['Unknown upload. Request a new upload URL.'] });
+    }
+    if (intent.userId !== actor.userId) {
+      throw new ForbiddenError('That upload belongs to a different user.');
+    }
+    if (intent.confirmedAt) {
+      throw new ValidationError({ storageKey: ['This file has already been attached.'] });
+    }
+  }
+}

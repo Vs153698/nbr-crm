@@ -1,0 +1,2 @@
+ALTER TABLE "packages" ADD COLUMN "legacy_code" varchar(60);--> statement-breakpoint
+CREATE UNIQUE INDEX "packages_legacy_code_uq" ON "packages" USING btree ("legacy_code") WHERE "packages"."legacy_code" is not null;

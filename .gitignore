@@ -1,0 +1,32 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# env — never commit secrets (DPDP §8 reasonable security safeguards)
+.env
+.env.*
+!.env.example
+
+# local data
+/data/
+/uploads/
+*.log
+logs/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test artefacts
+playwright-report/
+test-results/
+/apps/web/e2e/.auth/
+k6-results/
+
+# Generated API spec (`pnpm docs:spec`) — the live document is served at /api/docs
+openapi.json
