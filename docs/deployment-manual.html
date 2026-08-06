@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NBR — Deployment manual</title>
+<style>
+  :root {
+    --navy:#0E1B3D; --navy-soft:#1B2C55; --blue:#2557D6; --blue-tint:#EAF0FD;
+    --canvas:#F2F5FA; --card:#fff; --ink:#10182B; --ink-2:#47536B; --ink-3:#7A869E;
+    --line:#E1E7F0; --green:#10893E; --green-tint:#E7F5EC; --amber:#B36A00;
+    --amber-tint:#FDF2E2; --red:#C7362F; --red-tint:#FCEDEC; --purple:#6D3BD1;
+    --purple-tint:#F1EBFD; --gold:#C08A2E; --slate:#64748B; --slate-tint:#EEF1F6;
+    --radius:10px; --shadow:0 1px 2px rgba(16,24,43,.06),0 1px 3px rgba(16,24,43,.05);
+    --shadow-md:0 4px 12px rgba(16,24,43,.07);
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;color-scheme:light}
+  body{margin:0;font-family:var(--sans);background:var(--canvas);color:var(--ink);
+    font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+  header.top{
+    background:radial-gradient(1100px 380px at 85% -25%,rgba(37,87,214,.42),transparent 60%),
+               linear-gradient(160deg,var(--navy),var(--navy-soft));
+    color:#fff;padding:34px clamp(18px,4vw,48px) 32px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand .mark{width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(145deg,#F0C64E,var(--gold));
+    display:grid;place-items:center;font-size:19px;color:var(--navy);font-weight:800;flex:none}
+  .brand h1{font-size:14px;margin:0;letter-spacing:.15em;text-transform:uppercase}
+  .brand p{margin:1px 0 0;font-size:11px;color:#A9B8DA;letter-spacing:.1em;text-transform:uppercase}
+  header.top h2{font-size:clamp(23px,3.2vw,33px);margin:0 0 8px;letter-spacing:-.02em}
+  header.top .lede{margin:0;color:#B6C4E2;max-width:74ch}
+
+  main{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 80px}
+
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 18px;margin:-20px 0 32px;box-shadow:var(--shadow-md);
+    display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px}
+  nav.toc a{color:var(--ink-2);text-decoration:none;font-weight:500}
+  nav.toc a:hover{color:var(--blue);text-decoration:underline}
+
+  section{margin-bottom:44px;scroll-margin-top:16px}
+  h3{font-size:19px;margin:0 0 6px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+  h3 .num{font-family:var(--mono);font-size:12px;color:var(--blue);font-weight:700}
+  h4{font-size:14.5px;margin:26px 0 8px}
+  h5{font-size:13px;margin:18px 0 6px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+  .sub{margin:0 0 18px;color:var(--ink-2);max-width:78ch}
+  p{max-width:78ch}
+
+  pre{background:var(--navy);color:#E4EAF7;border-radius:var(--radius);padding:15px 17px;
+    overflow-x:auto;font-family:var(--mono);font-size:12.3px;line-height:1.7;margin:12px 0}
+  pre .c{color:#7B8DB5;font-style:italic}
+  pre .k{color:#F0C64E}
+  code{font-family:var(--mono);font-size:.88em;background:var(--slate-tint);
+    padding:1.5px 5px;border-radius:4px;color:var(--navy)}
+  pre code{background:none;padding:0;color:inherit}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;box-shadow:var(--shadow);margin:14px 0}
+
+  .tbl-scroll{overflow-x:auto;margin:14px 0;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:13.2px;min-width:560px}
+  th{text-align:left;padding:10px 14px;background:var(--slate-tint);color:var(--ink-2);
+    font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td code{white-space:nowrap}
+
+  .note{border-left:3px solid var(--blue);background:var(--blue-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .warn{border-left:3px solid var(--amber);background:var(--amber-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .danger{border-left:3px solid var(--red);background:var(--red-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .ok{border-left:3px solid var(--green);background:var(--green-tint);
+    padding:13px 16px;border-radius:0 var(--radius) var(--radius) 0;margin:14px 0}
+  .note p,.warn p,.danger p,.ok p{margin:0}
+  .note p+p,.warn p+p,.danger p+p,.ok p+p{margin-top:8px}
+
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;
+    border-radius:20px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+  .p-blue{background:var(--blue-tint);color:var(--blue)}
+  .p-green{background:var(--green-tint);color:var(--green)}
+  .p-amber{background:var(--amber-tint);color:var(--amber)}
+  .p-red{background:var(--red-tint);color:var(--red)}
+  .p-purple{background:var(--purple-tint);color:var(--purple)}
+  .p-slate{background:var(--slate-tint);color:var(--slate)}
+
+  ol,ul{max-width:78ch;padding-left:22px}
+  li{margin:5px 0}
+  ol.steps{counter-reset:s;list-style:none;padding-left:0}
+  ol.steps>li{counter-increment:s;position:relative;padding-left:34px;margin:12px 0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;
+    width:23px;height:23px;border-radius:50%;background:var(--blue);color:#fff;
+    font-size:11.5px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+
+  ul.check{list-style:none;padding-left:0}
+  ul.check li{position:relative;padding-left:26px;margin:7px 0}
+  ul.check li::before{content:"";position:absolute;left:0;top:4px;width:14px;height:14px;
+    border:1.5px solid var(--ink-3);border-radius:3px}
+
+  .arch{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:16px 0}
+  .arch .box{flex:1 1 190px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow)}
+  .arch .box strong{display:block;font-size:13px;margin-bottom:3px}
+  .arch .box span{font-size:12.2px;color:var(--ink-2)}
+
+  footer{border-top:1px solid var(--line);padding:22px clamp(18px,4vw,48px);
+    color:var(--ink-3);font-size:12.5px;background:var(--card)}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  @media print{
+    body{background:#fff;font-size:11pt}
+    header.top{background:var(--navy)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    nav.toc{display:none}
+    section{break-inside:avoid}
+    pre{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">N</div>
+      <div>
+        <h1>National Book of Records</h1>
+        <p>Backend CRM · Internal System</p>
+      </div>
+    </div>
+    <h2>Deployment manual</h2>
+    <p class="lede">
+      Deploying the internal CRM to production, and exactly what has to change on the
+      existing website so the two connect. Written for whoever holds the servers.
+    </p>
+  </div>
+</header>
+
+<main>
+
+<nav class="toc">
+  <a href="#answer">1 · The short answer</a>
+  <a href="#arch">2 · What you are deploying</a>
+  <a href="#prereq">3 · Prerequisites</a>
+  <a href="#secrets">4 · Generating secrets</a>
+  <a href="#env">5 · CRM environment</a>
+  <a href="#build">6 · Build &amp; first run</a>
+  <a href="#proxy">7 · Reverse proxy</a>
+  <a href="#legacy">8 · Changes on the existing site</a>
+  <a href="#connect">9 · Connecting the two</a>
+  <a href="#verify">10 · Verifying</a>
+  <a href="#ops">11 · Backups, upgrades, rotation</a>
+  <a href="#trouble">12 · Troubleshooting</a>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════════ 1 -->
+<section id="answer">
+  <h3><span class="num">01</span> The short answer about the existing site</h3>
+  <p class="sub">Because this is the question that prompted the document, here it is
+  first.</p>
+
+  <div class="ok">
+    <p><strong>No environment variable changes are required on the existing website.</strong>
+    The connector reads none. Its three settings — whether sync is on, the CRM's address,
+    and the shared secret — are stored in the <code>site_settings</code> table and are set
+    through the admin panel at <strong>Settings → Internal CRM</strong>.</p>
+    <p>What the existing site does need is a <strong>database migration</strong> (it adds
+    one table and three settings rows, and touches nothing else), a <strong>deploy of the
+    connector branch</strong>, and <strong>outbound network access</strong> to the CRM.
+    Section 8 covers all three.</p>
+  </div>
+
+  <p>The full list of what changes on the existing site is deliberately small, because
+  the brief was that the customer-facing system keeps working exactly as it does today.
+  Nothing in its existing environment is touched.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 2 -->
+<section id="arch">
+  <h3><span class="num">02</span> What you are deploying</h3>
+
+  <h4>The CRM is four processes and three stores</h4>
+  <div class="arch">
+    <div class="box"><strong>API</strong><span>NestJS on Node 22. Serves <code>/api/v1</code>. Runs the scheduled jobs.</span></div>
+    <div class="box"><strong>Web</strong><span>React SPA built by Vite to static files. No server of its own.</span></div>
+    <div class="box"><strong>PostgreSQL 16</strong><span>All application data.</span></div>
+    <div class="box"><strong>Redis 7</strong><span>Sessions, cache, rate limits, job queue.</span></div>
+    <div class="box"><strong>S3-compatible storage</strong><span>Cloudflare R2 in production. Evidence, certificates, PDFs.</span></div>
+    <div class="box"><strong>SMTP</strong><span>Outbound email. Any provider.</span></div>
+  </div>
+
+  <div class="warn">
+    <p><strong>The SPA and the API must be served from the same origin.</strong> The web
+    app calls <code>/api/v1</code> as a relative path, and the auth cookies are
+    <code>SameSite=strict</code>. Putting the API on a different hostname breaks sign-in.
+    Section 7 shows the reverse-proxy layout.</p>
+  </div>
+
+  <h4>How the two systems talk</h4>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Direction</th><th>Caller</th><th>Endpoint on the receiver</th></tr></thead>
+      <tbody>
+        <tr><td>Website → CRM</td><td>Website backend</td><td><code>POST /api/v1/integrations/nbr-website/applications</code></td></tr>
+        <tr><td>CRM → Website</td><td>CRM API</td><td><code>POST /api/crm-connector/{payment,certificate,dispatch}</code></td></tr>
+        <tr><td>CRM → Website</td><td>CRM API</td><td><code>GET /api/crm-connector/{plans,categories}</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Every call is signed with HMAC-SHA256 over the timestamp and the raw body, and
+  rejected if the timestamp is more than <strong>300 seconds</strong> from the receiver's
+  clock. Both servers need working NTP.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 3 -->
+<section id="prereq">
+  <h3><span class="num">03</span> Prerequisites</h3>
+  <ul class="check">
+    <li><strong>Node.js 22 or newer</strong> and <strong>pnpm 11.15.1</strong> (<code>corepack enable</code> is the easiest route).</li>
+    <li><strong>PostgreSQL 16</strong> — hosted in India, see the note below.</li>
+    <li><strong>Redis 7</strong>.</li>
+    <li><strong>An S3-compatible bucket</strong> — Cloudflare R2 with an Object Read &amp; Write token.</li>
+    <li><strong>SMTP credentials</strong> that can send as your organisation's domain.</li>
+    <li><strong>TLS</strong> on the CRM hostname. Non-negotiable: the API refuses to start in production without secure cookies.</li>
+    <li><strong>Outbound HTTPS from the website's server to the CRM</strong>, and from the CRM to the website.</li>
+  </ul>
+
+  <div class="danger">
+    <p><strong>Data residency.</strong> <code>DPDP_DATA_REGION</code> defaults to
+    <code>IN</code> and the API checks the database host against it at boot. Host
+    Postgres and the object storage bucket in India. This is a DPDP Act, 2023 posture
+    decision, not a performance one — do not "fix" a boot failure here by weakening the
+    setting.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 4 -->
+<section id="secrets">
+  <h3><span class="num">04</span> Generating secrets</h3>
+  <p class="sub">Generate these once, store them in your secret manager, and never
+  commit them.</p>
+
+<pre><span class="c"># Two DIFFERENT JWT secrets — the API refuses to start if they match,</span>
+<span class="c"># because a shared secret lets an access token be replayed as a refresh token.</span>
+openssl rand -base64 48   <span class="c"># → JWT_ACCESS_SECRET</span>
+openssl rand -base64 48   <span class="c"># → JWT_REFRESH_SECRET</span>
+
+<span class="c"># 32 bytes for encrypting Aadhaar / passport / bank details at rest.</span>
+openssl rand -base64 32   <span class="c"># → PII_ENCRYPTION_KEY</span>
+
+<span class="c"># The shared secret between the CRM and the website.</span>
+openssl rand -hex 32      <span class="c"># → NBR_WEBHOOK_SECRET</span></pre>
+
+  <div class="danger">
+    <p><strong>The webhook secret goes in three places and all three must match exactly.</strong>
+    This is the single most common cause of a failed integration.</p>
+  </div>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>#</th><th>Where</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>CRM environment → <code>NBR_WEBHOOK_SECRET</code></td><td>Verifying pushes arriving <em>from</em> the website.</td></tr>
+        <tr><td>2</td><td>CRM settings → integration secret</td><td>Signing pushes going <em>to</em> the website.</td></tr>
+        <tr><td>3</td><td>Website admin → Settings → Internal CRM → shared secret</td><td>Both signing and verifying on that side.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Paste it with no leading or trailing whitespace and no surrounding quotes. Both
+  sides expose a <strong>fingerprint</strong> of the secret they hold so you can compare
+  them without revealing either.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 5 -->
+<section id="env">
+  <h3><span class="num">05</span> CRM environment</h3>
+  <p class="sub">Copy <code>apps/api/.env.example</code> to <code>apps/api/.env</code>
+  and fill it in. Below is what production needs and why.</p>
+
+  <div class="warn">
+    <p><strong>Keep exactly one <code>.env</code>.</strong> A second copy at the
+    repository root will be loaded instead depending on the working directory the process
+    starts from, and you will chase signature failures caused by two different secrets.</p>
+  </div>
+
+  <h5>Application</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>Switches on every guard in this table.</td></tr>
+        <tr><td><code>API_PORT</code></td><td><code>4100</code></td><td>Bind behind the proxy; do not expose directly.</td></tr>
+        <tr><td><code>API_URL</code></td><td><code>https://crm.example.in</code></td><td>Used in generated links.</td></tr>
+        <tr><td><code>WEB_URL</code></td><td><code>https://crm.example.in</code></td><td>Same origin as the API.</td></tr>
+        <tr><td><code>CORS_ORIGINS</code></td><td><code>https://crm.example.in</code></td><td><span class="pill p-red">Required</span> Wildcards are rejected — the API serves personal data with credentials.</td></tr>
+        <tr><td><code>DOCS_ENABLED</code></td><td><code>false</code></td><td>The API reference lists every endpoint and its permission. Leave it off.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Data stores</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>DATABASE_URL</code></td><td>Full Postgres URL. Host it in India.</td></tr>
+        <tr><td><code>DATABASE_POOL_MAX</code></td><td><code>20</code> is a sane start; raise with traffic.</td></tr>
+        <tr><td><code>REDIS_URL</code></td><td>Sessions live here — losing Redis signs everyone out.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Authentication <span class="pill p-red">guarded at boot</span></h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>JWT_ACCESS_SECRET</code></td><td>generated</td><td>Must not contain <code>CHANGE_ME</code>.</td></tr>
+        <tr><td><code>JWT_REFRESH_SECRET</code></td><td>generated</td><td>Must <strong>differ</strong> from the access secret.</td></tr>
+        <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><span class="pill p-red">Required</span> Boot fails otherwise.</td></tr>
+        <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.example.in</code></td><td>The CRM hostname.</td></tr>
+        <tr><td><code>SESSION_IDLE_TIMEOUT_MINUTES</code></td><td><code>30</code></td><td></td></tr>
+        <tr><td><code>LOGIN_MAX_ATTEMPTS</code> / <code>LOGIN_LOCKOUT_MINUTES</code></td><td><code>5</code> / <code>15</code></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Encryption &amp; first admin</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>PII_ENCRYPTION_KEY</code></td><td>32 bytes base64. <strong>Lose this and encrypted identifiers are unrecoverable.</strong> Back it up separately from the database.</td></tr>
+        <tr><td><code>PII_ENCRYPTION_KEY_PREVIOUS</code></td><td>Empty normally. During rotation, hold the old key here so existing rows stay readable.</td></tr>
+        <tr><td><code>SUPER_ADMIN_EMAIL</code></td><td>Seeded once on first run.</td></tr>
+        <tr><td><code>SUPER_ADMIN_PASSWORD</code></td><td>Real password, no placeholder. Forced to change at first login.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Object storage (Cloudflare R2)</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Production value</th></tr></thead>
+      <tbody>
+        <tr><td><code>S3_ENDPOINT</code></td><td><code>https://&lt;account&gt;.r2.cloudflarestorage.com</code></td></tr>
+        <tr><td><code>S3_REGION</code></td><td><code>auto</code></td></tr>
+        <tr><td><code>S3_BUCKET</code></td><td>Your bucket. <strong>Keep it private</strong> — files are served by signed URL.</td></tr>
+        <tr><td><code>S3_ACCESS_KEY_ID</code> / <code>S3_SECRET_ACCESS_KEY</code></td><td>R2 token with Object Read &amp; Write.</td></tr>
+        <tr><td><code>S3_FORCE_PATH_STYLE</code></td><td><code>true</code></td></tr>
+        <tr><td><code>UPLOAD_PRESIGN_TTL_SECONDS</code> / <code>DOWNLOAD_PRESIGN_TTL_SECONDS</code></td><td><code>900</code> / <code>300</code></td></tr>
+        <tr><td><code>MAX_UPLOAD_MB</code></td><td><code>200</code> — record videos are large.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Email</h5>
+  <p><code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_SECURE</code>,
+  <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>MAIL_FROM_NAME</code>,
+  <code>MAIL_FROM_ADDRESS</code>. Set SPF and DKIM for the sending domain or selection
+  letters and payment reminders will land in spam.</p>
+
+  <h5>Integration with the website</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Production value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>NBR_WEBHOOK_SECRET</code></td><td>the shared secret</td><td>Minimum 16 characters. Must match the website.</td></tr>
+        <tr><td><code>NBR_WEBHOOK_TOLERANCE_SECONDS</code></td><td><code>300</code></td><td>Widen only if you cannot fix clock drift.</td></tr>
+        <tr><td><code>NBR_POLL_ENABLED</code></td><td><code>false</code></td><td>Push is the normal path. If you enable polling, <code>NBR_POLL_URL</code> becomes mandatory.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>DPDP Act, 2023</h5>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>DPDP_DATA_FIDUCIARY_NAME</code></td><td>Shown on the consent notice.</td></tr>
+        <tr><td><code>DPDP_GRIEVANCE_OFFICER_NAME</code> / <code>_EMAIL</code> / <code>_PHONE</code></td><td>Real, monitored contact details. This is a statutory disclosure.</td></tr>
+        <tr><td><code>DPDP_DSR_RESPONSE_DAYS</code> / <code>DPDP_GRIEVANCE_RESPONSE_DAYS</code></td><td><code>30</code> each.</td></tr>
+        <tr><td><code>DPDP_RETENTION_YEARS</code></td><td><code>8</code>. Drives the erasure job.</td></tr>
+        <tr><td><code>DPDP_BREACH_NOTIFY_HOURS</code></td><td><code>72</code>.</td></tr>
+        <tr><td><code>DPDP_DATA_REGION</code></td><td><code>IN</code>. Checked at boot.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h5>Observability</h5>
+  <p><code>LOG_LEVEL=info</code> in production (<code>debug</code> is noisy and logs more
+  than you want retained), <code>SENTRY_DSN</code> if you use Sentry, and
+  <code>RATE_LIMIT_GLOBAL_PER_MINUTE=300</code>.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 6 -->
+<section id="build">
+  <h3><span class="num">06</span> Build and first run</h3>
+
+<pre><span class="c"># 1 — install and build all three packages in dependency order</span>
+pnpm install --frozen-lockfile
+pnpm build
+
+<span class="c"># 2 — create the schema. Safe to re-run; it only applies what is missing.</span>
+pnpm db:migrate
+
+<span class="c"># 3 — seed reference data and the first Super Admin.</span>
+<span class="c">#     Creates roles, permissions, statuses, templates, couriers and settings.</span>
+<span class="c">#     Creates NO applicants and NO applications.</span>
+pnpm db:seed
+
+<span class="c"># 4 — start the API</span>
+cd apps/api &amp;&amp; pnpm start:prod</pre>
+
+  <p>The SPA build lands in <code>apps/web/dist</code> as static files. Serve it from
+  your web server or upload it to your CDN — it needs no Node process.</p>
+
+  <div class="note">
+    <p><strong>If the API refuses to start, read the error.</strong> It validates the
+    whole environment before listening and prints every problem at once, each naming the
+    variable and what is wrong with it. It is telling you exactly what to fix.</p>
+  </div>
+
+  <h4>Running it as a service</h4>
+  <p>Use systemd, PM2 or your platform's process manager against
+  <code>node dist/main.js</code> in <code>apps/api</code> with
+  <code>NODE_ENV=production</code>. Restart on failure, and make sure the working
+  directory is <code>apps/api</code> so the correct <code>.env</code> is found.</p>
+
+  <div class="warn">
+    <p><strong>Run exactly one API instance for now.</strong> The scheduled jobs — the
+    evening sales report, payment reminders, the retention job — are not leader-elected,
+    so a second instance sends everything twice.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 7 -->
+<section id="proxy">
+  <h3><span class="num">07</span> Reverse proxy</h3>
+  <p class="sub">One hostname, two backends. This layout is what keeps the auth cookies
+  working.</p>
+
+<pre><span class="c"># nginx</span>
+server {
+  listen 443 ssl http2;
+  server_name crm.example.in;
+
+  <span class="c"># API — everything under /api goes to the Node process</span>
+  location /api/ {
+    proxy_pass         http://127.0.0.1:4100;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+
+    <span class="c"># Evidence and record videos are large; the app allows up to 200 MB.</span>
+    client_max_body_size 220m;
+    proxy_read_timeout   300s;
+  }
+
+  <span class="c"># SPA — static build, with client-side routing</span>
+  root /var/www/nbr-crm;
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}</pre>
+
+  <div class="danger">
+    <p><strong>Do not put the CRM on the public internet without restriction if you can
+    avoid it.</strong> It is an internal system holding personal data. An IP allowlist,
+    a VPN, or Cloudflare Access in front of it is worth the small inconvenience.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 8 -->
+<section id="legacy">
+  <h3><span class="num">08</span> Changes on the existing website</h3>
+  <p class="sub">The complete list. It is short on purpose — the customer-facing system
+  keeps behaving exactly as it does today.</p>
+
+  <h4>8.1 — Environment: nothing to change <span class="pill p-green">no action</span></h4>
+  <p>The connector reads no environment variables. Every existing variable —
+  <code>DATABASE_URL</code>, <code>JWT_SECRET</code>, the R2 keys, SMTP, Razorpay,
+  Redis — stays exactly as it is. Nothing is added, removed or repurposed.</p>
+
+  <div class="note">
+    <p>The reason is deliberate: the shared secret and the CRM address need to be
+    changeable by an administrator without a redeploy, and rotating a secret should not
+    require an ops ticket. They live in <code>site_settings</code> and are edited in the
+    admin panel.</p>
+  </div>
+
+  <p>Two existing variables are worth <em>confirming</em> rather than changing, because
+  the connector's deep links back into the site are built from them:</p>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Variable</th><th>Confirm it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>API_URL</code></td><td>The site's real public API address.</td></tr>
+        <tr><td><code>FRONTEND_URL</code></td><td>The site's real public address, so links the CRM shows open the right page.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>8.2 — Deploy the connector branch <span class="pill p-amber">action</span></h4>
+  <p>Deploy the branch carrying the connector. It adds files and appends to a few
+  existing route handlers; no existing endpoint changes its request or response shape,
+  and no customer-facing behaviour is altered.</p>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>What it adds</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>Signing, verification and push helpers</td><td><code>backend/src/lib/crmSync.ts</code>, <code>crmSyncPayload.ts</code></td></tr>
+        <tr><td>The connector routes</td><td><code>backend/src/routes/crmConnector.ts</code></td></tr>
+        <tr><td>One line each in approve, manual payment, certificate issue, payment settle, dispatch update</td><td>existing route files</td></tr>
+        <tr><td>The Internal CRM settings tab</td><td><code>src/pages/admin/AdminSettings.tsx</code>, <code>CrmSyncPanel.tsx</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="ok">
+    <p><strong>The hooks cannot break the site.</strong> Each is a single non-throwing,
+    fire-and-forget call. If the CRM is down, unreachable or misconfigured, the approval
+    or payment on the website still succeeds and the failure is written to the sync log.</p>
+  </div>
+
+  <h4>8.3 — Run the migration <span class="pill p-amber">action</span></h4>
+<pre>cd backend
+pnpm db:migrate</pre>
+  <p>Additive only. It creates the <code>crm_sync_log</code> table and inserts three
+  rows into <code>site_settings</code> — <code>crm_sync_enabled</code> (<code>false</code>),
+  <code>crm_base_url</code> (empty), <code>crm_secret</code> (empty). No existing table is
+  altered and no existing row is touched. With sync left off, the site behaves precisely
+  as before.</p>
+
+  <h4>8.4 — Allow outbound access <span class="pill p-amber">action</span></h4>
+  <p>The website's server must be able to reach the CRM over HTTPS, and the CRM must be
+  able to reach the website. If you put the CRM behind an IP allowlist, add the website
+  server's egress addresses to it.</p>
+
+  <h4>8.5 — Check the clock <span class="pill p-amber">action</span></h4>
+  <p>Signatures are rejected outside a 300-second window. Confirm NTP is running on both
+  servers. The <em>Test connection</em> button reports the measured difference, so you
+  will know immediately if this is the problem.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 9 -->
+<section id="connect">
+  <h3><span class="num">09</span> Connecting the two</h3>
+  <p class="sub">Do the CRM side first, so the website has something to talk to.</p>
+
+  <h4>On the CRM</h4>
+  <ol class="steps">
+    <li>Sign in as the Super Admin and change the temporary password.</li>
+    <li>Open <strong>Settings</strong> and set the integration to the website's base URL
+        (for example <code>https://nationalbookofrecords.in</code>), paste the
+        <strong>same shared secret</strong> that is in <code>NBR_WEBHOOK_SECRET</code>,
+        and switch it on.</li>
+    <li>Run <strong>sync packages</strong> and <strong>sync categories</strong> so the
+        CRM's dropdowns mirror the website's. Do this before anyone raises a payment —
+        otherwise operators are offered prices the website will reject.</li>
+  </ol>
+
+  <h4>On the website</h4>
+  <ol class="steps">
+    <li>Sign in to the admin panel and open <strong>Settings → Internal CRM</strong>.</li>
+    <li>Enter the CRM base URL (for example <code>https://crm.example.in</code>) and the
+        same shared secret. No trailing slash, no quotes, no stray whitespace.</li>
+    <li>Switch sync on and save.</li>
+    <li>Press <strong>Test connection</strong>. Compare the two secret fingerprints if it
+        fails — if they differ, the secrets differ.</li>
+    <li>Press <strong>Backfill</strong> to send every approved-and-beyond application.
+        Safe to re-run; nothing is duplicated.</li>
+  </ol>
+
+  <div class="warn">
+    <p><strong>Backfill sends approved applications and everything past that point.</strong>
+    Pending, under-review and draft applications are deliberately excluded — they belong
+    to the website until somebody approves them.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 10 -->
+<section id="verify">
+  <h3><span class="num">10</span> Verifying the deployment</h3>
+  <p class="sub">Work down this list before handing over. Each item has failed in
+  testing at least once, which is why it is here.</p>
+
+  <h5>The CRM alone</h5>
+  <ul class="check">
+    <li>The API starts with no environment complaints.</li>
+    <li>Signing in works, and the first login forces a password change.</li>
+    <li>Changing the password signs you out everywhere, and the new one works.</li>
+    <li>Creating an applicant succeeds and the category list shows the website's categories.</li>
+    <li>Uploading a file succeeds and downloading it back returns the same file.</li>
+    <li>A test email arrives and is not marked as spam.</li>
+  </ul>
+
+  <h5>Website → CRM</h5>
+  <ul class="check">
+    <li><strong>Test connection</strong> reports success.</li>
+    <li>Approving an application on the website makes it appear in the CRM within seconds, at <em>Selected</em>.</li>
+    <li>Recording a manual payment on the website shows it in the CRM against the correct package and price.</li>
+    <li>Updating dispatch on the website updates the CRM's dispatch tab.</li>
+  </ul>
+
+  <h5>CRM → website</h5>
+  <ul class="check">
+    <li>Recording a payment in the CRM shows it on the website's application.</li>
+    <li>Issuing a certificate in the CRM puts the number on the website.</li>
+    <li>Updating dispatch in the CRM mirrors the courier and tracking number.</li>
+    <li>An applicant created in the CRM does <strong>not</strong> appear on the website. This is correct.</li>
+  </ul>
+
+  <h5>The sync log</h5>
+  <ul class="check">
+    <li>Settings → Internal CRM → sync log shows both directions with successful outcomes and no errors.</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 11 -->
+<section id="ops">
+  <h3><span class="num">11</span> Backups, upgrades and rotation</h3>
+
+  <h4>Back up</h4>
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>What</th><th>How often</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>PostgreSQL</td><td>Daily, retained per policy</td><td>Test a restore before you need one.</td></tr>
+        <tr><td>Object storage bucket</td><td>Versioning or scheduled copy</td><td>Certificates and evidence are not reproducible.</td></tr>
+        <tr><td><code>PII_ENCRYPTION_KEY</code></td><td>Once, held securely</td><td><strong>Store it apart from the database backup.</strong> A backup you cannot decrypt is not a backup.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Upgrading</h4>
+<pre>git pull
+pnpm install --frozen-lockfile
+pnpm build
+pnpm db:migrate        <span class="c"># additive; safe to re-run</span>
+<span class="c"># restart the API service</span></pre>
+  <p>Redeploy <code>apps/web/dist</code> alongside it. Migrations are written to be
+  additive, so the API can be restarted after they run without a maintenance window for
+  most releases.</p>
+
+  <h4>Rotating the shared secret</h4>
+  <p>There is a brief window where the two sides disagree, so do this out of hours.</p>
+  <ol class="steps">
+    <li>Generate a new secret.</li>
+    <li>Update <code>NBR_WEBHOOK_SECRET</code> in the CRM environment and restart the API.</li>
+    <li>Update the CRM's own integration secret in Settings.</li>
+    <li>Update the website's shared secret in Settings → Internal CRM.</li>
+    <li>Press <strong>Test connection</strong>, then re-sync any application that failed during the gap.</li>
+  </ol>
+
+  <h4>Rotating the encryption key</h4>
+  <p>Move the current <code>PII_ENCRYPTION_KEY</code> into
+  <code>PII_ENCRYPTION_KEY_PREVIOUS</code>, put the new key in
+  <code>PII_ENCRYPTION_KEY</code>, and restart. Existing rows stay readable through the
+  previous key while the re-encryption job works through them. Clear the previous key
+  only once it has finished.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ 12 -->
+<section id="trouble">
+  <h3><span class="num">12</span> Troubleshooting</h3>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>API exits at startup with a list of variables</td>
+            <td>Environment validation failed.</td>
+            <td>Fix each line it names. It reports every problem at once.</td></tr>
+        <tr><td><code>JWT_REFRESH_SECRET must differ</code></td>
+            <td>Both JWT secrets are the same value.</td>
+            <td>Generate a second, different one.</td></tr>
+        <tr><td><code>COOKIE_SECURE must be true</code></td>
+            <td>Production without TLS.</td>
+            <td>Terminate TLS and set it to <code>true</code>. Do not disable the check.</td></tr>
+        <tr><td>Boot refuses on data region</td>
+            <td>Database host outside the permitted region.</td>
+            <td>Move the database to India. Do not weaken <code>DPDP_DATA_REGION</code>.</td></tr>
+        <tr><td><code>WEBHOOK_SIGNATURE_INVALID</code> (401)</td>
+            <td>The secrets differ, or a proxy rewrote the body.</td>
+            <td>Compare fingerprints on both sides. Check for a second <code>.env</code>. Ensure the proxy does not modify request bodies.</td></tr>
+        <tr><td><code>timestamp outside tolerance</code></td>
+            <td>Clock drift over 300 seconds.</td>
+            <td>Fix NTP on both servers. <em>Test connection</em> shows the measured difference.</td></tr>
+        <tr><td>Sign-in succeeds then immediately fails</td>
+            <td>SPA and API on different origins, so <code>SameSite=strict</code> cookies are dropped.</td>
+            <td>Serve both from one hostname as in section 7.</td></tr>
+        <tr><td>Uploads fail on large files</td>
+            <td>Proxy body limit below <code>MAX_UPLOAD_MB</code>.</td>
+            <td>Raise <code>client_max_body_size</code> above 200 MB.</td></tr>
+        <tr><td>Payment push rejected by the website</td>
+            <td>The package is CRM-only and has no plan code.</td>
+            <td>Run the package sync so the catalogues match.</td></tr>
+        <tr><td>Everyone signed out at once</td>
+            <td>Redis restarted or was flushed.</td>
+            <td>Expected — sessions live in Redis. Users sign in again.</td></tr>
+        <tr><td>Duplicate evening sales reports</td>
+            <td>More than one API instance running the scheduler.</td>
+            <td>Run a single instance.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Where to look first</h4>
+  <ol class="steps">
+    <li><strong>Website → Settings → Internal CRM → sync log.</strong> Both directions, with the outcome and reason for each.</li>
+    <li><strong>The API log.</strong> Every failed push is logged with its HTTP status and the response body.</li>
+    <li><strong>CRM → Audit Logs.</strong> Confirms whether the action was recorded at all, and who performed it.</li>
+  </ol>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>National Book of Records — Backend CRM deployment manual</span>
+    <span>Internal document · Contains no secrets — keep it that way</span>
+  </div>
+</footer>
+
+</body>
+</html>
