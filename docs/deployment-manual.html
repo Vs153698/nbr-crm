@@ -163,7 +163,7 @@
     <h2>Coolify deployment manual</h2>
     <p class="lede">
       Deploying the CRM on Coolify as two applications, with the exact environment for
-      <code>api.codenitti.in</code> and <code>crm.codenitti.in</code>, and what changes on
+      <code>api.codeniti.in</code> and <code>crm.codeniti.in</code>, and what changes on
       the existing <code>nationalbookofrecords.org</code> site.
     </p>
   </div>
@@ -196,10 +196,10 @@
     <table>
       <thead><tr><th>Hostname</th><th>Serves</th><th>Who talks to it</th></tr></thead>
       <tbody>
-        <tr><td><code>crm.codenitti.in</code></td>
+        <tr><td><code>crm.codeniti.in</code></td>
             <td>The CRM interface, <strong>and</strong> the API under <code>/api</code></td>
             <td>Staff browsers. This is the only address anyone types.</td></tr>
-        <tr><td><code>api.codenitti.in</code></td>
+        <tr><td><code>api.codeniti.in</code></td>
             <td>The same API container</td>
             <td>The <code>.org</code> site's server, pushing signed webhooks. Server-to-server only — nobody opens this in a browser.</td></tr>
         <tr><td><code>nationalbookofrecords.org</code></td>
@@ -211,12 +211,12 @@
 
   <div class="flow">
     <span class="step">Staff browser</span><span class="arr">→</span>
-    <span class="step hi">crm.codenitti.in</span><span class="arr">→</span>
+    <span class="step hi">crm.codeniti.in</span><span class="arr">→</span>
     <span class="step">SPA + /api → API</span>
   </div>
   <div class="flow">
     <span class="step">nationalbookofrecords.org</span><span class="arr">→</span>
-    <span class="step hi">api.codenitti.in</span><span class="arr">→</span>
+    <span class="step hi">api.codeniti.in</span><span class="arr">→</span>
     <span class="step">API</span>
   </div>
   <div class="flow">
@@ -236,34 +236,34 @@
   if you get it wrong, so it comes before the Coolify steps.</p>
 
   <div class="danger">
-    <p><strong>The browser must reach the API on <code>crm.codenitti.in</code>, not
-    <code>api.codenitti.in</code>.</strong> Two facts in the built frontend force this,
+    <p><strong>The browser must reach the API on <code>crm.codeniti.in</code>, not
+    <code>api.codeniti.in</code>.</strong> Two facts in the built frontend force this,
     and neither is configurable at deploy time:</p>
     <p>1. The API base is a hardcoded relative path — <code>const API_BASE = '/api/v1'</code>
     in <code>apps/web/src/lib/api-client.ts</code>. There are no <code>VITE_</code>
     variables anywhere in the web app, so the built bundle cannot be pointed elsewhere.</p>
     <p>2. Every request is sent with <code>credentials: 'same-origin'</code>. If the SPA
-    on <code>crm.codenitti.in</code> called <code>api.codenitti.in</code>, the browser
+    on <code>crm.codeniti.in</code> called <code>api.codeniti.in</code>, the browser
     would attach <strong>no cookies at all</strong> and every request would come back
     unauthenticated — a login that appears to succeed and then immediately fails.</p>
   </div>
 
   <h4>What this means in practice</h4>
-  <p>Serve the SPA at <code>crm.codenitti.in</code> and have that same host forward
+  <p>Serve the SPA at <code>crm.codeniti.in</code> and have that same host forward
   <code>/api/*</code> to the API container. The browser then sees one origin, the
   <code>SameSite=strict</code> cookies work exactly as intended, and CORS never enters
   the picture because there is no cross-origin request to permit.</p>
 
-  <p><code>api.codenitti.in</code> still earns its place: it is what the <code>.org</code>
+  <p><code>api.codeniti.in</code> still earns its place: it is what the <code>.org</code>
   server posts its signed webhooks to. That traffic carries an HMAC signature rather than
   a cookie, so origin and CORS are irrelevant to it.</p>
 
   <div class="note">
-    <p><strong>If you would rather the browser call <code>api.codenitti.in</code>
+    <p><strong>If you would rather the browser call <code>api.codeniti.in</code>
     directly</strong>, that is a code change, not a configuration change: introduce a
     <code>VITE_API_BASE_URL</code>, switch the three <code>credentials: 'same-origin'</code>
-    call sites to <code>'include'</code>, set <code>COOKIE_DOMAIN=.codenitti.in</code>,
-    and add <code>https://crm.codenitti.in</code> to <code>CORS_ORIGINS</code>. It works —
+    call sites to <code>'include'</code>, set <code>COOKIE_DOMAIN=.codeniti.in</code>,
+    and add <code>https://crm.codeniti.in</code> to <code>CORS_ORIGINS</code>. It works —
     the two hosts share a registrable domain, so <code>SameSite=strict</code> still
     applies — but it is more moving parts for no gain. Section 7 takes the proxy route.</p>
   </div>
@@ -369,7 +369,7 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
         <span class="pill p-warn">not /api/v1/health</span> — the health routes are
         deliberately excluded from the global prefix and are version-neutral.</li>
     <li><strong>Domains:</strong> add both, comma-separated.
-<pre><code>https://api.codenitti.in,https://crm.codenitti.in/api</code></pre>
+<pre><code>https://api.codeniti.in,https://crm.codeniti.in/api</code></pre>
         The second entry is what puts the API on the same origin as the SPA.</li>
   </ol>
 
@@ -413,9 +413,9 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
         <tr><td><code>NODE_ENV</code></td><td><code>production</code></td><td>Switches on every guard below.</td></tr>
         <tr><td><code>APP_NAME</code></td><td><code>NBR Backend CRM</code></td><td>Appears in logs and email subjects.</td></tr>
         <tr><td><code>API_PORT</code></td><td><code>4100</code></td><td>Must match the port Coolify exposes.</td></tr>
-        <tr><td><code>API_URL</code></td><td><code>https://api.codenitti.in</code></td><td>Used for generated links and the OpenAPI server URL.</td></tr>
-        <tr><td><code>WEB_URL</code></td><td><code>https://crm.codenitti.in</code></td><td>Where staff-facing links point.</td></tr>
-        <tr><td><code>CORS_ORIGINS</code></td><td><code>https://crm.codenitti.in</code></td><td><span class="pill p-danger">Required</span> Wildcards are rejected outright. With the proxy in place nothing actually needs CORS, but the value must be set and exact.</td></tr>
+        <tr><td><code>API_URL</code></td><td><code>https://api.codeniti.in</code></td><td>Used for generated links and the OpenAPI server URL.</td></tr>
+        <tr><td><code>WEB_URL</code></td><td><code>https://crm.codeniti.in</code></td><td>Where staff-facing links point.</td></tr>
+        <tr><td><code>CORS_ORIGINS</code></td><td><code>https://crm.codeniti.in</code></td><td><span class="pill p-danger">Required</span> Wildcards are rejected outright. With the proxy in place nothing actually needs CORS, but the value must be set and exact.</td></tr>
         <tr><td><code>DOCS_ENABLED</code></td><td><code>false</code></td><td>The API reference lists every endpoint and the permission it needs. Keep it off in production.</td></tr>
       </tbody>
     </table>
@@ -443,7 +443,7 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
         <tr><td><code>JWT_ACCESS_TTL</code></td><td><code>15m</code></td><td></td></tr>
         <tr><td><code>JWT_REFRESH_TTL</code></td><td><code>7d</code></td><td></td></tr>
         <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><span class="pill p-danger">Required</span> Boot fails in production if false.</td></tr>
-        <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.codenitti.in</code></td><td>The host the browser actually talks to. Not <code>api.codenitti.in</code>, which no browser visits.</td></tr>
+        <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.codeniti.in</code></td><td>The host the browser actually talks to. Not <code>api.codeniti.in</code>, which no browser visits.</td></tr>
         <tr><td><code>SESSION_IDLE_TIMEOUT_MINUTES</code></td><td><code>30</code></td><td></td></tr>
         <tr><td><code>LOGIN_MAX_ATTEMPTS</code></td><td><code>5</code></td><td></td></tr>
         <tr><td><code>LOGIN_LOCKOUT_MINUTES</code></td><td><code>15</code></td><td></td></tr>
@@ -561,7 +561,7 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
     <li><strong>Build command</strong> — again, shared first.
 <pre><code>pnpm --filter @nbr/shared build &amp;&amp; pnpm --filter @nbr/web build</code></pre></li>
     <li><strong>Publish / output directory: <code>apps/web/dist</code></strong></li>
-    <li><strong>Domain: <code>https://crm.codenitti.in</code></strong></li>
+    <li><strong>Domain: <code>https://crm.codeniti.in</code></strong></li>
     <li><strong>Enable SPA mode</strong> (Coolify's "Is it a SPA?" toggle, or an
         equivalent <code>try_files</code> fallback). Without it, refreshing on
         <code>/applicants/123</code> returns 404 — React Router owns those paths, not the
@@ -575,7 +575,7 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
     <div class="rule"></div>
     <div class="inner">
       <h4 style="margin-top:0">Option A — Coolify path routing <span class="pill p-ok">try first</span></h4>
-      <p style="margin:6px 0 0">You already added <code>https://crm.codenitti.in/api</code>
+      <p style="margin:6px 0 0">You already added <code>https://crm.codeniti.in/api</code>
       as a second domain on the API app in section 5. If the curl in section 12 returns a
       JSON envelope rather than a 404, you are done — nothing further is needed here.</p>
     </div>
@@ -747,7 +747,7 @@ pnpm --filter @nbr/api db:seed</pre>
 
   <h4>10.4 — Allow outbound access <span class="pill p-warn">action</span></h4>
   <p>The <code>.org</code> server must be able to reach
-  <code>https://api.codenitti.in</code>, and the CRM container must be able to reach
+  <code>https://api.codeniti.in</code>, and the CRM container must be able to reach
   <code>https://nationalbookofrecords.org</code>. If you put Coolify behind an IP
   allowlist, add the <code>.org</code> server's egress addresses to it.</p>
 
@@ -762,7 +762,7 @@ pnpm --filter @nbr/api db:seed</pre>
   <h3><span class="num">11</span> Connecting the two</h3>
   <p class="sub">CRM side first, so the <code>.org</code> site has something to talk to.</p>
 
-  <h4>On the CRM — <code>https://crm.codenitti.in</code></h4>
+  <h4>On the CRM — <code>https://crm.codeniti.in</code></h4>
   <ol class="steps">
     <li>Sign in as the Super Admin and change the temporary password. This signs you out
         everywhere; sign in again with the new one.</li>
@@ -778,7 +778,7 @@ pnpm --filter @nbr/api db:seed</pre>
   <h4>On the .org admin</h4>
   <ol class="steps">
     <li>Open <strong>Settings → Internal CRM</strong>.</li>
-    <li>Set the CRM base URL to <code>https://api.codenitti.in</code>
+    <li>Set the CRM base URL to <code>https://api.codeniti.in</code>
         <span class="pill p-warn">not crm.</span> — this is the server-to-server hop, and
         it posts to <code>/api/v1/integrations/nbr-website/applications</code> under that
         host. No trailing slash, no quotes, no stray whitespace.</li>
@@ -806,16 +806,16 @@ pnpm --filter @nbr/api db:seed</pre>
 
 <pre><span class="c"># Expect an HTTP 401 with a JSON envelope — that means the request reached the app.</span>
 <span class="c"># A 404 means the path prefix is being stripped or not routed. Go to Option B.</span>
-curl -i https://crm.codenitti.in/api/v1/auth/me
+curl -i https://crm.codeniti.in/api/v1/auth/me
 
 <span class="c"># The API's own health route, on its server-to-server hostname.</span>
 <span class="c"># Note it is NOT under /api/v1 — health is excluded from the global prefix.</span>
-curl -i https://api.codenitti.in/health</pre>
+curl -i https://api.codeniti.in/health</pre>
 
   <h5>The CRM alone</h5>
   <ul class="check">
     <li>The API container starts with no environment complaints in the deploy log.</li>
-    <li><code>https://crm.codenitti.in</code> loads the sign-in screen.</li>
+    <li><code>https://crm.codeniti.in</code> loads the sign-in screen.</li>
     <li>Signing in works — and stays signed in after a page refresh. <strong>If it signs
         you straight back out, the routing in section 2 is wrong.</strong></li>
     <li>Refreshing on a deep link such as <code>/applicants</code> loads the page rather
@@ -858,8 +858,8 @@ curl -i https://api.codenitti.in/health</pre>
         <tr><td>Sign-in succeeds, next request is 401, back to the login screen</td>
             <td>The browser is reaching the API on a different origin, so
                 <code>credentials: 'same-origin'</code> sends no cookies.</td>
-            <td>Route <code>/api</code> through <code>crm.codenitti.in</code> — section 2 and section 7.</td></tr>
-        <tr><td><code>curl https://crm.codenitti.in/api/v1/auth/me</code> returns 404</td>
+            <td>Route <code>/api</code> through <code>crm.codeniti.in</code> — section 2 and section 7.</td></tr>
+        <tr><td><code>curl https://crm.codeniti.in/api/v1/auth/me</code> returns 404</td>
             <td>The proxy is stripping the <code>/api</code> prefix, or not routing that path.</td>
             <td>Remove the strip-prefix middleware, or switch to Option B in section 7.</td></tr>
         <tr><td>Container exits at startup listing variables</td>

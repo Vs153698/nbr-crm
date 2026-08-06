@@ -4,6 +4,13 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "webpack": false
+    "webpack": false,
+    "assets": [
+      {
+        "//": "Drizzle needs the .sql files AND meta/_journal.json, which tsc does not emit.",
+        "include": "database/migrations/**/*",
+        "watchAssets": true
+      }
+    ]
   }
 }

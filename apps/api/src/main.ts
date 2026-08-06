@@ -107,7 +107,10 @@ async function bootstrap(): Promise<void> {
   });
 
   registerRequestContext(fastify, isProduction);
-  registerCsrf(fastify, { secure: env.COOKIE_SECURE });
+  registerCsrf(fastify, {
+    secure: env.COOKIE_SECURE,
+    domain: env.COOKIE_DOMAIN === 'localhost' ? undefined : env.COOKIE_DOMAIN,
+  });
 
   // ── CORS ─────────────────────────────────────────────────────────────────
   // Credentials are sent with every request, so the allow-list must be exact.
