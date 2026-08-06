@@ -66,7 +66,10 @@ function resolveClientIp(request: FastifyRequest, trustProxy: boolean): string |
  * check is the second layer for the browsers and redirect flows where SameSite
  * alone is not sufficient.
  */
-export function registerCsrf(app: FastifyInstance, options: { secure: boolean }): void {
+export function registerCsrf(
+  app: FastifyInstance,
+  options: { secure: boolean; domain?: string },
+): void {
   app.addHook('onRequest', (request, reply, done) => {
     // Issue the token on any request that doesn't have one yet.
     const existing = (request as FastifyRequest & { cookies?: Record<string, string> }).cookies?.[
@@ -79,6 +82,12 @@ export function registerCsrf(app: FastifyInstance, options: { secure: boolean })
         secure: options.secure,
         sameSite: 'strict',
         path: '/',
+        // Scoped the same way as the session cookies. Without this the token is
+        // bound to the API's own host, and an SPA served from a sibling host
+        // cannot read it via document.cookie — so it sends no CSRF header and
+        // every write is rejected, while reads keep working. Undefined for
+        // localhost, where a domain attribute would stop the cookie being set.
+        domain: options.domain,
       });
     }
 

@@ -1,6 +1,27 @@
 import type { ApiResponse } from '@nbr/shared';
 
-const API_BASE = '/api/v1';
+/**
+ * Where the API lives.
+ *
+ * Unset — the default — keeps every call relative, so the API is whatever host
+ * served this page. That is the simplest deployment and what the Vite dev proxy
+ * gives us locally.
+ *
+ * Setting `VITE_API_BASE_URL` to another origin (an `api.*` host, say) points
+ * the built bundle there instead. Three things have to line up on the API side
+ * or sign-in will appear to succeed and then immediately fail:
+ *
+ *  • `CORS_ORIGINS` must list this app's origin exactly — credentials are sent
+ *    with every request, so a wildcard is rejected by the browser.
+ *  • `COOKIE_DOMAIN` must be a domain both hosts share (`.example.in`), or the
+ *    auth cookies are scoped to the API host and never come back.
+ *  • the two hosts must share a registrable domain, because the session cookies
+ *    are `SameSite=strict`. Unrelated domains will not work at all.
+ *
+ * It is read at build time, so changing it requires a rebuild.
+ */
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
+const API_BASE = `${API_ORIGIN}/api/v1`;
 const CSRF_COOKIE = 'nbr_csrf';
 const CSRF_HEADER = 'x-csrf-token';
 
@@ -53,7 +74,7 @@ async function refreshSession(): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: buildCsrfHeaders(),
       });
       return response.ok;
@@ -132,9 +153,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const response = await fetch(`${API_BASE}${path}${buildQueryString(query)}`, {
     method,
     headers,
-    // Auth is an HttpOnly cookie; it must be sent, and the dev server proxies
-    // /api so this stays same-origin in every environment.
-    credentials: 'same-origin',
+    // Auth is an HttpOnly cookie, so it has to be attached explicitly. `include`
+    // rather than `same-origin` because VITE_API_BASE_URL may point at another
+    // host, where `same-origin` would silently send nothing.
+    credentials: 'include',
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
@@ -190,7 +212,7 @@ export async function requestWithMeta<T>(
   const response = await fetch(`${API_BASE}${path}${buildQueryString(query)}`, {
     method,
     headers,
-    credentials: 'same-origin',
+    credentials: 'include',
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
