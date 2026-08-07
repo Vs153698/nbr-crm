@@ -2,13 +2,45 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 import { buildWhatsAppLink } from '@nbr/shared';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import { ValidationError } from '../common/errors';
+import { z } from 'zod';
+import { verifyWebhookSignature } from '../common/crypto';
+import { UnauthorisedError, ValidationError } from '../common/errors';
 import { getActor } from '../common/request-context';
+import { ENV } from '../config/config.module';
+import type { Env } from '../config/env';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { MailService } from '../mail/mail.service';
 import { LegacyPushService } from './legacy-push.service';
+
+/**
+ * What the website sends for one offline certificate.
+ *
+ * Mirrors `toImportedCertificatePayload` on that side. Only the fields that
+ * genuinely identify the record are required; everything else is optional
+ * because historic imports were catalogued with whatever was to hand.
+ */
+const importedCertificatePushSchema = z.object({
+  certificateNumber: z.string().trim().min(1).max(120),
+  holderName: z.string().trim().min(1).max(200),
+  recordTitle: z.string().trim().min(1).max(1000),
+  category: z.string().trim().max(150).nullish().default(null),
+  issuedAt: z.string().datetime({ offset: true }),
+  revoked: z.boolean().default(false),
+  revokeReason: z.string().nullish().default(null),
+  email: z.string().trim().max(200).nullish().default(null),
+  phone: z.string().trim().max(30).nullish().default(null),
+  awardeeSlug: z.string().trim().max(250).nullish().default(null),
+  bio: z.string().nullish().default(null),
+  location: z.string().trim().max(250).nullish().default(null),
+  achievementDate: z.string().datetime({ offset: true }).nullish().default(null),
+  coverImageUrl: z.string().trim().max(1000).nullish().default(null),
+  extraData: z.record(z.unknown()).default({}),
+  isPublished: z.boolean().default(false),
+  verifyUrl: z.string().trim().max(1000).nullish().default(null),
+  awardeeUrl: z.string().trim().max(1000).nullish().default(null),
+});
 
 /** Read-only endpoint on the website carrying its offline certificates. */
 const LEGACY_IMPORTED_PATH = '/api/crm-connector/imported-certificates';
@@ -78,6 +110,7 @@ export class ImportedRecordsService {
 
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(ENV) private readonly env: Env,
     private readonly legacy: LegacyPushService,
     private readonly mail: MailService,
   ) {}
@@ -133,47 +166,98 @@ export class ImportedRecordsService {
     let updated = 0;
 
     for (const row of rows) {
-      const values = {
-        certificateNumber: row.certificateNumber,
-        holderName: row.holderName,
-        recordTitle: row.recordTitle,
-        category: row.category,
-        issuedAt: new Date(row.issuedAt),
-        email: row.email,
-        phone: row.phone,
-        location: row.location,
-        bio: row.bio,
-        achievementDate: row.achievementDate ? new Date(row.achievementDate) : null,
-        coverImageUrl: row.coverImageUrl,
-        extraData: row.extraData ?? {},
-        awardeeSlug: row.awardeeSlug,
-        verifyUrl: row.verifyUrl,
-        awardeeUrl: row.awardeeUrl,
-        isPublished: row.isPublished,
-        revoked: row.revoked,
-        revokeReason: row.revokeReason,
-        syncedAt: new Date(),
-      };
-
-      // Keyed on the certificate number, so a re-run refreshes rather than
-      // duplicates — including a revocation made on the website since.
-      const result = await this.db
-        .insert(schema.importedRecords)
-        .values(values)
-        .onConflictDoUpdate({
-          target: schema.importedRecords.certificateNumber,
-          set: values,
-        })
-        .returning({ createdAt: schema.importedRecords.createdAt });
-
-      const created = result[0]?.createdAt;
-      // A row whose createdAt is its syncedAt was inserted just now.
-      if (created && Math.abs(created.getTime() - values.syncedAt.getTime()) < 2000) imported++;
+      if (await this.upsert(row)) imported++;
       else updated++;
     }
 
     this.logger.log(`Imported records sync: ${imported} new, ${updated} refreshed`);
     return { imported, updated, total: rows.length };
+  }
+
+  /**
+   * Mirror one offline certificate, returning true when it was newly inserted.
+   *
+   * Shared by the pull above and the push the website fires when a certificate
+   * is imported over there, so both arrive at the same row. Keyed on the
+   * certificate number, which means a re-run refreshes rather than duplicates —
+   * including a revocation made on the website since.
+   */
+  async upsert(row: LegacyImportedCertificate): Promise<boolean> {
+    const values = {
+      certificateNumber: row.certificateNumber,
+      holderName: row.holderName,
+      recordTitle: row.recordTitle,
+      category: row.category,
+      issuedAt: new Date(row.issuedAt),
+      email: row.email,
+      phone: row.phone,
+      location: row.location,
+      bio: row.bio,
+      achievementDate: row.achievementDate ? new Date(row.achievementDate) : null,
+      coverImageUrl: row.coverImageUrl,
+      extraData: row.extraData ?? {},
+      awardeeSlug: row.awardeeSlug,
+      verifyUrl: row.verifyUrl,
+      awardeeUrl: row.awardeeUrl,
+      isPublished: row.isPublished,
+      revoked: row.revoked,
+      revokeReason: row.revokeReason,
+      syncedAt: new Date(),
+    };
+
+    const result = await this.db
+      .insert(schema.importedRecords)
+      .values(values)
+      .onConflictDoUpdate({
+        target: schema.importedRecords.certificateNumber,
+        set: values,
+      })
+      .returning({ createdAt: schema.importedRecords.createdAt });
+
+    const created = result[0]?.createdAt;
+    // A row whose createdAt is its syncedAt was inserted just now.
+    return Boolean(created && Math.abs(created.getTime() - values.syncedAt.getTime()) < 2000);
+  }
+
+  /**
+   * Inbound push: the website has just imported an offline certificate.
+   *
+   * Its own endpoint rather than a branch of the applications webhook, because
+   * that payload is parsed as an application snapshot and one of these would be
+   * rejected before it reached anything useful.
+   *
+   * Authenticated by HMAC signature, exactly as the applications webhook is —
+   * there is no user session on a server-to-server call, so the signature check
+   * is the authentication and runs before the payload is touched.
+   */
+  async receivePush(
+    rawBody: string,
+    signatureHeader: string | undefined,
+    parsedBody: unknown,
+  ): Promise<{ certificateNumber: string; created: boolean }> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody,
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (!verification.valid) {
+      this.logger.warn(`Rejected imported-certificate push: ${verification.reason}`);
+      throw new UnauthorisedError(
+        'WEBHOOK_SIGNATURE_INVALID',
+        `The signature did not verify (${verification.reason}).`,
+      );
+    }
+
+    const payload = importedCertificatePushSchema.parse(parsedBody);
+    const created = await this.upsert(payload);
+
+    this.logger.log(
+      `Imported certificate ${payload.certificateNumber} ${created ? 'created' : 'refreshed'} by push`,
+    );
+
+    return { certificateNumber: payload.certificateNumber, created };
   }
 
   /** Newest issue date we hold, so the next sync can ask only for what follows. */

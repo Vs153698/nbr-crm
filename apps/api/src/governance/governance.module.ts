@@ -257,6 +257,7 @@ class IntegrationsController {
   constructor(
     private readonly nbr: NbrWebsiteService,
     private readonly legacyPush: LegacyPushService,
+    private readonly imported: ImportedRecordsService,
   ) {}
 
   /**
@@ -282,6 +283,27 @@ class IntegrationsController {
   @HttpCode(202)
   async receive(@Req() request: FastifyRequest & { rawBody?: string; body: unknown }) {
     return this.nbr.receive(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+      request.body,
+    );
+  }
+
+  /**
+   * Inbound push for an offline certificate imported on the website.
+   *
+   * Its own endpoint rather than a branch of `applications` above, because that
+   * payload is parsed as an application snapshot and one of these — which has
+   * no application at all — would be rejected before reaching anything useful.
+   * `@Public()` for the same reason: the HMAC signature is the authentication.
+   */
+  @Public()
+  @Post('imported-certificates')
+  @HttpCode(200)
+  async receiveImportedCertificate(
+    @Req() request: FastifyRequest & { rawBody?: string; body: unknown },
+  ) {
+    return this.imported.receivePush(
       request.rawBody ?? '',
       request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
       request.body,
@@ -386,6 +408,7 @@ class ImportedRecordsController {
   async sync(@Body() body?: { full?: boolean }) {
     return this.imported.sync({ full: body?.full === true });
   }
+
 
   /**
    * One of the four permitted actions: email, whatsapp, note, task.

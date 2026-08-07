@@ -1605,6 +1605,27 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       '422': { description: 'The integration is not configured, or the website rejected the request.' },
     },
   },
+  'IntegrationsController.receiveImportedCertificate': {
+    tag: 'Integration',
+    summary: 'Inbound: an offline certificate imported on the website',
+    description:
+      'Fired by the website when a certificate is imported through its Certificates → ' +
+      'Import screen. Kept off the applications webhook because these carry no ' +
+      'application and that payload is parsed as an application snapshot. Keyed on the ' +
+      'certificate number, so a redelivery refreshes the row rather than duplicating it. ' +
+      'Authenticated by HMAC signature, not by session.',
+    response: {
+      type: 'object',
+      properties: {
+        certificateNumber: { type: 'string' },
+        created: { type: 'boolean', description: 'False when an existing row was refreshed.' },
+      },
+    },
+    errors: {
+      '401': { description: 'The signature did not verify.' },
+      '422': { description: 'The payload did not match the expected shape.' },
+    },
+  },
   'ImportedRecordsController.list': {
     tag: 'Integration',
     summary: 'List imported records',

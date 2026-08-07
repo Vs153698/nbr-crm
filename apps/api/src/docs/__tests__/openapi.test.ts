@@ -73,6 +73,9 @@ describe('OpenAPI document', () => {
       .sort();
 
     // Anything new appearing here is an endpoint that ships unauthenticated.
+    // The two integration routes carry no session because they are
+    // server-to-server calls from the website; both verify an HMAC signature
+    // over the raw body before touching it, which is their authentication.
     expect(publicOps).toEqual([
       'get /health',
       'get /health/live',
@@ -81,6 +84,7 @@ describe('OpenAPI document', () => {
       'post /api/v1/auth/refresh',
       'post /api/v1/auth/reset-password',
       'post /api/v1/integrations/nbr-website/applications',
+      'post /api/v1/integrations/nbr-website/imported-certificates',
     ]);
   });
 
