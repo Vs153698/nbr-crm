@@ -4,9 +4,7 @@ import {
   BLACKLIST_REASON_LABELS,
   EMAIL_TEMPLATE_CODES,
   TEMPLATE_CHANNEL,
-  TEMPLATE_VARIABLES,
   WHATSAPP_TEMPLATE_CODES,
-  validateTemplate,
 } from '@nbr/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -24,6 +22,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
+import { TemplateEditor, type TemplateRow } from './templates/TemplateEditor';
 
 // ── W-25 Blacklist & restrictions ───────────────────────────────────────────
 
@@ -198,18 +197,6 @@ export function BlacklistPage() {
 
 // ── W-26 Template manager ───────────────────────────────────────────────────
 
-interface TemplateRow {
-  id: string;
-  code: string;
-  channel: string;
-  name: string;
-  subject: string | null;
-  body: string;
-  isActive: boolean;
-  updatedAt: string;
-  /** Built-in templates back workflow stages and cannot be deleted. */
-  isSystem: boolean;
-}
 
 /**
  * W-26 Template manager (§7, §8).
@@ -221,6 +208,18 @@ interface TemplateRow {
 export function TemplatesPage() {
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  // The name the preview signs each message with, so what an Admin sees here
+  // is what the send will actually put in the header and the footer.
+  const { data: settingGroups } = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: ({ signal }) => api.get<SettingGroup[]>('/settings', undefined, signal),
+  });
+
+  const organisationName =
+    (settingGroups
+      ?.flatMap((group) => group.settings)
+      .find((setting) => setting.key === 'organisation.name')?.value as string | undefined) ??
+    'National Book of Records';
   const [editing, setEditing] = useState<TemplateRow | null>(null);
   /** Channel to create a new template on; null when not creating. */
   const [creatingOn, setCreatingOn] = useState<string | null>(null);
@@ -312,6 +311,7 @@ export function TemplatesPage() {
         <TemplateEditor
           template={editing}
           channel={editing?.channel ?? creatingOn!}
+          organisationName={organisationName}
           onClose={() => {
             setEditing(null);
             setCreatingOn(null);
@@ -320,191 +320,6 @@ export function TemplatesPage() {
         />
       ) : null}
     </div>
-  );
-}
-
-/**
- * Create or edit one template.
- *
- * `template` is null when creating. A new one needs a code and a name as well,
- * because those identify it — for an existing template both are fixed: the code
- * is what the workflow and the API address it by, and changing it in place
- * would silently create a second template rather than rename this one.
- */
-function TemplateEditor({
-  template,
-  channel,
-  onClose,
-  onSaved,
-}: {
-  template: TemplateRow | null;
-  channel: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const isNew = template === null;
-  const [code, setCode] = useState(template?.code ?? '');
-  const [name, setName] = useState(template?.name ?? '');
-  const [subject, setSubject] = useState(template?.subject ?? '');
-  const [body, setBody] = useState(template?.body ?? '');
-  const [isActive, setIsActive] = useState(template?.isActive ?? true);
-
-  // Same slug rule the API enforces, so a bad code fails before the round trip.
-  const codeIsValid = /^[a-z][a-z0-9_]{1,39}$/.test(code);
-
-  // Same validator the API runs — the Admin sees the problem while typing.
-  const bodyCheck = validateTemplate(body);
-  const subjectCheck = subject ? validateTemplate(subject) : { valid: true, unknown: [] };
-  const unknown = [...new Set([...bodyCheck.unknown, ...subjectCheck.unknown])];
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      api.put('/templates', {
-        code: isNew ? code : template.code,
-        channel: isNew ? channel : template.channel,
-        name: isNew ? name : template.name,
-        subject: subject || undefined,
-        body,
-        isActive,
-      }),
-    onSuccess: () => {
-      toast.success(isNew ? 'Template created' : 'Template saved');
-      onClose();
-      onSaved();
-    },
-    onError: (error: unknown) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not save the template'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => api.delete(`/templates/${template!.id}`),
-    onSuccess: () => {
-      toast.success('Template deleted');
-      onClose();
-      onSaved();
-    },
-    onError: (error: unknown) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not delete the template'),
-  });
-
-  function insert(variable: string) {
-    setBody((current) => `${current}{{${variable}}}`);
-  }
-
-  return (
-    <Dialog
-      open
-      onOpenChange={onClose}
-      title={isNew ? 'New template' : `Edit — ${template.name}`}
-      description={`${humanise(isNew ? channel : template.channel)} template`}
-      size="lg"
-      footer={
-        <>
-          {/* Only custom templates can go: a built-in backs a workflow stage,
-              and deleting it would leave that stage with nothing to send. */}
-          {!isNew && !template.isSystem ? (
-            <Button
-              variant="danger"
-              icon={Icons.Trash2}
-              loading={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate()}
-              className="mr-auto"
-            >
-              Delete
-            </Button>
-          ) : null}
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            loading={saveMutation.isPending}
-            disabled={
-              unknown.length > 0 || !body.trim() || (isNew && (!codeIsValid || !name.trim()))
-            }
-            onClick={() => saveMutation.mutate()}
-          >
-            {isNew ? 'Create template' : 'Save template'}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        {unknown.length > 0 ? (
-          <div className="flex gap-2 rounded-lg border border-danger-ring bg-danger-tint p-2.5">
-            <Icons.XCircle size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-danger" />
-            <p className="text-[11px] leading-relaxed text-danger">
-              Unknown placeholder{unknown.length === 1 ? '' : 's'}:{' '}
-              <b>{unknown.map((name) => `{{${name}}}`).join(', ')}</b>. These would render as blank
-              text, so the template cannot be saved until they're corrected.
-            </p>
-          </div>
-        ) : null}
-
-        {isNew ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Name"
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Anniversary greeting"
-            />
-            <Input
-              label="Code"
-              required
-              value={code}
-              onChange={(event) => setCode(event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
-              placeholder="anniversary_greeting"
-              hint="How the API and the workflow refer to this template. It cannot be changed later."
-              error={
-                code && !codeIsValid
-                  ? 'Start with a letter; lowercase letters, numbers and underscores only.'
-                  : undefined
-              }
-            />
-          </div>
-        ) : null}
-
-        {(isNew ? channel : template.channel) === TEMPLATE_CHANNEL.EMAIL ? (
-          <Input label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
-        ) : null}
-
-        <Textarea
-          label="Message"
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          rows={12}
-        />
-
-        <div>
-          <p className="mb-1.5 text-xs font-semibold text-ink-2">Insert a field</p>
-          <div className="scrollbar-slim flex max-h-28 flex-wrap gap-1 overflow-y-auto">
-            {Object.entries(TEMPLATE_VARIABLES).map(([name, description]) => (
-              <button
-                key={name}
-                type="button"
-                title={description}
-                onClick={() => insert(name)}
-                className="rounded border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink-2 transition-colors hover:border-brand hover:text-brand"
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <label className="flex items-center gap-2 text-xs text-ink-2">
-          <input
-            type="checkbox"
-            checked={isActive}
-            onChange={(event) => setIsActive(event.target.checked)}
-            className="h-4 w-4 rounded border-line text-brand"
-          />
-          Active — available in the send dialogs
-        </label>
-      </div>
-    </Dialog>
   );
 }
 

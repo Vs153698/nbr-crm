@@ -1,3 +1,4 @@
+import type { EmailDocument } from '@nbr/shared';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -135,7 +136,21 @@ export const templates = pgTable(
     channel: varchar('channel', { length: 20 }).notNull(),
     name: varchar('name', { length: 120 }).notNull(),
     subject: varchar('subject', { length: 250 }),
+    /**
+     * Plain text. The message itself for WhatsApp, which has no HTML; for email
+     * this is the generated text alternative, derived from `document`.
+     */
     body: text('body').notNull(),
+    /**
+     * Email content as editable areas — heading, paragraphs, highlighted
+     * values, tables, steps, buttons, notes.
+     *
+     * Structured rather than an HTML blob so the Admin screen can present named
+     * fields with a live preview and never show anyone markup, and so the
+     * website's layout stays in one place instead of being pasted into every
+     * row. Null for WhatsApp templates.
+     */
+    document: jsonb('document').$type<EmailDocument>(),
     isActive: boolean('is_active').notNull().default(true),
     updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
       onDelete: 'set null',

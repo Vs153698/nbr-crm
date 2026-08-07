@@ -266,7 +266,10 @@ export interface CommunicationRow {
 
 export interface RenderedMessage {
   subject: string | null;
+  /** Plain text — what the history stores, and what the editor box shows. */
   body: string;
+  /** The email as the applicant will see it. Null for WhatsApp, which has none. */
+  html: string | null;
   missing: string[];
   to: string | null;
 }

@@ -6,6 +6,8 @@
  * the renderer validates every placeholder against this list before sending.
  */
 
+import type { EmailDocument } from './email-blocks';
+
 export const TEMPLATE_CHANNEL = {
   EMAIL: 'email',
   WHATSAPP: 'whatsapp',
@@ -119,7 +121,13 @@ export interface TemplateSeed {
   readonly channel: TemplateChannel;
   readonly name: string;
   readonly subject: string | null;
-  readonly body: string;
+  /**
+   * Plain text. The message itself for WhatsApp; for email it is only the text
+   * alternative, generated from `document` rather than typed.
+   */
+  readonly body?: string;
+  /** Email only — the areas that render into the website's layout. */
+  readonly document?: EmailDocument;
 }
 
 export const DEFAULT_TEMPLATES: readonly TemplateSeed[] = [
@@ -128,115 +136,274 @@ export const DEFAULT_TEMPLATES: readonly TemplateSeed[] = [
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Selection',
     subject: 'Congratulations! Your record has been approved — {{organisation_name}}',
-    body: `Dear {{applicant_name}},
-
-We are delighted to inform you that your record attempt "{{record_title}}" (Application ID {{applicant_id}}, Record ID {{record_id}}) has been officially approved by the National Book of Records review panel.
-
-Our team will reach out shortly with the next steps, including the fee and how to pay it. If you have any questions in the meantime, write to {{support_email}} or call {{support_phone}}.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'Your record has been approved! 🎉',
+      subheading: 'Reviewed and accepted by our expert panel',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'We are delighted to tell you that your record attempt "{{record_title}}" has been officially approved by the National Book of Records review panel.',
+        },
+        {
+          type: 'highlight',
+          label: 'Your Application ID',
+          value: '{{applicant_id}}',
+          caption: 'Keep this ID safe for tracking your application status',
+        },
+        {
+          type: 'details',
+          title: 'Record details',
+          rows: [
+            { label: 'Record ID', value: '{{record_id}}' },
+            { label: 'Category', value: '{{category}}' },
+            { label: 'Approved on', value: '{{today}}' },
+          ],
+        },
+        {
+          type: 'steps',
+          title: 'What happens next?',
+          items: [
+            {
+              title: 'Choose your package',
+              text: 'Our team will share the available packages and the fee for each.',
+            },
+            {
+              title: 'Complete payment',
+              text: 'Once the fee is received, we begin preparing your certificate.',
+            },
+            {
+              title: 'Certificate and dispatch',
+              text: 'Your certificate is issued and posted to you with tracking.',
+            },
+          ],
+        },
+        {
+          type: 'note',
+          text: 'Any questions in the meantime? Write to {{support_email}} or call {{support_phone}}, quoting your Application ID.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.REJECTION,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Rejection',
     subject: 'Update on your record application — {{organisation_name}}',
-    body: `Dear {{applicant_name}},
-
-Thank you for submitting your record attempt "{{record_title}}" (Application ID {{applicant_id}}).
-
-After a careful review of the evidence provided, our panel is unable to approve this attempt at this time.
-
-You are welcome to submit a fresh application with additional evidence. For guidance on what our reviewers look for, write to {{support_email}}.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'An update on your application',
+      subheading: 'Our panel has completed its review',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'Thank you for submitting your record attempt "{{record_title}}".',
+        },
+        {
+          type: 'details',
+          title: 'Application',
+          rows: [
+            { label: 'Application ID', value: '{{applicant_id}}' },
+            { label: 'Record title', value: '{{record_title}}' },
+          ],
+        },
+        {
+          type: 'paragraph',
+          text: 'After a careful review of the evidence provided, our panel is unable to approve this attempt at this time.',
+        },
+        {
+          type: 'paragraph',
+          text: 'You are very welcome to submit a fresh application with additional evidence — many successful records are accepted on a later attempt.',
+        },
+        {
+          type: 'note',
+          text: 'For guidance on what our reviewers look for, write to {{support_email}}.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.PAYMENT_REMINDER,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Payment Reminder',
     subject: 'Reminder: ₹{{balance_due}} pending for your record entry',
-    body: `Dear {{applicant_name}},
-
-This is a gentle reminder that ₹{{balance_due}} is still pending against your approved record "{{record_title}}" ({{package_name}} — ₹{{amount}}).
-
-Due date: {{due_date}} ({{days_remaining}} days remaining)
-
-Once payment is received, we will begin preparing your certificate.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'A gentle payment reminder',
+      subheading: 'Your approved record is waiting on one last step',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'This is a gentle reminder that payment is still pending against your approved record "{{record_title}}".',
+        },
+        {
+          type: 'highlight',
+          label: 'Amount outstanding',
+          value: '₹{{balance_due}}',
+          caption: 'Due by {{due_date}} — {{days_remaining}} days remaining',
+        },
+        {
+          type: 'details',
+          title: 'Payment details',
+          rows: [
+            { label: 'Package', value: '{{package_name}}' },
+            { label: 'Total', value: '₹{{amount}}' },
+            { label: 'Received', value: '₹{{amount_paid}}' },
+            { label: 'Outstanding', value: '₹{{balance_due}}' },
+          ],
+        },
+        {
+          type: 'paragraph',
+          text: 'Once payment is received, we will begin preparing your certificate straight away.',
+        },
+        {
+          type: 'note',
+          text: 'Already paid, or need help completing it? Write to {{support_email}} and we will sort it out.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.PAYMENT_CONFIRMATION,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Payment Confirmation',
     subject: 'Payment received — invoice {{invoice_number}}',
-    body: `Dear {{applicant_name}},
-
-We have received your payment of ₹{{amount_paid}} against record "{{record_title}}".
-
-Invoice number: {{invoice_number}}
-Transaction ID: {{transaction_id}}
-
-Your certificate is now being prepared. We will notify you as soon as it is ready.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'Payment received — thank you!',
+      subheading: 'Your certificate is now being prepared',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'We have received your payment against record "{{record_title}}". Thank you.',
+        },
+        {
+          type: 'highlight',
+          label: 'Amount received',
+          value: '₹{{amount_paid}}',
+          caption: 'Received on {{today}}',
+        },
+        {
+          type: 'details',
+          title: 'Receipt',
+          rows: [
+            { label: 'Invoice', value: '{{invoice_number}}' },
+            { label: 'Transaction', value: '{{transaction_id}}' },
+            { label: 'Record', value: '{{record_title}}' },
+          ],
+        },
+        {
+          type: 'paragraph',
+          text: 'We will notify you as soon as your certificate is ready to dispatch.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.CERTIFICATE_READY,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Certificate Ready',
     subject: 'Your certificate {{certificate_no}} is ready',
-    body: `Dear {{applicant_name}},
-
-Your National Book of Records certificate for "{{record_title}}" has been issued.
-
-Certificate number: {{certificate_no}}
-Issue date: {{certificate_issue_date}}
-
-The hard copy will be dispatched shortly and you will receive tracking details by email and WhatsApp.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'Your certificate has been issued 🏆',
+      subheading: 'Officially recorded in the National Book of Records',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'Your National Book of Records certificate for "{{record_title}}" has been issued.',
+        },
+        {
+          type: 'highlight',
+          label: 'Certificate number',
+          value: '{{certificate_no}}',
+          caption: 'Issued on {{certificate_issue_date}}',
+        },
+        {
+          type: 'paragraph',
+          text: 'The hard copy will be dispatched shortly, and you will receive tracking details by email and WhatsApp as soon as it is on its way.',
+        },
+        {
+          type: 'note',
+          text: 'Questions about your certificate? Write to {{support_email}} quoting {{certificate_no}}.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.DISPATCH,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Dispatch',
     subject: 'Your certificate has been dispatched — {{tracking_no}}',
-    body: `Dear {{applicant_name}},
-
-Your certificate and record memento have been dispatched.
-
-Courier: {{courier_partner}}
-Tracking number: {{tracking_no}}
-Dispatched on: {{dispatch_date}}
-Track here: {{tracking_url}}
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'Your certificate is on its way 📦',
+      subheading: 'Dispatched and trackable',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'Your certificate and record memento have been dispatched.',
+        },
+        {
+          type: 'highlight',
+          label: 'Tracking number',
+          value: '{{tracking_no}}',
+          caption: 'Dispatched on {{dispatch_date}} via {{courier_partner}}',
+        },
+        {
+          type: 'details',
+          title: 'Dispatch details',
+          rows: [
+            { label: 'Courier', value: '{{courier_partner}}' },
+            { label: 'Tracking no.', value: '{{tracking_no}}' },
+            { label: 'Dispatched', value: '{{dispatch_date}}' },
+          ],
+        },
+        { type: 'button', label: 'Track your delivery', url: '{{tracking_url}}' },
+        {
+          type: 'note',
+          text: 'If your parcel has not arrived within the expected window, write to {{support_email}} and we will chase it for you.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
   {
     code: TEMPLATE_CODE.CONGRATULATIONS,
     channel: TEMPLATE_CHANNEL.EMAIL,
     name: 'Congratulations',
     subject: 'Welcome to the National Book of Records, {{applicant_first_name}}!',
-    body: `Dear {{applicant_name}},
-
-Congratulations once again on "{{record_title}}" — you are now formally part of the National Book of Records.
-
-Certificate number: {{certificate_no}}
-Featured in: {{magazine_name}}, page {{magazine_page}}
-Read the article: {{article_url}}
-
-Thank you for letting us be part of your achievement.
-
-Warm regards,
-{{organisation_name}}`,
+    document: {
+      heading: 'Welcome to the National Book of Records! 🎉',
+      subheading: 'Your achievement is now part of the record',
+      blocks: [
+        { type: 'paragraph', text: 'Dear {{applicant_name}},' },
+        {
+          type: 'paragraph',
+          text: 'Congratulations once again on "{{record_title}}" — you are now formally part of the National Book of Records.',
+        },
+        {
+          type: 'details',
+          title: 'Your record',
+          rows: [
+            { label: 'Certificate', value: '{{certificate_no}}' },
+            { label: 'Featured in', value: '{{magazine_name}}, page {{magazine_page}}' },
+            { label: 'Category', value: '{{category}}' },
+          ],
+        },
+        { type: 'button', label: 'Read your feature', url: '{{article_url}}' },
+        {
+          type: 'paragraph',
+          text: 'Thank you for letting us be part of your achievement.',
+        },
+      ],
+      signoff: 'Warm regards,',
+    },
   },
 
   // ── WhatsApp (click-to-chat, prefilled) ───────────────────────────────────

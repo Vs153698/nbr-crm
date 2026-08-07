@@ -829,13 +829,26 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     tag: 'Communication',
     summary: 'Preview a rendered message',
     description:
-      'Renders a template against a record so the operator sees the exact text before it ' +
-      'goes out, and names any placeholder with no value behind it.',
+      'Renders a template against a record so the operator sees the exact message before it ' +
+      'goes out, and names any placeholder with no value behind it. For email this runs the ' +
+      'same renderer the send uses, so `html` is the message rather than an impression of it.',
     query: [
       { name: 'templateCode', description: 'Template code.', required: true },
       { name: 'recordId', description: 'Record to render against.', required: true, schema: UUID },
     ],
-    response: { type: 'object', properties: { subject: { type: 'string', nullable: true }, body: { type: 'string' }, missing: { type: 'array', items: { type: 'string' } } } },
+    response: {
+      type: 'object',
+      properties: {
+        subject: { type: 'string', nullable: true },
+        body: { type: 'string', description: 'Plain-text alternative.' },
+        html: {
+          type: 'string',
+          nullable: true,
+          description: 'The rendered email. Null for WhatsApp, which has no HTML.',
+        },
+        missing: { type: 'array', items: { type: 'string' } },
+      },
+    },
   },
   'CommunicationsController.sendEmail': {
     tag: 'Communication',
@@ -916,7 +929,9 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     notes:
       'Placeholders are validated against a fixed vocabulary at save time, not at send time. ' +
       'A template referencing an unknown field is rejected here rather than reaching an ' +
-      'applicant as a blank.',
+      'applicant as a blank. Email templates carry `document` — the content areas that render ' +
+      'into the public website\'s layout — and their `body` is generated from it as the ' +
+      'text alternative rather than being supplied. WhatsApp carries `body` alone.',
   },
 
   // ── Blacklist & flags ─────────────────────────────────────────────────────

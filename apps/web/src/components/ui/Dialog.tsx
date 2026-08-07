@@ -28,9 +28,10 @@ export function Dialog({
   description?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  /** `xl` is for side-by-side work — an editor beside a live preview. */
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
-  const width = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl' }[size];
+  const width = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-6xl' }[size];
 
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>

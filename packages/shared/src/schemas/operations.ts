@@ -218,6 +218,15 @@ export const sendEmailSchema = z.object({
   cc: z.array(z.string().email()).max(5).optional(),
   subject: trimmedString(250),
   body: trimmedString(20000),
+  /**
+   * Whether the employee rewrote the message before sending.
+   *
+   * Decides which layout goes out. Untouched, the template's own areas are
+   * re-rendered server-side, keeping its highlighted values and tables. Edited,
+   * their words are what gets sent — silently replacing them with the template
+   * would discard the very change they opened the box to make.
+   */
+  bodyEdited: z.boolean().default(false),
   attachmentKeys: z.array(trimmedString(500)).max(5).optional(),
 });
 
@@ -241,28 +250,108 @@ export const logCallSchema = z.object({
   followUpDate: z.coerce.date().optional(),
 });
 
-export const upsertTemplateSchema = z.object({
-  /**
-   * Any slug, not just the system codes.
-   *
-   * Restricting this to the seven built-ins meant an Admin could reword the
-   * shipped templates but never add one of their own — so a message the
-   * workflow does not model had to be retyped from scratch every time.
-   */
-  code: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .regex(
-      TEMPLATE_CODE_PATTERN,
-      'Use 2–40 characters: lowercase letters, numbers and underscores, starting with a letter.',
-    ),
-  channel: z.nativeEnum(TEMPLATE_CHANNEL),
-  name: trimmedString(120),
-  subject: optionalTrimmedString(250),
-  body: trimmedString(20000),
-  isActive: z.boolean().default(true),
+/**
+ * One editable area of an email.
+ *
+ * The set is closed on purpose: an Admin writes the words inside a block and
+ * never the markup around them, which is what keeps every message on-brand and
+ * lets the editor stay free of raw HTML.
+ */
+export const emailBlockSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('paragraph'), text: trimmedString(4000) }),
+  z.object({
+    type: z.literal('highlight'),
+    label: trimmedString(120),
+    value: trimmedString(200),
+    caption: optionalTrimmedString(200),
+  }),
+  z.object({
+    type: z.literal('details'),
+    title: optionalTrimmedString(120),
+    rows: z
+      .array(z.object({ label: trimmedString(80), value: trimmedString(300) }))
+      .min(1)
+      .max(12),
+  }),
+  z.object({
+    type: z.literal('steps'),
+    title: trimmedString(120),
+    items: z
+      .array(z.object({ title: trimmedString(120), text: trimmedString(400) }))
+      .min(1)
+      .max(6),
+  }),
+  z.object({
+    type: z.literal('button'),
+    label: trimmedString(60),
+    /**
+     * Rejected at save time rather than escaped at render time, so an Admin
+     * finds out while they are looking at the field. The renderer drops
+     * anything that is not http(s) as a second line of defence.
+     */
+    url: z
+      .string()
+      .trim()
+      .max(600)
+      .regex(/^(https?:\/\/|\{\{)/i, 'Links must start with http:// or https://'),
+  }),
+  z.object({ type: z.literal('note'), text: trimmedString(2000) }),
+]);
+
+/** The full editable content of one email template. */
+export const emailDocumentSchema = z.object({
+  heading: trimmedString(120),
+  subheading: optionalTrimmedString(160),
+  blocks: z.array(emailBlockSchema).min(1).max(20),
+  signoff: optionalTrimmedString(200),
 });
+
+export const upsertTemplateSchema = z
+  .object({
+    /**
+     * Any slug, not just the system codes.
+     *
+     * Restricting this to the seven built-ins meant an Admin could reword the
+     * shipped templates but never add one of their own — so a message the
+     * workflow does not model had to be retyped from scratch every time.
+     */
+    code: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(
+        TEMPLATE_CODE_PATTERN,
+        'Use 2–40 characters: lowercase letters, numbers and underscores, starting with a letter.',
+      ),
+    channel: z.nativeEnum(TEMPLATE_CHANNEL),
+    name: trimmedString(120),
+    subject: optionalTrimmedString(250),
+    /**
+     * WhatsApp is plain text and always will be — the transport has no HTML.
+     * Email carries `document` instead, and its `body` is the generated text
+     * alternative rather than something anyone types.
+     */
+    body: optionalTrimmedString(20000),
+    document: emailDocumentSchema.optional(),
+    isActive: z.boolean().default(true),
+  })
+  .superRefine((value, ctx) => {
+    if (value.channel === TEMPLATE_CHANNEL.EMAIL && !value.document) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['document'],
+        message: 'An email template needs its content areas.',
+      });
+    }
+
+    if (value.channel === TEMPLATE_CHANNEL.WHATSAPP && !value.body) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body'],
+        message: 'A WhatsApp template needs a message.',
+      });
+    }
+  });
 
 export const communicationListQuerySchema = z.object({
   channel: z.nativeEnum(COMMUNICATION_CHANNEL).optional(),

@@ -332,6 +332,9 @@ function SendEmailDialog({
         to: preview?.to ?? '',
         subject,
         body,
+        // Untouched, the server re-renders the template's own areas. Rewritten,
+        // these words are what goes out.
+        bodyEdited: edited,
       }),
     onSuccess: () => {
       toast.success('Email queued', { description: 'It sends in the background.' });
@@ -406,9 +409,37 @@ function SendEmailDialog({
             setBody(event.target.value);
             setEdited(true);
           }}
-          rows={12}
+          rows={edited ? 12 : 6}
           hint="Placeholders are already filled with this applicant's data. Edit freely before sending."
         />
+
+        {/* The message as the applicant will see it. Shown for the template's
+            own layout only: once the text is rewritten, what goes out is those
+            words in the standard shell, and the ornate preview would be a
+            picture of something else. */}
+        {preview?.html && !edited ? (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-ink-2">
+              What {preview.to ?? 'the applicant'} receives
+            </p>
+            <div className="h-[420px] overflow-hidden rounded-lg border border-line">
+              <iframe
+                title="Email preview"
+                srcDoc={preview.html}
+                sandbox=""
+                className="h-full w-full border-0 bg-[#f1f5f9]"
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {edited ? (
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-ink-3">
+            <Icons.Info size={13} strokeWidth={2} className="mt-px shrink-0" />
+            You've rewritten this message, so your words are sent in the standard layout rather
+            than the template's. Reselect the template above to go back.
+          </p>
+        ) : null}
       </div>
     </Dialog>
   );

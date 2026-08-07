@@ -16,6 +16,7 @@ import {
   PURPOSE_META,
   ROLE,
   STATUS_TRANSITIONS,
+  toPlainText,
   type PermissionCode,
 } from '@nbr/shared';
 import { loadEnv } from '../../config/env';
@@ -200,6 +201,9 @@ async function seedStatuses(db: Database): Promise<void> {
 }
 
 async function seedCatalog(db: Database): Promise<void> {
+  // The organisation signs the generated text alternative, same as the HTML.
+  const organisationName = loadEnv().DPDP_DATA_FIDUCIARY_NAME;
+
   const slugify = (name: string) =>
     name
       .toLowerCase()
@@ -256,7 +260,10 @@ async function seedCatalog(db: Database): Promise<void> {
         channel: t.channel,
         name: t.name,
         subject: t.subject,
-        body: t.body,
+        document: t.document ?? null,
+        // Email templates carry their content as areas; `body` is the text
+        // alternative, generated from those rather than maintained by hand.
+        body: t.body ?? (t.document ? toPlainText(t.document, organisationName) : ''),
       })),
     )
     // Templates are Admin-editable content; never overwrite a reworded one.

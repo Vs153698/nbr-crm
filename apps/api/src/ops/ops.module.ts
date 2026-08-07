@@ -123,6 +123,7 @@ class CommunicationsController {
       cc?: string[];
       subject: string;
       body: string;
+      bodyEdited?: boolean;
       attachmentKeys?: string[];
     },
   ) {

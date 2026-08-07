@@ -4,11 +4,16 @@ import {
   COMMUNICATION_CHANNEL,
   COMMUNICATION_STATUS,
   FLAG,
+  editableStrings,
+  renderEmail,
+  renderEmailShell,
   renderTemplate,
   TEMPLATE_CHANNEL,
   TIMELINE_EVENT,
   toE164,
+  toPlainText,
   validateTemplate,
+  type EmailDocument,
   type TemplateContext,
   isSystemTemplateCode,
   TASK_PRIORITY,} from '@nbr/shared';
@@ -28,7 +33,10 @@ import { TasksService } from './tasks.service';
 
 export interface RenderedMessage {
   readonly subject: string | null;
+  /** Plain text — what the history stores, and the alternative part of the mail. */
   readonly body: string;
+  /** The email as the recipient will see it. Null for WhatsApp. */
+  readonly html: string | null;
   readonly missing: readonly string[];
   readonly to: string | null;
 }
@@ -211,17 +219,81 @@ export class CommunicationsService {
 
     const { context, email, whatsapp } = await this.buildContext(recordId);
 
-    const body = renderTemplate(template.body, context);
     const subject = template.subject ? renderTemplate(template.subject, context) : null;
+
+    /**
+     * An email with content areas renders through the same function the send
+     * uses, so the preview is the message rather than an approximation of it.
+     * WhatsApp has no HTML and keeps its plain-text path.
+     */
+    const rendered =
+      template.document && channel === TEMPLATE_CHANNEL.EMAIL
+        ? renderEmail(template.document, context, this.env.DPDP_DATA_FIDUCIARY_NAME)
+        : null;
+
+    const body = rendered ? null : renderTemplate(template.body, context);
 
     return {
       subject: subject?.output ?? null,
-      body: body.output,
+      body: rendered ? rendered.text : body!.output,
+      // The rendered document, so the modal can show the recipient's view.
+      html: rendered?.html ?? null,
       // Surfaced so the modal can warn "certificate number is missing" *before*
       // an email goes out with a blank in it.
-      missing: [...new Set([...body.missing, ...(subject?.missing ?? [])])],
+      missing: [
+        ...new Set([
+          ...(rendered ? rendered.missing : body!.missing),
+          ...(subject?.missing ?? []),
+        ]),
+      ],
       to: channel === TEMPLATE_CHANNEL.WHATSAPP ? whatsapp : email,
     };
+  }
+
+  /**
+   * The HTML that actually goes out, built here rather than accepted from the
+   * client.
+   *
+   * Markup arriving over the wire would be markup the organisation signs its
+   * name to without having seen it, and the stored history would then describe
+   * something other than what was delivered.
+   *
+   * An untouched templated send is re-rendered from the stored document
+   * against the live record, so its highlighted values, tables and steps
+   * survive — flattening the previewed text into one paragraph would throw all
+   * of that away. Once the employee has rewritten the message, their words win
+   * and get the shell wrapped around them; so does a free-typed message. Either
+   * way every email leaving this system looks like the website's.
+   */
+  private async buildOutboundHtml(input: {
+    recordId: string;
+    templateCode?: string;
+    subject: string;
+    body: string;
+    bodyEdited?: boolean;
+  }): Promise<string> {
+    if (input.templateCode && !input.bodyEdited) {
+      const [template] = await this.db
+        .select()
+        .from(schema.templates)
+        .where(
+          and(
+            eq(schema.templates.code, input.templateCode),
+            eq(schema.templates.channel, TEMPLATE_CHANNEL.EMAIL),
+          ),
+        )
+        .limit(1);
+
+      if (template?.document) {
+        const { context } = await this.buildContext(input.recordId);
+        return renderEmail(template.document, context, this.env.DPDP_DATA_FIDUCIARY_NAME).html;
+      }
+    }
+
+    return renderEmailShell(
+      { heading: input.subject, blocks: [{ type: 'paragraph', text: input.body }] },
+      this.env.DPDP_DATA_FIDUCIARY_NAME,
+    );
   }
 
   /**
@@ -237,6 +309,7 @@ export class CommunicationsService {
     cc?: string[];
     subject: string;
     body: string;
+    bodyEdited?: boolean;
     attachmentKeys?: string[];
   }): Promise<{ communicationId: string; status: string }> {
     const actor = requireActor();
@@ -247,6 +320,8 @@ export class CommunicationsService {
         'This applicant is flagged Do Not Contact. Remove the flag before sending anything.',
       );
     }
+
+    const html = await this.buildOutboundHtml(input);
 
     const [communication] = await this.db
       .insert(schema.communications)
@@ -273,7 +348,7 @@ export class CommunicationsService {
     const communicationId = communication!.id;
 
     // Dispatched without awaiting so the caller gets its 202 immediately.
-    void this.deliver(communicationId, input);
+    void this.deliver(communicationId, { ...input, html });
 
     await this.timeline.write({
       applicantId,
@@ -303,14 +378,17 @@ export class CommunicationsService {
    */
   private async deliver(
     communicationId: string,
-    input: { to: string; cc?: string[]; subject: string; body: string },
+    input: { to: string; cc?: string[]; subject: string; body: string; html?: string },
   ): Promise<void> {
     try {
       const result = await this.mail.send({
         to: input.to,
         cc: input.cc,
         subject: input.subject,
+        // Both parts: the HTML is what nearly everyone sees, and the text is
+        // what remains readable in a client that refuses to render it.
         text: input.body,
+        html: input.html,
       });
 
       await this.db
@@ -359,11 +437,24 @@ export class CommunicationsService {
       .set({ status: COMMUNICATION_STATUS.QUEUED, failureReason: null })
       .where(eq(schema.communications.id, communicationId));
 
+    // Rebuilt rather than reused, because the HTML was never stored — only the
+    // text was. Without this a retry would quietly go out as plain text and
+    // look nothing like the message the first attempt tried to send.
+    const html = communication.recordId
+      ? await this.buildOutboundHtml({
+          recordId: communication.recordId,
+          templateCode: communication.templateCode ?? undefined,
+          subject: communication.subject ?? '',
+          body: communication.body,
+        })
+      : undefined;
+
     void this.deliver(communicationId, {
       to: communication.toAddress,
       cc: communication.ccAddresses ?? undefined,
       subject: communication.subject ?? '',
       body: communication.body,
+      html,
     });
 
     return { status: COMMUNICATION_STATUS.QUEUED };
@@ -640,21 +731,40 @@ export class CommunicationsService {
     channel: string;
     name: string;
     subject?: string;
-    body: string;
+    body?: string;
+    document?: EmailDocument;
     isActive: boolean;
   }): Promise<{ id: string }> {
     const actor = requireActor();
 
-    const bodyCheck = validateTemplate(input.body);
-    const subjectCheck = input.subject
-      ? validateTemplate(input.subject)
-      : { valid: true, unknown: [] as string[] };
+    const isEmail = input.channel === TEMPLATE_CHANNEL.EMAIL;
 
-    if (!bodyCheck.valid || !subjectCheck.valid) {
-      const unknown = [...new Set([...bodyCheck.unknown, ...subjectCheck.unknown])];
+    /**
+     * Email content is stored as areas, so `body` is derived rather than typed.
+     * Generating it here — not in the browser — keeps the stored text
+     * alternative honest: it always describes the document that was actually
+     * saved, whatever the client sent.
+     */
+    const body =
+      isEmail && input.document
+        ? toPlainText(input.document, this.env.DPDP_DATA_FIDUCIARY_NAME)
+        : (input.body ?? '');
+
+    // Every editable string is checked, not just the body — a typo in a
+    // highlighted value or a button label is just as broken at send time.
+    const unknown = new Set<string>();
+    for (const text of [
+      body,
+      input.subject ?? '',
+      ...(input.document ? editableStrings(input.document) : []),
+    ]) {
+      for (const name of validateTemplate(text).unknown) unknown.add(name);
+    }
+
+    if (unknown.size > 0) {
       throw new ValidationError({
         body: [
-          `Unknown placeholder${unknown.length === 1 ? '' : 's'}: ${unknown.map((u) => `{{${u}}}`).join(', ')}. Check the field list.`,
+          `Unknown placeholder${unknown.size === 1 ? '' : 's'}: ${[...unknown].map((u) => `{{${u}}}`).join(', ')}. Check the field list.`,
         ],
       });
     }
@@ -664,7 +774,8 @@ export class CommunicationsService {
       channel: input.channel,
       name: input.name,
       subject: input.subject ?? null,
-      body: input.body,
+      body,
+      document: isEmail ? (input.document ?? null) : null,
       isActive: input.isActive,
       updatedByUserId: actor.userId,
     };
