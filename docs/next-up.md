@@ -1,6 +1,7 @@
 # Next up
 
-Three open items, captured so they can be picked up cold.
+One open item, and two that have shipped — kept here with what they became, so
+the next person reads the same history.
 
 ---
 
@@ -49,61 +50,42 @@ Two candidates worth checking against whatever it reports:
 
 ---
 
-## 2. Email templates must match the legacy HTML exactly
+## 2. Email templates — done
 
-Today the CRM sends plain text assembled from a `{{placeholder}}` body. The
-legacy site sends styled HTML — see `backend/src/lib/email.ts`, which builds
-full documents starting `<!DOCTYPE html><html><body style="font-family:Arial,
-sans-serif;background:#f8fafc;padding:24px">` and repeats that shell for each
-message type.
+Shipped. Templates are no longer text: each is a heading, a strapline and an
+ordered set of areas (paragraphs, highlighted values, detail tables, numbered
+steps, buttons, side notes) rendered into the website's layout by
+`packages/shared/src/utils/email-layout.ts`.
 
-Requirement: an applicant must not be able to tell which system sent the mail —
-same markup, same spacing, same everything.
+The Admin screen edits those areas beside a live preview and never shows
+markup. The preview runs the same renderer the send does. Migration `0008`
+converts existing rows into paragraphs, preserving their wording — including
+any an Admin had already changed.
 
-### Work
-
-1. **Extract the legacy shell** into a shared layout in `packages/shared`, so
-   both systems render from one definition rather than two that drift.
-2. **Store HTML bodies.** `templates.body` is currently a text blob rendered by
-   `renderTemplate`. Keep the placeholder syntax; change the payload to HTML and
-   send it as the `html` part, with a generated text fallback.
-3. **Template editor UI.** `Admin → Templates` edits raw text in a textarea.
-   It needs to edit HTML with a live preview of the rendered result, and the
-   create form must start from the same shell so a new template matches the
-   others by default.
-4. **Migration.** Templates live in the database once seeded, so existing rows
-   need converting — the constants only govern fresh installs.
+WhatsApp stays plain text; the transport has no HTML.
 
 ---
 
-## 3. Imported certificates — a separate section, not applicants
+## 3. Imported records — done
 
-Offline records brought in through the legacy `POST /admin/certificates/import`
-create a `certificates` row with `application_id = NULL` plus an `awardees` row.
-There is **no application**, which is why the existing sync — keyed entirely on
-`applications` — has never picked them up.
+Shipped, both directions. The website exposes its offline certificates at
+`GET /api/crm-connector/imported-certificates` and pushes each new one as it
+is imported; the CRM pulls on demand and accepts the push at
+`POST /integrations/nbr-website/imported-certificates`. Both converge on one
+upsert keyed on the certificate number, so a redelivery refreshes rather than
+duplicates.
 
-This resolves the open question from earlier: they are **not** applicants and
-must not be merged into that pipeline.
+`Imported Records` in the sidebar lists and searches them, with a detail view
+carrying the four permitted actions. Email is genuinely sent; WhatsApp returns
+a click-to-chat link, as elsewhere in the product.
 
-### Shape
+---
 
-- **New legacy endpoint** exposing imported certificates, alongside the existing
-  `/plans` and `/categories` readers.
-- **New CRM table**, e.g. `imported_records`, with no foreign key to
-  `applicants` or `records`. Holder name, record title, category, certificate
-  number, issue date, awardee slug, public certificate URL, and whatever contact
-  details the import captured.
-- **New page: Imported Records.** A listing, a detail view, and a link out to
-  the public certificate.
-- **Exactly four actions**, and nothing else: send email, send WhatsApp, add a
-  note, add a task.
-- **Backfill plus ongoing.** One run for what exists, then a detached push from
-  the legacy import route so future imports arrive automatically — the same
-  fire-and-forget pattern the approve and payment hooks already use.
+## Known gaps
 
-### Note
-
-The CRM's inbound applicant schema requires `mobile` and `email`; many historic
-holders have neither. Keeping these in their own table sidesteps that entirely,
-which is a further argument for the separation the client asked for.
+- **ESLint is not installed.** `npm run lint` fails with `eslint: command not
+  found` in both apps — the dependency is missing from the workspace, so no
+  linting has run against any of this.
+- **`apps/api` has one test file** (`src/docs/__tests__/openapi.test.ts`).
+  The services carry no unit tests; `packages/shared` is the only package with
+  meaningful coverage.
