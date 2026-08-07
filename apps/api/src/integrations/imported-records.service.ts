@@ -1,10 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
+import { buildWhatsAppLink } from '@nbr/shared';
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { ValidationError } from '../common/errors';
+import { getActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { MailService } from '../mail/mail.service';
 import { LegacyPushService } from './legacy-push.service';
 
 /** Read-only endpoint on the website carrying its offline certificates. */
@@ -40,6 +43,24 @@ export interface ImportedSyncResult {
   readonly total: number;
 }
 
+/** India's country code, prepended to the bare 10-digit numbers the site stores. */
+const DEFAULT_DIAL_CODE = '91';
+const NATIONAL_NUMBER_LENGTH = 10;
+
+/**
+ * Put a stored phone number into the form `wa.me` can route.
+ *
+ * The website records whatever was typed at import time, which for historic
+ * records is almost always a bare Indian mobile. `wa.me/9876543210` opens a
+ * chat with nobody, and does it silently — so a number that is exactly ten
+ * digits gets the country code it was always assumed to have. Anything longer
+ * already carries one and is passed through untouched.
+ */
+function toDialable(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === NATIONAL_NUMBER_LENGTH ? `${DEFAULT_DIAL_CODE}${digits}` : digits;
+}
+
 /**
  * Mirrors the website's offline certificates into the CRM.
  *
@@ -58,6 +79,7 @@ export class ImportedRecordsService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly legacy: LegacyPushService,
+    private readonly mail: MailService,
   ) {}
 
   private sign(body: string, secret: string): string {
@@ -213,17 +235,78 @@ export class ImportedRecordsService {
     return { ...record, activity };
   }
 
-  /** Append one of the four permitted actions. */
+  /**
+   * Perform one of the four permitted actions and record it.
+   *
+   * Email is genuinely sent here rather than merely logged — an activity row
+   * saying "email" that never left the building is worse than no row at all,
+   * because the next operator reads it as "they have been contacted".
+   *
+   * A send failure still writes the row, marked `failed` with the reason. The
+   * attempt is history and must survive; only the caller's success/failure
+   * signal changes.
+   */
   async addActivity(input: {
     importedRecordId: string;
     kind: 'email' | 'whatsapp' | 'note' | 'task';
     subject?: string;
     body: string;
     dueAt?: Date;
-    status?: string;
-    error?: string;
-    userId?: string;
-  }) {
+  }): Promise<{ id: string; status: string | null; whatsappUrl?: string }> {
+    const [record] = await this.db
+      .select()
+      .from(schema.importedRecords)
+      .where(eq(schema.importedRecords.id, input.importedRecordId))
+      .limit(1);
+
+    if (!record) {
+      throw new ValidationError({ importedRecordId: ['That imported record no longer exists.'] });
+    }
+
+    let status: string | null = null;
+    let error: string | null = null;
+    let whatsappUrl: string | undefined;
+
+    if (input.kind === 'email') {
+      // Refuse rather than invent: many historic holders were catalogued with
+      // no contact details at all, and the website is the only place that can
+      // fix that.
+      if (!record.email) {
+        throw new ValidationError({
+          body: ['This record has no email address on the website, so there is nowhere to send it.'],
+        });
+      }
+
+      try {
+        await this.mail.send({
+          to: record.email,
+          subject: input.subject?.trim() || `Regarding your record — ${record.certificateNumber}`,
+          text: input.body,
+        });
+        status = 'sent';
+      } catch (cause) {
+        status = 'failed';
+        error = cause instanceof Error ? cause.message : 'The mail server rejected the message.';
+        this.logger.warn(`Imported-record email to ${record.email} failed: ${error}`);
+      }
+    }
+
+    if (input.kind === 'whatsapp') {
+      if (!record.phone) {
+        throw new ValidationError({
+          body: ['This record has no phone number on the website, so there is nowhere to send it.'],
+        });
+      }
+
+      // No WhatsApp Business API is configured — the product defers it to a
+      // later phase — so this hands back a click-to-chat link the operator
+      // sends from their own WhatsApp, exactly as the applicant pipeline does.
+      whatsappUrl = buildWhatsAppLink(toDialable(record.phone), input.body);
+      status = 'logged';
+    }
+
+    const actor = getActor();
+
     const [row] = await this.db
       .insert(schema.importedRecordActivity)
       .values({
@@ -232,13 +315,19 @@ export class ImportedRecordsService {
         subject: input.subject ?? null,
         body: input.body,
         dueAt: input.dueAt ?? null,
-        status: input.status ?? null,
-        error: input.error ?? null,
-        createdByUserId: input.userId ?? null,
+        status,
+        error,
+        createdByUserId: actor?.userId ?? null,
       })
       .returning({ id: schema.importedRecordActivity.id });
 
-    return { id: row!.id };
+    if (status === 'failed') {
+      throw new ValidationError({
+        body: [`The message was recorded but could not be sent: ${error}`],
+      });
+    }
+
+    return { id: row!.id, status, whatsappUrl };
   }
 
   async completeTask(activityId: string) {

@@ -21,6 +21,7 @@ import {
   uuidSchema,
   WEBHOOK_SIGNATURE_HEADER,
   type ExportFormat,
+  type PermissionCode,
   type ReportType,
 } from '@nbr/shared';
 import type { FastifyRequest } from 'fastify';
@@ -28,7 +29,8 @@ import { z } from 'zod';
 import { ApplicantsModule } from '../applicants/applicants.module';
 import { Can, Public } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
-import { ValidationError } from '../common/errors';
+import { ForbiddenError, ValidationError } from '../common/errors';
+import { requireActor } from '../common/request-context';
 import { LegacyLifecycleService } from '../integrations/legacy-lifecycle.service';
 import { LegacyPushService } from '../integrations/legacy-push.service';
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
@@ -48,6 +50,30 @@ const importedActivitySchema = z.object({
   body: z.string().trim().min(1).max(5000),
   dueAt: z.coerce.date().optional(),
 });
+
+/**
+ * The permission each imported-record action really needs.
+ *
+ * Sending a message to a certificate holder is the same act whether they came
+ * through the pipeline or were catalogued offline, so it answers to the same
+ * permission. Mapping them here keeps one endpoint serving all four kinds
+ * without flattening them to a single coarse right.
+ */
+const ACTIVITY_PERMISSION = {
+  email: `${MODULES.COMMUNICATIONS}:${ACTIONS.SEND}`,
+  whatsapp: `${MODULES.COMMUNICATIONS}:${ACTIONS.SEND}`,
+  note: `${MODULES.NOTES}:${ACTIONS.CREATE}`,
+  task: `${MODULES.TASKS}:${ACTIONS.CREATE}`,
+} as const satisfies Record<'email' | 'whatsapp' | 'note' | 'task', PermissionCode>;
+
+function requirePermissionFor(kind: keyof typeof ACTIVITY_PERMISSION): void {
+  const actor = requireActor();
+  const needed = ACTIVITY_PERMISSION[kind];
+
+  if (!actor.isSuperAdmin && !actor.permissions.has(needed)) {
+    throw new ForbiddenError(`You do not have permission to do this (${needed}).`);
+  }
+}
 
 @Controller('reports')
 class ReportsController {
@@ -361,14 +387,25 @@ class ImportedRecordsController {
     return this.imported.sync({ full: body?.full === true });
   }
 
-  /** One of the four permitted actions: email, whatsapp, note, task. */
+  /**
+   * One of the four permitted actions: email, whatsapp, note, task.
+   *
+   * Authorised per kind against the permission that already means that thing,
+   * rather than on `integrations:manage`. Emailing a certificate holder or
+   * leaving a note is ordinary operational work; `integrations:manage` is
+   * reserved for Super Admin because it means "reconfigure the website link",
+   * and gating notes behind it would leave every Admin looking at a screen
+   * they cannot use.
+   */
   @Post(':id/activity')
-  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
   async addActivity(
     @Param('id') id: string,
     @Body(zodBody(importedActivitySchema))
     body: { kind: 'email' | 'whatsapp' | 'note' | 'task'; subject?: string; body: string; dueAt?: Date },
   ) {
+    requirePermissionFor(body.kind);
+
     return this.imported.addActivity({
       importedRecordId: uuidSchema.parse(id),
       kind: body.kind,
@@ -379,9 +416,10 @@ class ImportedRecordsController {
   }
 
   @Post('activity/:activityId/complete')
-  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
   @HttpCode(200)
   async complete(@Param('activityId') activityId: string) {
+    requirePermissionFor('task');
     await this.imported.completeTask(uuidSchema.parse(activityId));
     return { completed: true };
   }

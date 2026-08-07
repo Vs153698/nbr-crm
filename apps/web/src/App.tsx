@@ -19,6 +19,8 @@ const ApplicantProfilePage = lazy(() => import('@/routes/applicants/ApplicantPro
 const UsersRolesPage = lazy(() => import('@/routes/admin/UsersRolesPage'));
 const TasksBoardPage = lazy(() => import('@/routes/modules/TasksBoardPage'));
 const ReportsPage = lazy(() => import('@/routes/modules/ReportsPage'));
+const ImportedRecordsPage = lazy(() => import('@/routes/imported/ImportedRecordsPage'));
+const ImportedRecordDetailPage = lazy(() => import('@/routes/imported/ImportedRecordDetailPage'));
 const SalesDashboardPage = lazy(() => import('@/routes/sales/SalesDashboardPage'));
 const LeadsPage = lazy(() => import('@/routes/sales/LeadsPage'));
 const EmployeesPage = lazy(() => import('@/routes/sales/EmployeesPage'));
@@ -181,6 +183,17 @@ export function App() {
           <Route path="/certificates" element={guarded('certificates:view', CertificatesQueuePage)} />
           <Route path="/publications" element={guarded('publications:view', PublicationsQueuePage)} />
           <Route path="/dispatch" element={guarded('dispatch:view', DispatchQueuePage)} />
+
+          {/* Offline certificates mirrored from the website. Not applicants —
+              see the schema comment on `importedRecords` for why. */}
+          <Route
+            path="/imported-records"
+            element={guarded('integrations:view', ImportedRecordsPage)}
+          />
+          <Route
+            path="/imported-records/:id"
+            element={guarded('integrations:view', ImportedRecordDetailPage)}
+          />
 
           <Route path="/tasks" element={guarded('tasks:view', TasksBoardPage)} />
           <Route path="/blacklist" element={guarded('blacklist:view', BlacklistPage)} />

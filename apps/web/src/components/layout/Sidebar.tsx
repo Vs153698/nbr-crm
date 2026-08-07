@@ -15,6 +15,14 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: Icons.LayoutDashboard, permission: 'dashboard:view' },
   { to: '/applicants', label: 'Applicants', icon: Icons.Users, permission: 'applicants:view' },
+  // Sits beside Applicants rather than inside it: these holders have no
+  // application, and none of the pipeline's work applies to them.
+  {
+    to: '/imported-records',
+    label: 'Imported Records',
+    icon: Icons.BookOpen,
+    permission: 'integrations:view',
+  },
 ];
 
 const PIPELINE_NAV: NavItem[] = [

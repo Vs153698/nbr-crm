@@ -67,4 +67,6 @@ export const queryKeys = {
   blacklist: ['blacklists'] as const,
   templates: ['templates'] as const,
   syncStatus: ['integrations', 'sync-status'] as const,
+  importedRecords: (params: Record<string, unknown>) => ['imported-records', 'list', params] as const,
+  importedRecord: (id: string) => ['imported-records', id] as const,
 } as const;

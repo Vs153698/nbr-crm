@@ -1645,11 +1645,27 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   },
   'ImportedRecordsController.addActivity': {
     tag: 'Integration',
-    summary: 'Record an email, WhatsApp message, note or task',
+    summary: 'Send an email or WhatsApp message, or add a note or task',
     description:
       'The four actions permitted on an imported record. Held separately from the ' +
-      'communications and tasks tables, which are keyed to a record id these do not have.',
-    response: { type: 'object', properties: { id: UUID } },
+      'communications and tasks tables, which are keyed to a record id these do not have. ' +
+      '`email` is sent over SMTP before the row is written, and `status` reports the ' +
+      'outcome. `whatsapp` returns a `whatsappUrl` click-to-chat link for the operator to ' +
+      'send from their own account — the WhatsApp Business API is deferred to a later phase.',
+    response: {
+      type: 'object',
+      properties: {
+        id: UUID,
+        status: { type: 'string', nullable: true, description: 'sent | failed | logged' },
+        whatsappUrl: { type: 'string', nullable: true },
+      },
+    },
+    errors: {
+      '422': {
+        description:
+          'The record has no email or phone number, or the message could not be delivered.',
+      },
+    },
   },
   'ImportedRecordsController.complete': {
     tag: 'Integration',
