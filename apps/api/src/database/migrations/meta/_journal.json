@@ -36,6 +36,13 @@
       "when": 1785929386994,
       "tag": "0004_young_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786065526371,
+      "tag": "0005_bumpy_vampiro",
+      "breakpoints": true
     }
   ]
 }

@@ -32,6 +32,8 @@ const LEGACY_CATEGORIES_PATH = '/api/crm-connector/categories';
 const LEGACY_GST_PERCENT = '0.00';
 
 interface LegacyPlan {
+  /** `payment_plans.id` on the website. Absent from older connector builds. */
+  readonly id?: string;
   readonly code: string;
   readonly label: string;
   readonly amountPaise: number;
@@ -336,19 +338,35 @@ export class LegacyPushService {
       // every row would only add noise to the Raise Payment dropdown.
       const name = plan.label;
 
-      // Match on the website's code first. Failing that, adopt a package of the
-      // same name: the CRM shipped with its own "Basic" and "Premium", and
+      // Match by identity first — the plan's own id — so a plan that was
+      // relabelled or re-priced on the website updates the package it already
+      // owns. Matching on code alone could not tell that apart from a different
+      // plan reusing one of the three permitted codes.
+      //
+      // Then the code, for packages mirrored before the website sent ids.
+      //
+      // Then the name: the CRM shipped its own "Basic" and "Premium", and
       // package names are uniquely indexed, so inserting alongside them would
-      // just fail. Adopting rewrites that row to the website's price and code,
-      // which leaves one "Basic" in the dropdown at the price the applicant was
-      // actually quoted — better than a rename that would read as two packages.
-      const [existing] =
-        (await this.db
-          .select({ id: schema.packages.id })
-          .from(schema.packages)
-          .where(eq(schema.packages.legacyCode, plan.code))
-          .limit(1)) ??
-        [];
+      // simply fail. Adopting rewrites that row to the website's price, code and
+      // id, leaving one "Basic" in the dropdown at the price on the applicant's
+      // invoice — better than a rename that would read as two packages.
+      const [byId] = plan.id
+        ? await this.db
+            .select({ id: schema.packages.id })
+            .from(schema.packages)
+            .where(eq(schema.packages.legacyPlanId, plan.id))
+            .limit(1)
+        : [];
+
+      const [byCode] = byId
+        ? []
+        : await this.db
+            .select({ id: schema.packages.id })
+            .from(schema.packages)
+            .where(eq(schema.packages.legacyCode, plan.code))
+            .limit(1);
+
+      const existing = byId ?? byCode;
 
       const [byName] = existing
         ? []
@@ -366,6 +384,7 @@ export class LegacyPushService {
           .set({
             name,
             legacyCode: plan.code,
+            legacyPlanId: plan.id ?? null,
             amount,
             // The website's prices are all-inclusive with no separate GST line,
             // so mirroring them at 18% would overstate every invoice by 18%.
@@ -380,6 +399,7 @@ export class LegacyPushService {
         await this.db.insert(schema.packages).values({
           name,
           legacyCode: plan.code,
+          legacyPlanId: plan.id ?? null,
           amount,
           gstPercent: LEGACY_GST_PERCENT,
           description: plan.features.join(' · ') || null,

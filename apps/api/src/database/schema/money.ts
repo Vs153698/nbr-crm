@@ -38,6 +38,21 @@ export const packages = pgTable(
      * name-and-amount matching.
      */
     legacyCode: varchar('legacy_code', { length: 60 }),
+
+    /**
+     * The website's `payment_plans.id` for this package.
+     *
+     * The code alone is not a stable identity: the website's payments table
+     * constrains `plan` to three literals, so a renamed or re-priced plan keeps
+     * the same code and the sync cannot tell it apart from a different plan
+     * that reused it. Carrying the id means a payment pushed from here names
+     * the exact row the website priced, and re-running the sync updates that
+     * row rather than creating a second package beside it.
+     *
+     * Null for CRM-only packages, and for anything mirrored before this column
+     * existed — the code stays the fallback.
+     */
+    legacyPlanId: uuid('legacy_plan_id'),
     ...timestamps(),
   },
   (t) => [
