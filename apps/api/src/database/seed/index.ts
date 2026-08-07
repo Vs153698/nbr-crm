@@ -428,7 +428,16 @@ async function seedSettings(db: Database): Promise<void> {
       description: 'Leave blank to keep using the host from the server environment.',
     },
     { key: 'mail.smtp_port', value: '', category: 'mail', label: 'SMTP port' },
-    { key: 'mail.smtp_secure', value: '', category: 'mail', label: 'Use TLS on connect (465)' },
+    {
+      key: 'mail.smtp_secure',
+      value: '',
+      category: 'mail',
+      // The old label read "Use TLS on connect (465)", which invited people to
+      // type the port number into a boolean field. That parsed as false, so the
+      // client spoke plaintext to an implicit-TLS port and the only symptom was
+      // `read ECONNRESET`. The label now says what to type.
+      label: 'Use TLS on connect — type true for port 465, false for 587',
+    },
     { key: 'mail.smtp_user', value: '', category: 'mail', label: 'SMTP username' },
     { key: 'mail.smtp_password', value: '', category: 'mail', label: 'SMTP password' },
     { key: 'mail.from_name', value: '', category: 'mail', label: 'From name' },

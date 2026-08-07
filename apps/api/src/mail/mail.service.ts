@@ -46,6 +46,32 @@ export interface SmtpConfig {
 /** How long a resolved configuration is reused before Settings is re-read. */
 const CONFIG_TTL_MS = 60_000;
 
+/** Implicit-TLS port. 587 and 25 negotiate with STARTTLS instead. */
+const IMPLICIT_TLS_PORT = 465;
+
+/**
+ * Decide whether to open the connection with TLS already established.
+ *
+ * The setting is free text, and getting it wrong is both easy and unhelpfully
+ * silent: a strict `=== 'true'` test read "465" — which is what someone types
+ * when the field is labelled "Use TLS on connect (465)" — as **false**, so the
+ * client spoke plaintext at an implicit-TLS port and the server hung up. That
+ * surfaces as `read ECONNRESET`, which says nothing about TLS at all.
+ *
+ * So: accept the spellings people actually use, and when the value is not a
+ * recognisable boolean, derive it from the port rather than defaulting to
+ * something that cannot work. 465 is implicit TLS by definition.
+ */
+function resolveSecure(raw: string, port: number, fallback: boolean): boolean {
+  const value = raw.trim().toLowerCase();
+  if (value === '') return fallback;
+
+  if (['true', '1', 'yes', 'on', 'ssl', 'tls'].includes(value)) return true;
+  if (['false', '0', 'no', 'off', 'none', 'starttls'].includes(value)) return false;
+
+  return port === IMPLICIT_TLS_PORT;
+}
+
 /**
  * SMTP transport.
  *
@@ -119,10 +145,12 @@ export class MailService {
     const fromName = text(MAIL_SETTING_KEYS.fromName);
     const fromAddress = text(MAIL_SETTING_KEYS.fromAddress);
 
+    const resolvedPort = port ? Number(port) : this.env.SMTP_PORT;
+
     const config: SmtpConfig = {
       host: host || this.env.SMTP_HOST,
-      port: port ? Number(port) : this.env.SMTP_PORT,
-      secure: secure ? secure === 'true' : this.env.SMTP_SECURE,
+      port: resolvedPort,
+      secure: resolveSecure(secure, resolvedPort, this.env.SMTP_SECURE),
       // Both are optional in the environment schema — an unauthenticated relay
       // is a legitimate setup, and empty string is how the rest of this class
       // spells "no credentials".
