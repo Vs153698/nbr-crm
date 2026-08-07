@@ -132,9 +132,7 @@ export const DEFAULT_TEMPLATES: readonly TemplateSeed[] = [
 
 We are delighted to inform you that your record attempt "{{record_title}}" (Application ID {{applicant_id}}, Record ID {{record_id}}) has been officially approved by the National Book of Records review panel.
 
-To confirm your entry, the {{package_name}} fee of ₹{{amount}} is payable by {{due_date}}.
-
-Our team will reach out with the next steps. If you have any questions, write to {{support_email}} or call {{support_phone}}.
+Our team will reach out shortly with the next steps, including the fee and how to pay it. If you have any questions in the meantime, write to {{support_email}} or call {{support_phone}}.
 
 Warm regards,
 {{organisation_name}}`,

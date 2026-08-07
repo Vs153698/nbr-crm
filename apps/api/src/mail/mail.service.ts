@@ -73,6 +73,30 @@ function resolveSecure(raw: string, port: number, fallback: boolean): boolean {
 }
 
 /**
+ * Build the From header, tolerating a display name that already contains the
+ * address.
+ *
+ * "National Book Of Records <hello@example.org>" is a natural thing to paste
+ * into a field labelled "From name", and wrapping it produced
+ * `"Name <a@b>" <a@b>` — a malformed header that strict servers reject, some
+ * by closing the connection. Anything that looks like a full mailbox is used
+ * as-is; a plain name is quoted and paired with the address.
+ */
+function buildFromHeader(config: SmtpConfig): string {
+  const name = config.fromName.trim();
+
+  // Already a full "Display <addr>" mailbox — trust it and do not re-wrap.
+  if (/<[^>]+@[^>]+>\s*$/.test(name)) return name;
+
+  // A bare address in the name field: pair it with itself rather than nesting.
+  if (!name) return config.fromAddress;
+  if (/^[^\s<>@]+@[^\s<>@]+$/.test(name)) return name;
+
+  // Quotes inside a quoted string would terminate it early.
+  return `"${name.replace(/"/g, '')}" <${config.fromAddress}>`;
+}
+
+/**
  * SMTP transport.
  *
  * Application code never calls this directly for applicant-facing mail — the
@@ -194,7 +218,7 @@ export class MailService {
     const transporter = await this.getTransporter();
 
     const info = await transporter.sendMail({
-      from: `"${config.fromName}" <${config.fromAddress}>`,
+      from: buildFromHeader(config),
       to: mail.to,
       cc: mail.cc,
       subject: mail.subject,
@@ -268,7 +292,7 @@ export class MailService {
 
     await transporter.verify();
     await transporter.sendMail({
-      from: `"${config.fromName}" <${config.fromAddress}>`,
+      from: buildFromHeader(config),
       to,
       subject: `${this.env.APP_NAME} — SMTP test`,
       text: [
