@@ -792,7 +792,78 @@ export function SettingsPage() {
             </div>
           </Card>
         ))}
+
+        <WebsiteCatalogueSync />
       </div>
     </div>
+  );
+}
+
+/**
+ * Pulls the public website's packages and categories into this system.
+ *
+ * The endpoints existed from the start but had no way to reach them, so the
+ * Raise Payment dropdown kept offering the CRM's own seeded packages at prices
+ * the website never quoted — and every import raised an unmatched-category
+ * alert. This is the button that was missing.
+ */
+function WebsiteCatalogueSync() {
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+
+  const sync = useMutation({
+    mutationFn: (kind: 'packages' | 'categories') =>
+      api.post<Record<string, number | string[]>>(`/integrations/nbr-website/sync-${kind}`),
+    onSuccess: (result, kind) => {
+      const imported = Number(result.imported ?? 0);
+      const updated = Number(result.updated ?? 0);
+      const retired = Number(result.retired ?? 0);
+      toast.success(`${kind === 'packages' ? 'Packages' : 'Categories'} synced`, {
+        description: `${imported} added, ${updated} updated, ${retired} retired.`,
+      });
+      // The dropdowns read a cached lookups payload; without this the operator
+      // saves, sees "synced", and is still offered the old list.
+      void queryClient.invalidateQueries();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Sync failed'),
+  });
+
+  if (!can('integrations:manage')) return null;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Website catalogue"
+        subtitle="Mirror the public site's packages and categories into this system."
+        icon={Icons.RotateCcw}
+      />
+
+      <p className="mb-3 text-xs leading-relaxed text-ink-3">
+        Run these once at setup, and again whenever prices or categories change on the
+        website. Packages arrive at the website's all-inclusive price with its own plan
+        code, so a payment recorded here pushes back cleanly. Anything the website does
+        not offer is deactivated rather than deleted.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          icon={Icons.IndianRupee}
+          loading={sync.isPending && sync.variables === 'packages'}
+          onClick={() => sync.mutate('packages')}
+        >
+          Sync packages
+        </Button>
+        <Button
+          variant="secondary"
+          icon={Icons.Package}
+          loading={sync.isPending && sync.variables === 'categories'}
+          onClick={() => sync.mutate('categories')}
+        >
+          Sync categories
+        </Button>
+      </div>
+    </Card>
   );
 }
