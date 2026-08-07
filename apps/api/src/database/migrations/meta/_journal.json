@@ -43,6 +43,13 @@
       "when": 1786065526371,
       "tag": "0005_bumpy_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786114825385,
+      "tag": "0006_fresh_sleepwalker",
+      "breakpoints": true
     }
   ]
 }

@@ -93,7 +93,7 @@ export const nbrWebhookApplicationSchema = z.object({
   }),
 
   achievement: z.object({
-    recordTitle: trimmedString(250),
+    recordTitle: trimmedString(1000),
     /** Free text from the legacy system; mapped to a category by name, falling
      *  back to "Other" and flagging the record for review. */
     category: optionalTrimmedString(150),
@@ -176,7 +176,7 @@ export const nbrWebhookApplicationSchema = z.object({
     .object({
       certificateId: trimmedString(80),
       holderName: optionalTrimmedString(150),
-      recordTitle: optionalTrimmedString(250),
+      recordTitle: optionalTrimmedString(1000),
       category: optionalTrimmedString(120),
       issuedAt: z.coerce.date().optional(),
       revoked: z.boolean().default(false),

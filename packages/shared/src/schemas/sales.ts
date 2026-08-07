@@ -70,7 +70,7 @@ export type LogLeadCallInput = z.infer<typeof logLeadCallSchema>;
 /** Turning a lead into a real applicant + record. */
 export const convertLeadSchema = z.object({
   categoryId: uuidSchema,
-  recordTitle: trimmedString(250),
+  recordTitle: trimmedString(1000),
   description: optionalTrimmedString(5000),
   /** Reuse an existing profile instead of creating one, when the rep spotted it. */
   existingApplicantId: uuidSchema.optional(),

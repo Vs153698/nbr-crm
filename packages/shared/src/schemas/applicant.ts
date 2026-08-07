@@ -69,7 +69,7 @@ export const applicantIdentifiersSchema = z.object({
 
 /** §6 Achievement details, captured with the record. */
 export const achievementSchema = z.object({
-  recordTitle: trimmedString(250),
+  recordTitle: trimmedString(1000),
   categoryId: uuidSchema,
   recordType: z.nativeEnum(RECORD_TYPE).default(RECORD_TYPE.INDIVIDUAL),
   description: optionalTrimmedString(5000),

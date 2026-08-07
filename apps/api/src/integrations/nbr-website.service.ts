@@ -69,15 +69,16 @@ const SIGNATURE_FAILURE_HINT: Readonly<Record<string, string>> = {
 /**
  * Fields the website stores as unbounded TEXT but we store in a sized column.
  *
- * A record title on the website can be any length; ours is varchar(250). Four
- * live applications exceeded it, and because the schema rejected rather than
- * trimmed, each one failed its import permanently — a record lost to its own
- * title. Trimming the tail of a display string is plainly better than dropping
- * the record, so these are truncated to fit before validation runs.
+ * The columns are now generous — a record title holds 1000 characters — so in
+ * practice nothing should reach this. It stays as a backstop because the
+ * website's side genuinely has no limit, and the alternative when something
+ * does exceed ours is losing the whole record over the tail of a display
+ * string. The ellipsis makes any trim visible rather than looking like the
+ * title simply ended oddly.
  */
 const TRUNCATE_TO_FIT: ReadonlyArray<{ path: readonly string[]; max: number }> = [
-  { path: ['achievement', 'recordTitle'], max: 250 },
-  { path: ['certificate', 'recordTitle'], max: 250 },
+  { path: ['achievement', 'recordTitle'], max: 1000 },
+  { path: ['certificate', 'recordTitle'], max: 1000 },
   { path: ['achievement', 'location'], max: 250 },
   { path: ['applicant', 'fullName'], max: 150 },
 ];
