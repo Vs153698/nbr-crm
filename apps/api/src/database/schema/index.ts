@@ -14,6 +14,8 @@
  *   privacy       — DPDP consent ledger, DSRs, breaches, PII access, retention
  *   governance    — settings, couriers, integrations, exports, saved views
  *   sales         — leads, call logs, employee directory
+ *   imported      — offline certificates mirrored from the website, kept apart
+ *                   from applicants because they have no application behind them
  */
 
 export * from './identity';
@@ -25,3 +27,4 @@ export * from './collaboration';
 export * from './privacy';
 export * from './governance';
 export * from './sales';
+export * from './imported';

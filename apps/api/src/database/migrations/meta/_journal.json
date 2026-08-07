@@ -50,6 +50,13 @@
       "when": 1786114825385,
       "tag": "0006_fresh_sleepwalker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786114961911,
+      "tag": "0007_motionless_hulk",
+      "breakpoints": true
     }
   ]
 }

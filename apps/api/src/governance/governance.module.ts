@@ -32,6 +32,7 @@ import { ValidationError } from '../common/errors';
 import { LegacyLifecycleService } from '../integrations/legacy-lifecycle.service';
 import { LegacyPushService } from '../integrations/legacy-push.service';
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
+import { ImportedRecordsService } from '../integrations/imported-records.service';
 import { MailService } from '../mail/mail.service';
 import { ExportsService } from '../reports/exports.service';
 import { ReportsService } from '../reports/reports.service';
@@ -39,6 +40,14 @@ import { GovernanceService } from './governance.service';
 
 const settingSchema = z.object({ value: z.unknown() });
 const mailTestSchema = z.object({ to: z.string().email() });
+
+/** The four actions permitted on an imported record, and nothing else. */
+const importedActivitySchema = z.object({
+  kind: z.enum(['email', 'whatsapp', 'note', 'task']),
+  subject: z.string().trim().max(300).optional(),
+  body: z.string().trim().min(1).max(5000),
+  dueAt: z.coerce.date().optional(),
+});
 
 @Controller('reports')
 class ReportsController {
@@ -312,6 +321,72 @@ class IntegrationsController {
   }
 }
 
+
+/**
+ * Imported records — offline certificates mirrored from the website.
+ *
+ * Its own controller rather than rows inside Applicants, because these have no
+ * application behind them. See the schema comment on `importedRecords` for why
+ * they are kept apart.
+ */
+@Controller('imported-records')
+class ImportedRecordsController {
+  constructor(private readonly imported: ImportedRecordsService) {}
+
+  @Get()
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
+  async list(
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.imported.list({
+      search,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
+  }
+
+  @Get(':id')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
+  async get(@Param('id') id: string) {
+    return this.imported.get(uuidSchema.parse(id));
+  }
+
+  /** Pull the website's offline certificates. Safe to re-run. */
+  @Post('sync')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async sync(@Body() body?: { full?: boolean }) {
+    return this.imported.sync({ full: body?.full === true });
+  }
+
+  /** One of the four permitted actions: email, whatsapp, note, task. */
+  @Post(':id/activity')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  async addActivity(
+    @Param('id') id: string,
+    @Body(zodBody(importedActivitySchema))
+    body: { kind: 'email' | 'whatsapp' | 'note' | 'task'; subject?: string; body: string; dueAt?: Date },
+  ) {
+    return this.imported.addActivity({
+      importedRecordId: uuidSchema.parse(id),
+      kind: body.kind,
+      subject: body.subject,
+      body: body.body,
+      dueAt: body.dueAt,
+    });
+  }
+
+  @Post('activity/:activityId/complete')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async complete(@Param('activityId') activityId: string) {
+    await this.imported.completeTask(uuidSchema.parse(activityId));
+    return { completed: true };
+  }
+}
+
 /**
  * Reporting, audit, settings and the inbound website integration
  * (P2-12, P2-13, P2-14).
@@ -327,6 +402,7 @@ class IntegrationsController {
     AuditController,
     SettingsController,
     IntegrationsController,
+    ImportedRecordsController,
   ],
   providers: [
     GovernanceService,
@@ -335,6 +411,7 @@ class IntegrationsController {
     NbrWebsiteService,
     LegacyLifecycleService,
     LegacyPushService,
+    ImportedRecordsService,
   ],
   exports: [
     GovernanceService,

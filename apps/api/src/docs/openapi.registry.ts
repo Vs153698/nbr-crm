@@ -1605,6 +1605,58 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       '422': { description: 'The integration is not configured, or the website rejected the request.' },
     },
   },
+  'ImportedRecordsController.list': {
+    tag: 'Integration',
+    summary: 'List imported records',
+    description:
+      "Offline certificates mirrored from the public website. These have no application " +
+      'behind them and are deliberately kept out of the applicant pipeline.',
+    query: [
+      { name: 'search', description: 'Holder name, record title or certificate number.', schema: { type: 'string' } },
+      { name: 'limit', description: 'Page size, capped at 200.', schema: { type: 'integer' } },
+      { name: 'offset', description: 'Rows to skip.', schema: { type: 'integer' } },
+    ],
+    response: { type: 'object' },
+  },
+  'ImportedRecordsController.get': {
+    tag: 'Integration',
+    summary: 'One imported record with its activity',
+    description: 'The mirrored certificate plus every note, task and message logged against it.',
+    response: { type: 'object' },
+    errors: { '404': { description: 'No imported record with that id.' } },
+  },
+  'ImportedRecordsController.sync': {
+    tag: 'Integration',
+    summary: 'Pull offline certificates from the website',
+    description:
+      'Keyed on the certificate number, so re-running refreshes rather than duplicates. ' +
+      'Reads only what is newer than the latest issue date held, unless `full` is set.',
+    response: {
+      type: 'object',
+      properties: {
+        imported: { type: 'integer' },
+        updated: { type: 'integer' },
+        total: { type: 'integer' },
+      },
+    },
+    errors: {
+      '422': { description: 'The integration is not configured, or the website rejected the request.' },
+    },
+  },
+  'ImportedRecordsController.addActivity': {
+    tag: 'Integration',
+    summary: 'Record an email, WhatsApp message, note or task',
+    description:
+      'The four actions permitted on an imported record. Held separately from the ' +
+      'communications and tasks tables, which are keyed to a record id these do not have.',
+    response: { type: 'object', properties: { id: UUID } },
+  },
+  'ImportedRecordsController.complete': {
+    tag: 'Integration',
+    summary: 'Mark an imported-record task complete',
+    description: 'Sets completedAt. Applies only to activity of kind "task".',
+    response: { type: 'object', properties: { completed: { type: 'boolean' } } },
+  },
   'IntegrationsController.syncCategories': {
     tag: 'Integration',
     summary: 'Sync categories from the website',
