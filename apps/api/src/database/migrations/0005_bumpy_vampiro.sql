@@ -1,0 +1,1 @@
+ALTER TABLE "packages" ADD COLUMN "legacy_plan_id" uuid;
