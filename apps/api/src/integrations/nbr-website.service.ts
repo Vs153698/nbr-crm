@@ -29,7 +29,7 @@ import {
 import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { verifyWebhookSignature } from '../common/crypto';
-import { UnauthorisedError } from '../common/errors';
+import { UnauthorisedError, ValidationError } from '../common/errors';
 import { INTEGRATION_ACTOR_NAME } from '../common/request-context';
 import { ENV } from '../config/config.module';
 import type { Env } from '../config/env';
@@ -65,6 +65,66 @@ const SIGNATURE_FAILURE_HINT: Readonly<Record<string, string>> = {
   signature_mismatch:
     'The signature did not match. The shared secret differs between the two systems, or something rewrote the request body in transit.',
 };
+
+/**
+ * Fields the website stores as unbounded TEXT but we store in a sized column.
+ *
+ * A record title on the website can be any length; ours is varchar(250). Four
+ * live applications exceeded it, and because the schema rejected rather than
+ * trimmed, each one failed its import permanently — a record lost to its own
+ * title. Trimming the tail of a display string is plainly better than dropping
+ * the record, so these are truncated to fit before validation runs.
+ */
+const TRUNCATE_TO_FIT: ReadonlyArray<{ path: readonly string[]; max: number }> = [
+  { path: ['achievement', 'recordTitle'], max: 250 },
+  { path: ['certificate', 'recordTitle'], max: 250 },
+  { path: ['achievement', 'location'], max: 250 },
+  { path: ['applicant', 'fullName'], max: 150 },
+];
+
+function truncateOversizedFields(body: unknown): unknown {
+  if (typeof body !== 'object' || body === null) return body;
+  const clone = structuredClone(body) as Record<string, unknown>;
+
+  for (const { path, max } of TRUNCATE_TO_FIT) {
+    let parent: Record<string, unknown> | undefined = clone;
+    for (const segment of path.slice(0, -1)) {
+      const next: unknown = parent?.[segment];
+      parent = typeof next === 'object' && next !== null ? (next as Record<string, unknown>) : undefined;
+    }
+
+    const leaf = path[path.length - 1]!;
+    const value = parent?.[leaf];
+    if (parent && typeof value === 'string' && value.length > max) {
+      // A trailing ellipsis makes the truncation visible to whoever reads it,
+      // rather than looking like the title simply ended oddly.
+      parent[leaf] = `${value.slice(0, max - 1).trimEnd()}\u2026`;
+    }
+  }
+
+  return clone;
+}
+
+/**
+ * Validate an inbound snapshot, reporting a bad payload as the sender's problem.
+ *
+ * A raw `.parse()` throws ZodError, which the filter has no case for, so every
+ * malformed payload came back as a 500 reading "Something went wrong on our
+ * side" — pointing the operator at the wrong system entirely. A validation
+ * failure is a 422 that names the offending field.
+ */
+function parseWebhookPayload(body: unknown): NbrWebhookApplication {
+  const result = nbrWebhookApplicationSchema.safeParse(truncateOversizedFields(body));
+  if (result.success) return result.data;
+
+  const fields: Record<string, string[]> = {};
+  for (const issue of result.error.issues) {
+    const key = issue.path.join('.') || 'payload';
+    (fields[key] ??= []).push(issue.message);
+  }
+
+  throw new ValidationError(fields, 'The website sent a payload this system cannot accept.');
+}
 
 function snapshotHash(payload: NbrWebhookApplication): string {
   const significant = {
@@ -172,7 +232,7 @@ export class NbrWebsiteService {
       );
     }
 
-    const payload = nbrWebhookApplicationSchema.parse(parsedBody);
+    const payload = parseWebhookPayload(parsedBody);
 
     /**
      * The event log is keyed by application *and content*, not by application
