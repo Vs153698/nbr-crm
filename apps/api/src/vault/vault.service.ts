@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EVIDENCE_KIND, TIMELINE_EVENT } from '@nbr/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
@@ -10,6 +10,7 @@ import * as schema from '../database/schema';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { StorageService, type UploadScope } from '../storage/storage.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 
 export interface EvidenceItem {
   readonly id: string;
@@ -37,12 +38,15 @@ export interface EvidenceItem {
  */
 @Injectable()
 export class VaultService {
+  private readonly logger = new Logger(VaultService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly storage: StorageService,
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly legacyPush: LegacyPushService,
   ) {}
 
   /**
@@ -190,6 +194,35 @@ export class VaultService {
       CacheTag.applicantList(),
     );
 
+    /**
+     * Send it up to the website too.
+     *
+     * Its applicant portal, adjudicator view and certificate pack all read from
+     * its own columns, so a document collected here was invisible to every one
+     * of them. Skipped automatically for a CRM-native record — `push` requires
+     * a mirror row and reports "does not exist on the website" otherwise.
+     *
+     * A signed URL rather than the bytes: the website fetches it once into its
+     * own bucket, so a large video never travels through a JSON body and the
+     * file outlives this system.
+     */
+    void this.storage
+      .presignDownload(input.storageKey, input.fileName, 'inline')
+      .then((downloadUrl) => {
+        this.legacyPush.pushEvidence(record.id, {
+          crmFileId: inserted!.id,
+          fileName: input.fileName,
+          contentType: head.contentType ?? input.contentType,
+          kind: input.kind,
+          downloadUrl,
+        });
+      })
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Could not sign ${input.fileName} for the website: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+
     return { id: inserted!.id };
   }
 
@@ -222,7 +255,10 @@ export class VaultService {
    * log — downloading someone's Aadhaar scan is the same act as decrypting
    * their Aadhaar number, and is treated the same way.
    */
-  async getDownloadUrl(evidenceId: string): Promise<{ url: string; fileName: string }> {
+  async getDownloadUrl(
+    evidenceId: string,
+    mode: 'attachment' | 'inline' = 'attachment',
+  ): Promise<{ url: string; fileName: string; contentType: string }> {
     const actor = requireActor();
 
     const [file] = await this.db
@@ -246,8 +282,8 @@ export class VaultService {
       });
     }
 
-    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
-    return { url, fileName: file.fileName };
+    const url = await this.storage.presignDownload(file.storageKey, file.fileName, mode);
+    return { url, fileName: file.fileName, contentType: file.contentType };
   }
 
   // ── General attachments (§16) ──────────────────────────────────────────────
@@ -337,7 +373,10 @@ export class VaultService {
     return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
   }
 
-  async getAttachmentDownloadUrl(attachmentId: string): Promise<{ url: string; fileName: string }> {
+  async getAttachmentDownloadUrl(
+    attachmentId: string,
+    mode: 'attachment' | 'inline' = 'attachment',
+  ): Promise<{ url: string; fileName: string; contentType: string }> {
     const [file] = await this.db
       .select()
       .from(schema.attachments)
@@ -346,8 +385,8 @@ export class VaultService {
 
     if (!file) throw new NotFoundError('File');
 
-    const url = await this.storage.presignDownload(file.storageKey, file.fileName);
-    return { url, fileName: file.fileName };
+    const url = await this.storage.presignDownload(file.storageKey, file.fileName, mode);
+    return { url, fileName: file.fileName, contentType: file.contentType };
   }
 
   /**

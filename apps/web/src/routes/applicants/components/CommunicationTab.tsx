@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { SelectionLetterDialog } from './SelectionLetterDialog';
 import { CardHeader, EmptyState } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input, Select, Textarea } from '@/components/ui/Field';
@@ -52,6 +53,7 @@ export function CommunicationTab({
 
   const [channelFilter, setChannelFilter] = useState<string>('');
   const [emailOpen, setEmailOpen] = useState(false);
+  const [selectionOpen, setSelectionOpen] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   /**
@@ -111,6 +113,14 @@ export function CommunicationTab({
 
   return (
     <div className="space-y-4">
+      {selectionOpen ? (
+        <SelectionLetterDialog
+          recordId={recordId}
+          applicantId={applicantId}
+          onClose={() => setSelectionOpen(false)}
+        />
+      ) : null}
+
       <CardHeader
         title="Communication"
         subtitle="Every email, WhatsApp message and call note, in one place."
@@ -118,6 +128,17 @@ export function CommunicationTab({
         action={
           canSend && !doNotContact ? (
             <div className="flex flex-wrap gap-2">
+              {/* Its own action rather than one template among many: the letter
+                  has a fixed structure and asks which award it is first, so it
+                  cannot be composed through the generic email dialog. */}
+              <Button
+                size="sm"
+                variant="primary"
+                icon={Icons.Award}
+                onClick={() => setSelectionOpen(true)}
+              >
+                Selection letter
+              </Button>
               <Button size="sm" variant="secondary" icon={Icons.Mail} onClick={() => setEmailOpen(true)}>
                 Email
               </Button>

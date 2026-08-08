@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   buildWhatsAppLink,
   COMMUNICATION_CHANNEL,
@@ -16,7 +18,16 @@ import {
   type EmailDocument,
   type TemplateContext,
   isSystemTemplateCode,
-  TASK_PRIORITY,} from '@nbr/shared';
+  TASK_PRIORITY,
+  TEMPLATE_CODE,
+  renderSelectionLetter,
+  renderSelectionLetterText,
+  selectionLetterSubject,
+  SELECTION_KIND_META,
+  CONFIDENTIAL_STAMP_CID,
+  type SelectionLetterInput,
+  type SelectionLetterOrganisation,
+} from '@nbr/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
@@ -54,6 +65,16 @@ export interface RenderedMessage {
  *    worker sends it, so the API answers in milliseconds and a slow SMTP server
  *    cannot stall the UI.
  */
+/**
+ * The Achiever Pack options PDF, attached to every selection letter.
+ *
+ * Resolved from `__dirname` so it works under tsx from `src` and after a build
+ * from `dist` — nest-cli copies `mail/assets` alongside the compiled output.
+ */
+const ACHIEVER_PACK_PATH = join(__dirname, '..', 'mail', 'assets', 'nbr-achiever-pack-2026.pdf');
+const ACHIEVER_PACK_FILENAME = 'NBR National Achiever Pack Recognition Packages 2026';
+const CONFIDENTIAL_STAMP_PATH = join(__dirname, '..', 'mail', 'assets', 'confidential-stamp.png');
+
 @Injectable()
 export class CommunicationsService {
   private readonly logger = new Logger(CommunicationsService.name);
@@ -378,7 +399,20 @@ export class CommunicationsService {
    */
   private async deliver(
     communicationId: string,
-    input: { to: string; cc?: string[]; subject: string; body: string; html?: string },
+    input: {
+      to: string;
+      cc?: string[];
+      subject: string;
+      body: string;
+      html?: string;
+      attachments?: Array<{
+        filename: string;
+        content: Buffer;
+        contentType?: string;
+        /** Embeds the file in the body via `src="cid:…"` instead of attaching it. */
+        cid?: string;
+      }>;
+    },
   ): Promise<void> {
     try {
       const result = await this.mail.send({
@@ -389,6 +423,7 @@ export class CommunicationsService {
         // what remains readable in a client that refuses to render it.
         text: input.body,
         html: input.html,
+        attachments: input.attachments,
       });
 
       await this.db
@@ -814,6 +849,247 @@ export class CommunicationsService {
       )
       .limit(1);
     return Boolean(row);
+  }
+
+  // ── Selection letter ───────────────────────────────────────────────────────
+
+  /**
+   * Everything the letter needs, read off the record.
+   *
+   * The operator is shown these already filled in and edits what is wrong,
+   * rather than retyping a name and a date of birth that the CRM already holds
+   * — which is where transcription errors on a printed certificate come from.
+   */
+  async selectionLetterPrefill(recordId: string): Promise<{
+    fields: Omit<SelectionLetterInput, 'kind'>;
+    organisation: SelectionLetterOrganisation;
+    attachmentName: string;
+  }> {
+    const [row] = await this.db
+      .select({
+        applicantId: schema.applicants.id,
+        applicantCode: schema.applicants.applicantCode,
+        fullName: schema.applicants.fullName,
+        email: schema.applicants.email,
+        dateOfBirth: schema.applicants.dateOfBirth,
+        city: schema.applicants.city,
+        state: schema.applicants.state,
+        recordTitle: schema.achievements.recordTitle,
+        description: schema.achievements.description,
+        legacyAppCode: schema.legacyMirror.legacyAppCode,
+      })
+      .from(schema.records)
+      .innerJoin(schema.applicants, eq(schema.records.applicantId, schema.applicants.id))
+      .leftJoin(schema.achievements, eq(schema.achievements.recordId, schema.records.id))
+      .leftJoin(schema.legacyMirror, eq(schema.legacyMirror.recordId, schema.records.id))
+      .where(and(eq(schema.records.id, recordId), isNull(schema.records.deletedAt)))
+      .limit(1);
+
+    if (!row) throw new NotFoundError('Record');
+
+    const actor = requireActor();
+    const [signatory] = await this.db
+      .select({ fullName: schema.users.fullName })
+      .from(schema.users)
+      .where(eq(schema.users.id, actor.userId))
+      .limit(1);
+
+    const formatDay = (value: string | Date | null) => {
+      if (!value) return '';
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+    };
+
+    return {
+      fields: {
+        holderName: row.fullName,
+        toEmail: row.email,
+        // The website's own application id is what the applicant quotes back,
+        // so it is preferred over the CRM's internal record code.
+        applicationId: row.legacyAppCode ?? row.applicantCode,
+        title: row.recordTitle ?? '',
+        description: row.description ?? '',
+        dateOfBirth: formatDay(row.dateOfBirth),
+        city: row.city ?? '',
+        state: row.state ?? '',
+        confirmedOn: formatDay(new Date()),
+        signatoryName: signatory?.fullName ?? '',
+        signatoryTitle: 'Official Registrar & Documentation Body',
+      },
+      organisation: await this.selectionLetterOrganisation(),
+      attachmentName: ACHIEVER_PACK_FILENAME,
+    };
+  }
+
+  /**
+   * Send the selection letter.
+   *
+   * The Achiever Pack PDF is attached unconditionally — the letter's own text
+   * instructs the applicant to choose a package "from the attached PDF", so a
+   * letter without it is incoherent and there is no case for making it optional.
+   */
+  async sendSelectionLetter(
+    recordId: string,
+    input: SelectionLetterInput,
+  ): Promise<{ communicationId: string; status: string }> {
+    const { applicantId, doNotContact } = await this.buildContext(recordId);
+
+    if (doNotContact) {
+      throw new ValidationError({
+        to: ['This applicant has asked not to be contacted. Lift the restriction first.'],
+      });
+    }
+
+    const organisation = await this.selectionLetterOrganisation();
+    const subject = selectionLetterSubject(input, organisation);
+    const html = renderSelectionLetter(input, organisation);
+    const text = renderSelectionLetterText(input, organisation);
+
+    // Read before the row is written: the letter instructs the applicant to
+    // choose a package "from the attached PDF", so one sent without it is
+    // incoherent. Better to refuse than to send a letter that contradicts
+    // itself, and better to find out now than after it is queued.
+    let attachment: Buffer;
+    let stamp: Buffer | null = null;
+    try {
+      attachment = await readFile(ACHIEVER_PACK_PATH);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Achiever Pack missing at ${ACHIEVER_PACK_PATH}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new ValidationError({
+        attachment: [
+          'The Achiever Pack PDF is missing from the server, and this letter cannot be sent without it.',
+        ],
+      });
+    }
+
+    /**
+     * The confidential stamp, embedded inline.
+     *
+     * Unlike the Achiever Pack this is decoration, so a missing file downgrades
+     * the letter rather than blocking it — the confidentiality line before the
+     * sign-off still carries the point in words.
+     */
+    try {
+      stamp = await readFile(CONFIDENTIAL_STAMP_PATH);
+    } catch {
+      this.logger.warn(`Confidential stamp missing at ${CONFIDENTIAL_STAMP_PATH} — sending without it`);
+    }
+
+
+    /**
+     * The confidential stamp, embedded inline.
+     *
+     * Unlike the Achiever Pack this is decoration, so a missing file downgrades
+     * the letter rather than blocking it — the confidentiality line before the
+     * sign-off still carries the point in words.
+     */
+    try {
+      stamp = await readFile(CONFIDENTIAL_STAMP_PATH);
+    } catch {
+      this.logger.warn(`Confidential stamp missing at ${CONFIDENTIAL_STAMP_PATH} — sending without it`);
+    }
+
+    const actor = requireActor();
+
+    const [communication] = await this.db
+      .insert(schema.communications)
+      .values({
+        applicantId,
+        recordId,
+        channel: COMMUNICATION_CHANNEL.EMAIL,
+        templateCode: TEMPLATE_CODE.SELECTION,
+        toAddress: input.toEmail,
+        ccAddresses: input.ccEmail ? [input.ccEmail] : null,
+        subject,
+        body: text,
+        status: COMMUNICATION_STATUS.QUEUED,
+        sentByUserId: actor.userId,
+        sentByName: actor.fullName,
+      })
+      .returning({ id: schema.communications.id });
+
+    const communicationId = communication!.id;
+
+    void this.deliver(communicationId, {
+      to: input.toEmail,
+      cc: input.ccEmail ? [input.ccEmail] : undefined,
+      subject,
+      body: text,
+      html,
+      attachments: [
+        {
+          filename: `${ACHIEVER_PACK_FILENAME}.pdf`,
+          content: attachment,
+          contentType: 'application/pdf',
+        },
+        // `cid` keeps this in the body rather than listing it as a second
+        // attachment the applicant would have to open.
+        ...(stamp
+          ? [
+              {
+                filename: 'confidential.png',
+                content: stamp,
+                contentType: 'image/png',
+                cid: CONFIDENTIAL_STAMP_CID,
+              },
+            ]
+          : []),
+      ],
+    });
+
+    await this.timeline.write({
+      applicantId,
+      recordId,
+      eventType: TIMELINE_EVENT.EMAIL_SENT,
+      summary: `Selection letter queued — ${SELECTION_KIND_META[input.kind].label}`,
+      meta: { to: input.toEmail, kind: input.kind, attachment: ACHIEVER_PACK_FILENAME },
+    });
+
+    await this.audit.record({
+      action: AUDIT.EMAIL_SENT,
+      entityType: 'communication',
+      entityId: communicationId,
+      entityLabel: subject,
+      meta: { to: input.toEmail, kind: input.kind },
+    });
+
+    return { communicationId, status: COMMUNICATION_STATUS.QUEUED };
+  }
+
+  /** Contact and banking details, from settings so they are not per-letter. */
+  private async selectionLetterOrganisation(): Promise<SelectionLetterOrganisation> {
+    /**
+     * Read straight from `settings` rather than injecting GovernanceService,
+     * which would make the ops and governance modules mutually dependent.
+     */
+    const [row] = await this.db
+      .select({ key: schema.settings.key, value: schema.settings.value })
+      .from(schema.settings)
+      .where(eq(schema.settings.key, 'org.letterhead'))
+      .limit(1);
+
+    const overrides = (row?.value ?? {}) as Record<string, unknown>;
+    const read = (key: string, fallback: string): string => {
+      const value = overrides[key];
+      return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+    };
+
+    return {
+      name: this.env.DPDP_DATA_FIDUCIARY_NAME,
+      supportEmail: read('support_email', 'support@nationalbookofrecords.org'),
+      supportPhone: read('support_phone', '+91 9403892952'),
+      dispatchPhone: read('dispatch_phone', '+91 9403892952'),
+      website: read('website', 'www.nationalbookofrecords.org'),
+      bankAccountName: read('bank_account_name', 'National Book of Records'),
+      bankAccountNumber: read('bank_account_number', '258930576636'),
+      bankIfsc: read('bank_ifsc', 'INDB0001410'),
+      bankName: read('bank_name', 'IndusInd Bank — Palwal Branch'),
+      upiNumber: read('upi_number', '+91 8950902427'),
+      achieverPackDocumentName: 'National Book of Records – Achiever Pack Options 2026',
+    };
   }
 }
 

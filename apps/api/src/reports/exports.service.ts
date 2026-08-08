@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { drawNotice, drawTable, renderLandscapeDocument } from '../documents/pdf-kit';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ExportFormat, ReportType } from '@nbr/shared';
 import { and, desc, eq, isNotNull, lte, sql } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
-import PDFDocument from 'pdfkit';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ForbiddenError, NotFoundError } from '../common/errors';
 import { requireActor } from '../common/request-context';
@@ -207,83 +207,54 @@ export class ExportsService {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
+  /**
+   * A report as a typeset landscape document.
+   *
+   * Columns are weighted rather than divided evenly: a report carrying a date,
+   * a long record title and three amounts is unreadable when all five get one
+   * fifth of the page, which is what dividing by `columns.length` produced.
+   * Money columns are right-aligned and formatted as currency, so a column of
+   * figures actually reads as a column.
+   */
   private renderPdf(report: ReportResult): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      // Landscape — these reports are wide, and portrait would truncate.
-      const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36 });
-      const chunks: Buffer[] = [];
+    const title = report.type.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      doc.fontSize(16).fillColor('#0E1B3D').text(this.env.DPDP_DATA_FIDUCIARY_NAME);
-      doc
-        .fontSize(11)
-        .fillColor('#47536B')
-        .text(report.type.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()));
-      doc
-        .fontSize(8)
-        .fillColor('#7A869E')
-        .text(`Generated ${new Date(report.generatedAt).toLocaleString('en-IN')}`);
-      doc.moveDown(0.8);
-
-      const pageWidth = doc.page.width - 72;
-      const columnWidth = pageWidth / report.columns.length;
-      let y = doc.y;
-
-      const drawHeader = () => {
-        doc.rect(36, y, pageWidth, 18).fill('#0E1B3D');
-        doc.fillColor('#FFFFFF').fontSize(7.5);
-        report.columns.forEach((column, index) => {
-          doc.text(column.label, 40 + index * columnWidth, y + 5, {
-            width: columnWidth - 8,
-            align: column.align ?? 'left',
-            ellipsis: true,
-          });
-        });
-        y += 18;
-      };
-
-      drawHeader();
-
-      doc.fontSize(7.5);
-      for (const [rowIndex, row] of report.rows.entries()) {
-        // New page when we run out of room, repeating the header.
-        if (y > doc.page.height - 60) {
-          doc.addPage();
-          y = 36;
-          drawHeader();
-          doc.fontSize(7.5);
+    return renderLandscapeDocument(
+      {
+        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        title,
+        issuedOn: new Date(report.generatedAt),
+      },
+      `${title} · generated ${new Date(report.generatedAt).toLocaleString('en-IN')}`,
+      (doc) => {
+        // A report with no rows is a real answer, and saying so beats an empty
+        // grid that reads as a rendering failure.
+        if (report.rows.length === 0) {
+          drawNotice(doc, 'This report returned no rows for the filters applied.');
+          return;
         }
 
-        if (rowIndex % 2 === 1) doc.rect(36, y, pageWidth, 14).fill('#F7F9FC');
+        drawTable(
+          doc,
+          report.columns.map((column) => ({
+            key: column.key,
+            label: column.label,
+            align: column.align,
+            // Weight numeric columns tighter than free text so titles breathe.
+            weight: column.align === 'right' ? 1 : 1.6,
+            money: false,
+          })),
+          report.rows as ReadonlyArray<Record<string, unknown>>,
+        );
 
-        doc.fillColor('#10182B');
-        report.columns.forEach((column, index) => {
-          doc.text(String(row[column.key] ?? ''), 40 + index * columnWidth, y + 3.5, {
-            width: columnWidth - 8,
-            align: column.align ?? 'left',
-            ellipsis: true,
-          });
-        });
-        y += 14;
-      }
-
-      if (report.totals) {
-        doc.rect(36, y, pageWidth, 16).fill('#EAF0FD');
-        doc.fillColor('#0E1B3D').fontSize(8);
-        report.columns.forEach((column, index) => {
-          doc.text(String(report.totals?.[column.key] ?? ''), 40 + index * columnWidth, y + 4, {
-            width: columnWidth - 8,
-            align: column.align ?? 'left',
-            ellipsis: true,
-          });
-        });
-      }
-
-      doc.end();
-    });
+        doc.moveDown(0.4);
+        doc
+          .font('Helvetica')
+          .fontSize(8)
+          .fillColor('#6B7280')
+          .text(`${report.rows.length} row${report.rows.length === 1 ? '' : 's'}`);
+      },
+    );
   }
 
   /** The download centre. Only the requester's own exports are listed. */

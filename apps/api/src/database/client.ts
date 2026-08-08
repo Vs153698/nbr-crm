@@ -16,12 +16,28 @@ export type Database = PostgresJsDatabase<typeof schema>;
  * why prepared statements are disabled there — PgBouncer cannot route a named
  * prepared statement back to the right backend.
  */
-export function createPool(connectionString?: string): postgres.Sql {
+export interface PoolOverrides {
+  /** Connections to open. Migrations use one, so the advisory lock holds. */
+  readonly max?: number;
+  /**
+   * Per-statement ceiling. Pass 0 to disable.
+   *
+   * The default of 15s is right for request work and wrong for a migration — a
+   * backfill or an index build on a large table will exceed it and be aborted
+   * part-way, which is the worst possible outcome for a schema change.
+   */
+  readonly statementTimeoutMs?: number;
+}
+
+export function createPool(
+  connectionString?: string,
+  overrides: PoolOverrides = {},
+): postgres.Sql {
   const env = loadEnv();
   const isProduction = env.NODE_ENV === 'production';
 
   return postgres(connectionString ?? env.DATABASE_URL, {
-    max: env.DATABASE_POOL_MAX,
+    max: overrides.max ?? env.DATABASE_POOL_MAX,
     idle_timeout: 30,
     connect_timeout: 10,
     max_lifetime: 60 * 30,
@@ -35,7 +51,7 @@ export function createPool(connectionString?: string): postgres.Sql {
       timezone: 'UTC',
       // Guard against a runaway query pinning a connection forever. Long work
       // belongs on a BullMQ worker, not in a request.
-      statement_timeout: 15_000,
+      statement_timeout: overrides.statementTimeoutMs ?? 15_000,
       idle_in_transaction_session_timeout: 30_000,
     },
   });

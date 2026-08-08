@@ -1,6 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import PDFDocument from 'pdfkit';
 import { STATUS_META, type RecordStatus } from '@nbr/shared';
+import {
+  drawNotice,
+  drawParties,
+  drawTable,
+  drawTotals,
+  formatDate,
+  INK,
+  keyValues,
+  renderDocument,
+  sectionTitle,
+  type TotalLine,
+} from './pdf-kit';
 
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { ENV } from '../config/config.module';
@@ -11,13 +22,6 @@ import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { StorageService } from '../storage/storage.service';
 
-/** Dates on a document are read by a person, not parsed — day-month-year. */
-function formatDate(value: Date | string | null | undefined): string {
-  if (!value) return '—';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 
 export interface GeneratedDocument {
@@ -25,11 +29,6 @@ export interface GeneratedDocument {
   readonly fileName: string;
 }
 
-const PAGE_MARGIN = 48;
-const RULE = '#D9DEE8';
-const INK = '#10182B';
-const INK_2 = '#47536B';
-const BRAND = '#0E1B3D';
 
 /**
  * On-demand PDFs: the applicant file, the selection letter and the invoice.
@@ -76,53 +75,68 @@ export class DocumentsService {
       .where(and(eq(schema.records.applicantId, applicantId), isNull(schema.records.deletedAt)))
       .orderBy(desc(schema.records.applicationDate));
 
-    const pdf = await this.render((doc) => {
-      this.header(doc, 'Applicant file', applicant.applicantCode);
+    const pdf = await renderDocument(
+      {
+        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        title: 'Applicant file',
+        reference: applicant.applicantCode,
+        issuedOn: new Date(),
+      },
+      `Applicant file · ${applicant.applicantCode}`,
+      (doc) => {
+        sectionTitle(doc, 'Applicant');
+        keyValues(
+          doc,
+          [
+            ['Name', applicant.fullName],
+            ['Applicant ID', applicant.applicantCode],
+            ['Mobile', applicant.mobile],
+            ['Email', applicant.email],
+            ['Date of birth', formatDate(applicant.dateOfBirth)],
+            ['Country', applicant.country ?? 'India'],
+            [
+              'Address',
+              [applicant.addressLine, applicant.city, applicant.state, applicant.pincode]
+                .filter(Boolean)
+                .join(', ') || '—',
+            ],
+          ],
+          { columns: 2, labelWidth: 92 },
+        );
 
-      this.section(doc, 'Applicant');
-      this.rows(doc, [
-        ['Name', applicant.fullName],
-        ['Applicant ID', applicant.applicantCode],
-        ['Mobile', applicant.mobile],
-        ['Email', applicant.email],
-        ['Date of birth', applicant.dateOfBirth ?? '—'],
-        [
-          'Address',
-          [applicant.addressLine, applicant.city, applicant.state, applicant.pincode]
-            .filter(Boolean)
-            .join(', ') || '—',
-        ],
-        ['Country', applicant.country ?? '—'],
-      ]);
+        sectionTitle(doc, `Records (${records.length})`);
 
-      this.section(doc, `Records (${records.length})`);
-      if (records.length === 0) {
-        doc.fontSize(9).fillColor(INK_2).text('No records on this profile.');
-      } else {
-        for (const record of records) {
-          const label = STATUS_META[record.status as RecordStatus]?.label ?? record.status;
-          doc
-            .fontSize(9.5)
-            .fillColor(INK)
-            .text(`${record.recordCode} — ${record.recordTitle ?? 'Untitled'}`);
-          doc
-            .fontSize(8.5)
-            .fillColor(INK_2)
-            .text(
-              `${label} · payment ${record.paymentStatus.replace(/_/g, ' ')} · delivery ${record.deliveryStatus.replace(/_/g, ' ')} · applied ${formatDate(record.applicationDate)}`,
-            );
-          doc.moveDown(0.6);
+        if (records.length === 0) {
+          doc.font('Helvetica').fontSize(9).fillColor(INK.muted).text('No records on this profile.');
+        } else {
+          drawTable(
+            doc,
+            [
+              { key: 'code', label: 'Record', weight: 1.1 },
+              { key: 'title', label: 'Achievement', weight: 2.4 },
+              { key: 'status', label: 'Status', weight: 1.2 },
+              { key: 'payment', label: 'Payment', weight: 1 },
+              { key: 'applied', label: 'Applied', weight: 1, align: 'right' },
+            ],
+            records.map((record) => ({
+              code: record.recordCode,
+              title: record.recordTitle ?? 'Untitled',
+              status: STATUS_META[record.status as RecordStatus]?.label ?? record.status,
+              payment: record.paymentStatus.replace(/_/g, ' '),
+              applied: formatDate(record.applicationDate),
+            })),
+          );
         }
-      }
 
-      // Identity numbers are deliberately absent: they are encrypted, access is
-      // logged per read under DPDP §8(4), and a PDF is exactly the artefact that
-      // escapes that control by being emailed onward.
-      this.note(
-        doc,
-        'Identity document numbers are omitted. They are held encrypted and released only through an audited reveal.',
-      );
-    });
+        // Identity numbers are deliberately absent: they are encrypted, access is
+        // logged per read under DPDP §8(4), and a PDF is exactly the artefact
+        // that escapes that control by being emailed onward.
+        drawNotice(
+          doc,
+          'Identity document numbers are omitted from this file. They are held encrypted and released only through an audited reveal, and a PDF cannot carry that control with it.',
+        );
+      },
+    );
 
     return this.publish(pdf, 'applicant', applicantId, `${applicant.applicantCode}-file.pdf`);
   }
@@ -154,42 +168,52 @@ export class DocumentsService {
       });
     }
 
-    const pdf = await this.render((doc) => {
-      this.header(doc, 'Letter of selection', record.recordCode);
+    const pdf = await renderDocument(
+      {
+        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        title: 'Letter of selection',
+        reference: record.recordCode,
+        issuedOn: new Date(),
+      },
+      `Letter of selection · ${record.recordCode}`,
+      (doc) => {
+        // A letter is prose, not a form: wider leading and a real signature
+        // block, because this is the one document here an applicant may print
+        // and show to somebody.
+        doc.moveDown(0.6);
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(INK.strong).text(record.applicantName);
+        doc.font('Helvetica').fontSize(9).fillColor(INK.muted).text(record.applicantCode);
+        doc.moveDown(1.4);
 
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor(INK_2).text(formatDate(new Date()));
-      doc.moveDown(1);
+        doc
+          .font('Helvetica')
+          .fontSize(10.5)
+          .fillColor(INK.body)
+          .text(`Dear ${record.applicantName},`, { lineGap: 3 });
+        doc.moveDown(0.8);
 
-      doc.fontSize(11).fillColor(INK).text(record.applicantName);
-      doc.fontSize(9.5).fillColor(INK_2).text(record.applicantCode);
-      doc.moveDown(1);
-
-      doc.fontSize(10.5).fillColor(INK).text('Dear ' + record.applicantName + ',');
-      doc.moveDown(0.8);
-
-      doc
-        .fontSize(10)
-        .fillColor(INK)
-        .text(
+        doc.text(
           `We are pleased to confirm that your achievement, "${record.recordTitle}", has been reviewed by our verification team and selected for entry into the ${this.env.DPDP_DATA_FIDUCIARY_NAME}.`,
-          { align: 'justify' },
+          { align: 'justify', lineGap: 3 },
         );
-      doc.moveDown(0.7);
-      doc.text(`Your record has been assigned the reference ${record.recordCode}.`, {
-        align: 'justify',
-      });
-      doc.moveDown(0.7);
-      doc.text(
-        'Please quote this reference in any correspondence. Our team will be in touch with the next steps.',
-        { align: 'justify' },
-      );
+        doc.moveDown(0.7);
+        doc.text(`Your record has been assigned the reference ${record.recordCode}.`, {
+          align: 'justify',
+          lineGap: 3,
+        });
+        doc.moveDown(0.7);
+        doc.text(
+          'Please quote this reference in any correspondence. Our team will be in touch with the next steps.',
+          { align: 'justify', lineGap: 3 },
+        );
 
-      doc.moveDown(2);
-      doc.fontSize(10).fillColor(INK).text('Yours sincerely,');
-      doc.moveDown(1.5);
-      doc.fontSize(10).text(this.env.DPDP_DATA_FIDUCIARY_NAME);
-    });
+        doc.moveDown(2.4);
+        doc.font('Helvetica').fontSize(10).fillColor(INK.body).text('Yours sincerely,');
+        doc.moveDown(2);
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(INK.strong).text(this.env.DPDP_DATA_FIDUCIARY_NAME);
+        doc.font('Helvetica').fontSize(8.5).fillColor(INK.muted).text('Verification team');
+      },
+    );
 
     return this.publish(pdf, 'record', recordId, `${record.recordCode}-selection-letter.pdf`);
   }
@@ -230,61 +254,106 @@ export class DocumentsService {
       .where(eq(schema.paymentTransactions.paymentId, payment.id))
       .orderBy(schema.paymentTransactions.paidOn);
 
-    const pdf = await this.render((doc) => {
-      this.header(doc, 'Tax invoice', invoice.invoiceNumber);
+    const settled = Number(payment.amountPaid) >= Number(invoice.finalAmount);
 
-      this.section(doc, 'Billed to');
-      this.rows(doc, [
-        ['Name', record.applicantName],
-        ['Applicant ID', record.applicantCode],
-        ['Record', `${record.recordCode} — ${record.recordTitle}`],
-        ['Invoice date', formatDate(invoice.issuedOn)],
-        ['Financial year', invoice.financialYear],
-      ]);
+    const pdf = await renderDocument(
+      {
+        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        title: 'Tax invoice',
+        reference: invoice.invoiceNumber,
+        issuedOn: invoice.issuedOn ?? new Date(),
+        status: invoice.cancelledAt
+          ? { label: 'Cancelled', tone: 'danger' }
+          : settled
+            ? { label: 'Paid', tone: 'ok' }
+            : { label: 'Due', tone: 'neutral' },
+      },
+      `Tax invoice · ${invoice.invoiceNumber}`,
+      (doc) => {
+        drawParties(
+          doc,
+          {
+            heading: 'From',
+            lines: [this.env.DPDP_DATA_FIDUCIARY_NAME, 'India'],
+          },
+          {
+            heading: 'Billed to',
+            lines: [record.applicantName, record.applicantCode],
+          },
+        );
 
-      // Every figure comes off the invoice row, not the payment plan: the
-      // invoice froze them at issue, and a later price change must not
-      // retroactively alter a document already sent to an applicant.
-      this.section(doc, 'Charges');
-      this.rows(doc, [
-        [payment.packageName, `INR ${invoice.amount}`],
-        // Plain hyphen, not U+2212: pdfkit's built-in fonts use WinAnsi, which
-        // has no minus sign, and it renders as a stray quote mark.
-        ['Discount', `- INR ${invoice.discount}`],
-        [`GST (${payment.gstPercent}%)`, `INR ${invoice.gstAmount}`],
-      ]);
+        sectionTitle(doc, 'Details');
+        keyValues(
+          doc,
+          [
+            ['Record', `${record.recordCode} — ${record.recordTitle}`],
+            ['Financial year', invoice.financialYear],
+          ],
+          { labelWidth: 100 },
+        );
 
-      doc.moveDown(0.4);
-      doc
-        .strokeColor(RULE)
-        .lineWidth(0.75)
-        .moveTo(PAGE_MARGIN, doc.y)
-        .lineTo(doc.page.width - PAGE_MARGIN, doc.y)
-        .stroke();
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor(INK).text(`Total payable    INR ${invoice.finalAmount}`);
-      doc.fontSize(10).fillColor(INK_2).text(`Received to date    INR ${payment.amountPaid}`);
+        doc.moveDown(0.6);
 
-      if (transactions.length > 0) {
-        this.section(doc, 'Payments received');
-        for (const transaction of transactions) {
-          doc
-            .fontSize(9)
-            .fillColor(INK_2)
-            .text(
-              `${formatDate(transaction.paidOn)} · ${transaction.mode.replace(/_/g, ' ')} · INR ${transaction.amount}${transaction.transactionRef ? ` · ref ${transaction.transactionRef}` : ''}${transaction.isReversal ? ' · REVERSAL' : ''}`,
-            );
+        /**
+         * One line per charge, then the totals — never both.
+         *
+         * Every figure below comes off the invoice row rather than the payment
+         * plan: the invoice froze them at issue, and a later price change must
+         * not retroactively alter a document already sent to an applicant.
+         */
+        drawTable(
+          doc,
+          [
+            { key: 'description', label: 'Description', weight: 3.4 },
+            { key: 'amount', label: 'Amount', weight: 1.1, money: true },
+          ],
+          [{ description: payment.packageName, amount: invoice.amount }],
+          { zebra: false },
+        );
+
+        const totals: TotalLine[] = [];
+        if (Number(invoice.discount) > 0) {
+          totals.push({ label: 'Discount', amount: invoice.discount, negative: true });
         }
-      }
+        totals.push({ label: `GST (${payment.gstPercent}%)`, amount: invoice.gstAmount });
+        totals.push({ label: 'Total payable', amount: invoice.finalAmount, emphasis: true });
+        totals.push({ label: 'Received to date', amount: payment.amountPaid });
 
-      if (invoice.cancelledAt) {
-        doc.moveDown(1);
-        doc
-          .fontSize(11)
-          .fillColor('#C7362F')
-          .text(`CANCELLED — ${invoice.cancelReason ?? 'no reason recorded'}`);
-      }
-    });
+        const balance = Number(invoice.finalAmount) - Number(payment.amountPaid);
+        // A balance line on a fully settled invoice is noise; on an outstanding
+        // one it is the single most important number on the page.
+        if (balance > 0) totals.push({ label: 'Balance due', amount: balance, emphasis: true });
+
+        drawTotals(doc, totals);
+
+        if (transactions.length > 0) {
+          sectionTitle(doc, 'Payments received');
+          drawTable(
+            doc,
+            [
+              { key: 'paidOn', label: 'Date', weight: 1 },
+              { key: 'mode', label: 'Mode', weight: 1.2 },
+              { key: 'reference', label: 'Reference', weight: 1.8 },
+              { key: 'amount', label: 'Amount', weight: 1.1, money: true },
+            ],
+            transactions.map((transaction) => ({
+              paidOn: formatDate(transaction.paidOn),
+              mode: transaction.mode.replace(/_/g, ' '),
+              reference: transaction.transactionRef ?? '—',
+              amount: transaction.isReversal ? `-${transaction.amount}` : transaction.amount,
+            })),
+          );
+        }
+
+        if (invoice.cancelledAt) {
+          drawNotice(
+            doc,
+            `This invoice was cancelled on ${formatDate(invoice.cancelledAt)}. Reason: ${invoice.cancelReason ?? 'not recorded'}. It is retained for the audit trail and must not be treated as a demand for payment.`,
+            'danger',
+          );
+        }
+      },
+    );
 
     return this.publish(pdf, 'invoice', recordId, `${invoice.invoiceNumber.replace(/\//g, '-')}.pdf`);
   }
@@ -310,58 +379,6 @@ export class DocumentsService {
 
     if (!row) throw new NotFoundError('Record');
     return { ...row, recordTitle: row.recordTitle ?? 'Untitled record' };
-  }
-
-  private render(draw: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'A4', margin: PAGE_MARGIN });
-      const chunks: Buffer[] = [];
-
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      try {
-        draw(doc);
-      } catch (error: unknown) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-
-      doc.end();
-    });
-  }
-
-  private header(doc: PDFKit.PDFDocument, title: string, reference: string): void {
-    doc.fontSize(15).fillColor(BRAND).text(this.env.DPDP_DATA_FIDUCIARY_NAME);
-    doc.fontSize(10.5).fillColor(INK_2).text(title);
-    doc.fontSize(9).fillColor(INK_2).text(reference);
-    doc.moveDown(0.6);
-    doc
-      .strokeColor(RULE)
-      .lineWidth(1)
-      .moveTo(PAGE_MARGIN, doc.y)
-      .lineTo(doc.page.width - PAGE_MARGIN, doc.y)
-      .stroke();
-    doc.moveDown(0.9);
-  }
-
-  private section(doc: PDFKit.PDFDocument, title: string): void {
-    doc.moveDown(0.8);
-    doc.fontSize(8).fillColor(INK_2).text(title.toUpperCase(), { characterSpacing: 0.8 });
-    doc.moveDown(0.4);
-  }
-
-  private rows(doc: PDFKit.PDFDocument, entries: Array<[string, string]>): void {
-    for (const [label, value] of entries) {
-      doc.fontSize(9).fillColor(INK_2).text(label, { continued: true });
-      doc.fillColor(INK).text(`   ${value}`, { align: 'right' });
-    }
-  }
-
-  private note(doc: PDFKit.PDFDocument, text: string): void {
-    doc.moveDown(1.2);
-    doc.fontSize(7.5).fillColor(INK_2).text(text, { align: 'left' });
   }
 
   /** Write to the vault and hand back a signed URL. */

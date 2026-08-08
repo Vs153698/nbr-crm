@@ -54,6 +54,7 @@ export const presignUploadSchema = z.object({
     'blacklist_document',
     'consent',
     'applicant_photo',
+    'employee_document',
   ]),
   recordId: uuidSchema.optional(),
   applicantId: uuidSchema.optional(),

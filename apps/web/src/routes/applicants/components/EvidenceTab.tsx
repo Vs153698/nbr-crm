@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CardHeader, EmptyState } from '@/components/ui/Card';
+import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
 import { Select } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError, hashFile, uploadToStorage } from '@/lib/api-client';
@@ -54,6 +55,7 @@ export function EvidenceTab({
   const [kind, setKind] = useState<string>(EVIDENCE_KIND.PHOTO);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState<UploadingFile[]>([]);
+  const [previewing, setPreviewing] = useState<EvidenceItem | null>(null);
 
   const canUpload = can('evidence:create');
 
@@ -148,6 +150,20 @@ export function EvidenceTab({
 
   return (
     <div className="space-y-4">
+      {previewing ? (
+        <FilePreviewSheet
+          downloadPath={`/evidence/${previewing.id}/download`}
+          fileName={previewing.fileName}
+          subtitle={`${EVIDENCE_KIND_LABELS[previewing.kind as keyof typeof EVIDENCE_KIND_LABELS] ?? previewing.kind} · ${formatBytes(previewing.sizeBytes)}`}
+          footerNote={
+            previewing.isSensitive
+              ? 'Opening an identity document is recorded in the audit log.'
+              : undefined
+          }
+          onClose={() => setPreviewing(null)}
+        />
+      ) : null}
+
       <CardHeader
         title="Evidence vault"
         subtitle="Files are kept permanently and are never overwritten or deleted."
@@ -305,6 +321,18 @@ export function EvidenceTab({
                 </Chip>
               ) : null}
 
+              {/* Preview first, download second: checking whether a scan is
+                  legible is the common case, and it should not require a round
+                  trip through the downloads folder. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Icons.Eye}
+                onClick={() => setPreviewing(file)}
+              >
+                Preview
+              </Button>
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -312,7 +340,7 @@ export function EvidenceTab({
                 loading={downloadMutation.isPending && downloadMutation.variables === file.id}
                 onClick={() => downloadMutation.mutate(file.id)}
               >
-                Open
+                Download
               </Button>
             </li>
           ))}

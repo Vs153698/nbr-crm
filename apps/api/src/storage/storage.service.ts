@@ -22,7 +22,8 @@ export type UploadScope =
   | 'publication'
   | 'blacklist_document'
   | 'consent'
-  | 'applicant_photo';
+  | 'applicant_photo'
+  | 'employee_document';
 
 export interface PresignedUpload {
   readonly uploadUrl: string;
@@ -62,6 +63,10 @@ export class StorageService {
     blacklist_document: /^(application\/pdf|image\/(jpeg|png|webp))$/,
     consent: /^(application\/pdf|image\/(jpeg|png|webp))$/,
     applicant_photo: /^image\/(jpeg|png|webp)$/,
+    // Onboarding paperwork: scans, photographs of documents, and the letters
+    // and contracts HR receives as PDFs or Word files.
+    employee_document:
+      /^(image\/(jpeg|png|webp)|application\/(pdf|msword|vnd\.openxmlformats-officedocument\.[\w.]+))$/,
   };
 
   /** Per-scope size ceilings, in MB. Videos need room; a photo does not. */
@@ -76,6 +81,9 @@ export class StorageService {
     blacklist_document: 25,
     consent: 25,
     applicant_photo: 5,
+    // Generous enough for a multi-page scanned contract, tight enough that a
+    // 40 MP phone photo of a PAN card gets compressed rather than waved through.
+    employee_document: 20,
   };
 
   constructor(@Inject(ENV) private readonly env: Env) {
@@ -143,13 +151,25 @@ export class StorageService {
     };
   }
 
-  /** Short-lived read URL. Never a permanent link — the bucket stays private. */
-  async presignDownload(storageKey: string, downloadFileName?: string): Promise<string> {
+  /**
+   * Short-lived read URL. Never a permanent link — the bucket stays private.
+   *
+   * `inline` is for previewing a file inside the app: the browser renders the
+   * PDF or image in place instead of dropping it in the downloads folder. The
+   * URL is just as short-lived either way, so this changes presentation only.
+   */
+  async presignDownload(
+    storageKey: string,
+    downloadFileName?: string,
+    disposition: 'attachment' | 'inline' = 'attachment',
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.env.S3_BUCKET,
       Key: storageKey,
       ...(downloadFileName
-        ? { ResponseContentDisposition: `attachment; filename="${downloadFileName.replace(/"/g, '')}"` }
+        ? {
+            ResponseContentDisposition: `${disposition}; filename="${downloadFileName.replace(/"/g, '')}"`,
+          }
         : {}),
     });
 

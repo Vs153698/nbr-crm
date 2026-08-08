@@ -13,7 +13,18 @@ export interface OutboundMail {
   readonly subject: string;
   readonly text: string;
   readonly html?: string;
-  readonly attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
+  readonly attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+    /**
+     * Set to embed the file in the body via `src="cid:…"` rather than list it
+     * as an attachment. Used for the confidential stamp: a data URI would be
+     * stripped by Gmail, and a linked image would be blocked until the reader
+     * clicks "show images".
+     */
+    cid?: string;
+  }>;
 }
 
 export interface SendResult {

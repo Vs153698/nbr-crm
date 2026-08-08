@@ -10,6 +10,16 @@
         "//": "Drizzle needs the .sql files AND meta/_journal.json, which tsc does not emit.",
         "include": "database/migrations/**/*",
         "watchAssets": true
+      },
+      {
+        "//": "The logo the generated PDFs put on their masthead. tsc does not emit binary files.",
+        "include": "documents/assets/**/*",
+        "watchAssets": true
+      },
+      {
+        "//": "The Achiever Pack options PDF, attached to every selection letter.",
+        "include": "mail/assets/**/*",
+        "watchAssets": true
       }
     ]
   }

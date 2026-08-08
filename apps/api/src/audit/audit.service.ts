@@ -187,6 +187,9 @@ export const AUDIT = {
   EMPLOYEE_CREATED: 'employee.created',
   EMPLOYEE_UPDATED: 'employee.updated',
   EMPLOYEE_DELETED: 'employee.deleted',
+  EMPLOYEE_DOCUMENT_UPLOADED: 'employee.document_uploaded',
+  EMPLOYEE_DOCUMENT_OPENED: 'employee.document_opened',
+  EMPLOYEE_DOCUMENT_DELETED: 'employee.document_deleted',
 
   BLACKLIST_ADDED: 'blacklist.added',
   BLACKLIST_LIFTED: 'blacklist.lifted',

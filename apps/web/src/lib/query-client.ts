@@ -43,6 +43,8 @@ export const queryKeys = {
   applicant: (id: string) => ['applicants', id] as const,
   applicantTimeline: (id: string) => ['applicants', id, 'timeline'] as const,
   recordActions: (id: string) => ['records', id, 'actions'] as const,
+  /** Website review decisions offered on a mirrored application. */
+  legacyActions: (id: string) => ['records', id, 'legacy-actions'] as const,
   recordTimeline: (id: string) => ['records', id, 'timeline'] as const,
   evidence: (recordId: string) => ['evidence', recordId] as const,
   attachments: (applicantId: string) => ['attachments', applicantId] as const,

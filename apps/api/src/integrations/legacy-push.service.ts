@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
-import { toRupees } from '@nbr/shared';
+import { toRupees, type LegacyApplicationAction } from '@nbr/shared';
 import { and, eq, isNull, notInArray } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ValidationError } from '../common/errors';
@@ -22,6 +22,19 @@ const LEGACY_PATHS = {
   payment: '/api/crm-connector/payment',
   dispatch: '/api/crm-connector/dispatch',
   certificate: '/api/crm-connector/certificate',
+  /**
+   * A review decision — approve, reject, request info, validate, cancel,
+   * reopen. Unlike the three above this is a *command*, not a state mirror: the
+   * website applies the decision and sends the applicant's mail from its own
+   * templates, because it owns their portal login and their address.
+   */
+  applicationAction: '/api/crm-connector/application-action',
+  /**
+   * A file attached in the CRM. The website pulls the bytes into its own bucket
+   * so the applicant portal, the adjudicator view and the certificate pack —
+   * all of which read from its columns — can see it.
+   */
+  evidence: '/api/crm-connector/evidence',
 } as const;
 
 /** Read-only endpoints carrying the website's reference data. */
@@ -181,6 +194,7 @@ export class LegacyPushService {
     kind: LegacyPushKind,
     recordId: string,
     payload: Record<string, unknown>,
+    options: { suppressEcho?: boolean } = {},
   ): Promise<PushResult> {
     const config = await this.getConfig();
     if (!config.enabled) return { ok: false, skipped: true, reason: 'legacy sync is switched off' };
@@ -194,7 +208,13 @@ export class LegacyPushService {
     const fingerprint = this.hash([kind, body]);
 
     // The change we are about to send is the one we just received from them.
-    if (mirror.inboundHash && fingerprint === mirror.outboundHash) {
+    //
+    // Off for commands. Echo suppression compares payloads, and two identical
+    // commands are a legitimate sequence — asking an applicant for the same
+    // missing document twice is a thing operators do, and the second request
+    // must not be silently swallowed as a duplicate.
+    const suppressEcho = options.suppressEcho ?? true;
+    if (suppressEcho && mirror.inboundHash && fingerprint === mirror.outboundHash) {
       return { ok: false, skipped: true, reason: 'echo of an inbound change' };
     }
 
@@ -611,6 +631,66 @@ export class LegacyPushService {
     },
   ): void {
     this.pushDetached('certificate', recordId, { action: 'issue', ...input });
+  }
+
+  /**
+   * Send a review decision to the website and wait for it.
+   *
+   * The one push that is *not* detached. Every other call site here mirrors a
+   * change this system has already committed, so a failure is a sync problem to
+   * be retried later. A decision is the opposite: nothing has happened here yet,
+   * the website is where the application actually moves and where the applicant
+   * is written to, and an operator who clicks Approve has to be told plainly if
+   * that did not happen rather than being shown a success and left to discover
+   * days later that the applicant was never told.
+   */
+  async pushApplicationAction(
+    recordId: string,
+    input: {
+      action: LegacyApplicationAction;
+      note?: string;
+      message?: string;
+      reason?: string;
+      deadlineHours?: number;
+    },
+  ): Promise<PushResult> {
+    return this.push('applicationAction', recordId, { ...input }, { suppressEcho: false });
+  }
+
+  /**
+   * Send a file attached here up to the website.
+   *
+   * Evidence used to travel one way only: the website pushed its files down on
+   * every snapshot, and anything an operator attached in the CRM stayed here —
+   * invisible to the applicant portal and to the adjudicator, who both read
+   * from the website's own columns.
+   *
+   * The signed download URL is handed over rather than the bytes: the website
+   * fetches it once into its own bucket, which avoids base64-ing a 200 MB
+   * record video through a JSON body and leaves it holding a copy that
+   * outlives this system.
+   */
+  pushEvidence(
+    recordId: string,
+    input: {
+      crmFileId: string;
+      fileName: string;
+      contentType: string;
+      kind: string;
+      downloadUrl: string;
+    },
+  ): void {
+    // Echo suppression off: two genuinely different files produce different
+    // payloads anyway, and the website keys on `crmFileId` for idempotency.
+    setImmediate(() => {
+      void this.push('evidence', recordId, { ...input }, { suppressEcho: false }).catch(
+        (error: unknown) => {
+          this.logger.error(
+            `Detached evidence push threw: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      );
+    });
   }
 
   /** Connection health for the integrations screen. */

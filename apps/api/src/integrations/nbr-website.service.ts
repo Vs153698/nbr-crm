@@ -26,7 +26,7 @@ import {
   type NbrWebhookApplication,
   type RecordStatus,
 } from '@nbr/shared';
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { verifyWebhookSignature } from '../common/crypto';
 import { UnauthorisedError, ValidationError } from '../common/errors';
@@ -131,6 +131,10 @@ function snapshotHash(payload: NbrWebhookApplication): string {
   const significant = {
     externalId: payload.externalId,
     stage: payload.stage ?? null,
+    // What makes a *return* to a previous state distinguishable from a retry of
+    // it. Genuine retries carry the same value and still collapse to one event.
+    sourceUpdatedAt: payload.sourceUpdatedAt?.toISOString() ?? null,
+    award: payload.award ?? null,
     applicant: payload.applicant,
     achievement: payload.achievement,
     evidence: payload.evidence.map((file) => file.url).sort(),
@@ -365,6 +369,8 @@ export class NbrWebsiteService {
         recordId: schema.records.id,
         applicantId: schema.records.applicantId,
         status: schema.records.status,
+        // Soft-deleted records are matched deliberately — see `revive` below.
+        deletedAt: schema.records.deletedAt,
       })
       .from(schema.records)
       .where(
@@ -630,10 +636,39 @@ export class NbrWebsiteService {
    * applicant's original wording must not quietly undo them.
    */
   private async updateExisting(
-    known: { recordId: string; applicantId: string; status: string },
+    known: { recordId: string; applicantId: string; status: string; deletedAt?: Date | null },
     payload: NbrWebhookApplication,
   ): Promise<{ status: string; applicantId: string | null; recordId: string | null }> {
     const inboundHash = snapshotHash(payload);
+
+    /**
+     * The website is still sending this application, so it is still live there —
+     * and this mirror exists to converge on the website's truth.
+     *
+     * Revived *before* the duplicate-hash check below, because a re-import
+     * after a reset carries the identical snapshot the record already holds:
+     * the hash matches, the update short-circuits as a retry, and the record
+     * would stay invisible forever. That is not hypothetical — it is exactly
+     * what "Reset CRM & Sync Again" does, and without this the reset appeared
+     * to destroy every website record permanently.
+     */
+    if (known.deletedAt) {
+      await this.db
+        .update(schema.records)
+        .set({ deletedAt: null })
+        .where(eq(schema.records.id, known.recordId));
+
+      await this.db
+        .update(schema.applicants)
+        .set({ deletedAt: null })
+        .where(eq(schema.applicants.id, known.applicantId));
+
+      this.logger.log(
+        `Revived soft-deleted record ${known.recordId} — the website still holds ${payload.externalId}`,
+      );
+
+      await this.cache.invalidateTags(CacheTag.applicantList(), CacheTag.dashboard());
+    }
 
     const [mirror] = await this.db
       .select({ inboundHash: schema.legacyMirror.inboundHash })
@@ -881,6 +916,145 @@ export class NbrWebsiteService {
         at: failure.at?.toISOString() ?? '',
       })),
     };
+  }
+
+  /**
+   * Clear everything that came from the website, so it can be re-imported clean.
+   *
+   * The escape hatch for a mirror that has drifted — a mapping bug, a run of
+   * dropped snapshots, a half-finished backfill. The website then re-pushes
+   * every application and the CRM rebuilds its side from scratch.
+   *
+   * Three things bound the damage, because this is the most destructive
+   * operation in the integration:
+   *
+   *  • **Only website-sourced rows.** A record is touched only if it has a
+   *    `legacy_mirror` row. Anything created in the CRM has no counterpart on
+   *    the website and is left exactly as it was.
+   *  • **Soft delete, not delete.** Records and applicants are marked deleted
+   *    rather than removed, so a reset run by mistake is recoverable and every
+   *    foreign key still resolves.
+   *  • **History survives.** `timeline_events` and `audit_logs` are append-only
+   *    and refuse deletion at the database level. That is deliberate: the
+   *    record of what was done to an applicant outlives the record itself.
+   *
+   * Payments, certificates and evidence hang off the records and are left in
+   * place; the re-import matches on `externalId` and merges onto the same rows.
+   */
+  /**
+   * The signed entry point for the reset, called by the website's admin panel.
+   *
+   * The signature is checked over the raw body exactly as the application
+   * webhook does, so the same shared secret gates both — and a reset cannot be
+   * triggered by anyone who cannot already push applications.
+   */
+  async resetFromWebsite(
+    rawBody: string,
+    signatureHeader: string | undefined,
+  ): Promise<{
+    recordsCleared: number;
+    applicantsCleared: number;
+    mirrorsCleared: number;
+    eventsCleared: number;
+  }> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody,
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (!verification.valid) {
+      this.logger.warn(`Rejected reset request: ${verification.reason}`);
+      throw new UnauthorisedError(
+        'WEBHOOK_SIGNATURE_INVALID',
+        `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
+      );
+    }
+
+    return this.resetWebsiteData();
+  }
+
+  async resetWebsiteData(): Promise<{
+    recordsCleared: number;
+    applicantsCleared: number;
+    mirrorsCleared: number;
+    eventsCleared: number;
+  }> {
+    const result = await this.db.transaction(async (tx) => {
+      const mirrors = await tx
+        .select({
+          recordId: schema.legacyMirror.recordId,
+          applicantId: schema.legacyMirror.applicantId,
+        })
+        .from(schema.legacyMirror);
+
+      const recordIds = mirrors.map((row) => row.recordId);
+      const applicantIds = [...new Set(mirrors.map((row) => row.applicantId))];
+
+      if (recordIds.length > 0) {
+        await tx
+          .update(schema.records)
+          .set({ deletedAt: new Date() })
+          .where(inArray(schema.records.id, recordIds));
+      }
+
+      /**
+       * An applicant is cleared only when *every* record they hold came from
+       * the website. Someone who also has a record raised in the CRM is a live
+       * applicant here, and hiding them would orphan that record's owner.
+       */
+      let applicantsCleared = 0;
+      for (const applicantId of applicantIds) {
+        const [survivor] = await tx
+          .select({ id: schema.records.id })
+          .from(schema.records)
+          .where(
+            and(eq(schema.records.applicantId, applicantId), isNull(schema.records.deletedAt)),
+          )
+          .limit(1);
+
+        if (survivor) continue;
+
+        await tx
+          .update(schema.applicants)
+          .set({ deletedAt: new Date() })
+          .where(eq(schema.applicants.id, applicantId));
+        applicantsCleared += 1;
+      }
+
+      await tx.delete(schema.legacyMirror);
+
+      // The event keys are what make a re-push look like a duplicate. Clearing
+      // them is the whole point — without it the website would re-send every
+      // application and the CRM would drop the lot as already seen.
+      const events = await tx
+        .delete(schema.integrationEvents)
+        .where(eq(schema.integrationEvents.source, NbrWebsiteService.SOURCE))
+        .returning({ id: schema.integrationEvents.id });
+
+      return {
+        recordsCleared: recordIds.length,
+        applicantsCleared,
+        mirrorsCleared: mirrors.length,
+        eventsCleared: events.length,
+      };
+    });
+
+    await this.audit.record({
+      action: AUDIT.IMPORT_COMPLETED,
+      entityType: 'integration',
+      entityLabel: 'website data reset',
+      meta: result,
+    });
+
+    this.logger.warn(
+      `Website data reset — ${result.recordsCleared} records and ${result.applicantsCleared} applicants cleared, awaiting re-sync`,
+    );
+
+    await this.cache.invalidateTags(CacheTag.applicantList(), CacheTag.dashboard());
+
+    return result;
   }
 
   /** Replay a failed import after the underlying problem is fixed. */

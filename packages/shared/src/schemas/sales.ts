@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CALL_OUTCOME, LEAD_SOURCE, LEAD_STATUS } from '../constants/sales';
-import { EMPLOYEE_STATUS, EMPLOYMENT_TYPE } from '../constants/hr';
+import { EMPLOYEE_DOCUMENT_KIND, EMPLOYEE_STATUS, EMPLOYMENT_TYPE } from '../constants/hr';
 import {
   cursorQuerySchema,
   emailSchema,
@@ -99,9 +99,28 @@ export const salesDashboardQuerySchema = z.object({
 
 // ── Employees ────────────────────────────────────────────────────────────────
 
+/**
+ * A hand-typed employee ID.
+ *
+ * Uppercased on the way in so `nbremp014` and `NBREMP014` cannot both exist —
+ * the uniqueness index is case-sensitive, and two rows for one person is
+ * exactly the failure this ID is meant to prevent. Punctuation is limited to
+ * the separators real ID formats use.
+ */
+export const employeeCodeSchema = z
+  .string()
+  .trim()
+  .min(2, 'An employee ID needs at least 2 characters.')
+  .max(30)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9/_-]*$/, 'Use letters, numbers, and - / _ only.')
+  .transform((value) => value.toUpperCase());
+
 export const employeeSchema = z.object({
-  /** Allocated automatically when omitted. */
-  employeeCode: optionalTrimmedString(30),
+  /**
+   * Normally typed in by HR so the directory matches the ID already printed on
+   * the card and quoted by payroll. Allocated automatically only when omitted.
+   */
+  employeeCode: employeeCodeSchema.optional(),
   fullName: trimmedString(150),
   mobile: indianMobileSchema,
   alternatePhone: phoneSchema.optional(),
@@ -144,4 +163,34 @@ export const employeeListQuerySchema = cursorQuerySchema.extend({
   department: optionalTrimmedString(120),
   status: z.nativeEnum(EMPLOYEE_STATUS).optional(),
   employmentType: z.nativeEnum(EMPLOYMENT_TYPE).optional(),
+  /**
+   * Raised above the shared page cap, which the service already allowed for:
+   * the "Reports to" picker needs the whole directory in one call, and anyone
+   * missing from that list simply cannot be chosen as a manager.
+   */
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+// ── Onboarding documents ─────────────────────────────────────────────────────
+
+export const presignEmployeeDocumentSchema = z.object({
+  fileName: trimmedString(255),
+  contentType: trimmedString(120),
+  sizeBytes: z.coerce.number().int().positive(),
+});
+
+export const confirmEmployeeDocumentSchema = z.object({
+  kind: z.nativeEnum(EMPLOYEE_DOCUMENT_KIND),
+  storageKey: trimmedString(500),
+  fileName: trimmedString(255),
+  contentType: trimmedString(120),
+  sizeBytes: z.coerce.number().int().positive(),
+  /**
+   * What the file weighed before the browser re-encoded it. Recorded so the
+   * saving is a measured number on screen rather than a claim, and so a
+   * suspiciously lossy compression is visible after the fact.
+   */
+  originalSizeBytes: z.coerce.number().int().positive().optional(),
+  checksumSha256: z.string().length(64).optional(),
+  description: optionalTrimmedString(500),
 });

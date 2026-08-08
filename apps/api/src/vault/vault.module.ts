@@ -10,6 +10,7 @@ import {
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
 import type { UploadScope } from '../storage/storage.service';
+import { GovernanceModule } from '../governance/governance.module';
 import { VaultService, type EvidenceItem } from './vault.service';
 
 @Controller('uploads')
@@ -73,10 +74,11 @@ class EvidenceController {
    * forms) additionally require `pii:reveal` and are written to the PII access
    * log — see VaultService.getDownloadUrl.
    */
+  /** `?mode=inline` renders the file in the preview panel instead of saving it. */
   @Get(':id/download')
   @Can(MODULES.EVIDENCE, ACTIONS.VIEW)
-  async download(@Param('id') id: string): Promise<{ url: string; fileName: string }> {
-    return this.vault.getDownloadUrl(uuidSchema.parse(id));
+  async download(@Param('id') id: string, @Query('mode') mode?: string) {
+    return this.vault.getDownloadUrl(uuidSchema.parse(id), mode === 'inline' ? 'inline' : 'attachment');
   }
 }
 
@@ -108,15 +110,23 @@ class AttachmentsController {
     return this.vault.listAttachments(uuidSchema.parse(applicantId));
   }
 
+  /** `?mode=inline` renders the file in the preview panel instead of saving it. */
   @Get(':id/download')
   @Can(MODULES.EVIDENCE, ACTIONS.VIEW)
-  async download(@Param('id') id: string) {
-    return this.vault.getAttachmentDownloadUrl(uuidSchema.parse(id));
+  async download(@Param('id') id: string, @Query('mode') mode?: string) {
+    return this.vault.getAttachmentDownloadUrl(
+      uuidSchema.parse(id),
+      mode === 'inline' ? 'inline' : 'attachment',
+    );
   }
 }
 
 @Module({
   controllers: [UploadsController, EvidenceController, AttachmentsController],
+  // Files attached here are pushed up to the website, whose applicant portal and
+  // adjudicator view read from its own columns. No cycle: nothing the governance
+  // module depends on reaches back into the vault.
+  imports: [GovernanceModule],
   providers: [VaultService],
   exports: [VaultService],
 })

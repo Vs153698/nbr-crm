@@ -1,5 +1,6 @@
 import { relations, sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -232,6 +233,60 @@ export const employees = pgTable(
   ],
 );
 
+/**
+ * ── Onboarding documents ─────────────────────────────────────────────────────
+ *
+ * The joining file: offer letter, ID proof, education certificates, signed
+ * contract. Its own table rather than a column on `employees` because there are
+ * many per person and each carries its own provenance — who uploaded it, when,
+ * and what the bytes hash to.
+ *
+ * Unlike the evidence vault (§7) these are deletable. An onboarding folder
+ * accumulates mis-scans and duplicates, and HR must be able to tidy one without
+ * a DBA; the delete is soft and audited, so the row and its object survive for
+ * investigation.
+ */
+export const employeeDocuments = pgTable(
+  'employee_documents',
+  {
+    id: primaryId(),
+    employeeId: uuid('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+
+    kind: varchar('kind', { length: 40 }).notNull(),
+    storageKey: varchar('storage_key', { length: 500 }).notNull(),
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    contentType: varchar('content_type', { length: 120 }).notNull(),
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    /**
+     * What the browser started with, before it re-encoded the image. Equal to
+     * `sizeBytes` when the file was stored untouched — PDFs are never altered.
+     */
+    originalSizeBytes: bigint('original_size_bytes', { mode: 'number' }),
+    checksumSha256: varchar('checksum_sha256', { length: 64 }),
+
+    description: text('description'),
+    /** Government identifiers. Downloads of these are written to the audit log. */
+    isSensitive: boolean('is_sensitive').notNull().default(false),
+
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('employee_documents_employee_idx').on(t.employeeId, t.createdAt),
+    uniqueIndex('employee_documents_storage_key_uq').on(t.storageKey),
+    // Re-uploading identical bytes for the same person is a duplicate, not a
+    // second document. Scoped to live rows so a deleted file can be re-added.
+    uniqueIndex('employee_documents_checksum_uq')
+      .on(t.employeeId, t.checksumSha256)
+      .where(sql`${t.checksumSha256} is not null and ${t.deletedAt} is null`),
+  ],
+);
+
 export const employeesRelations = relations(employees, ({ one, many }) => ({
   account: one(users, { fields: [employees.userId], references: [users.id] }),
   reportsTo: one(employees, {
@@ -240,4 +295,16 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
     relationName: 'reporting_line',
   }),
   reports: many(employees, { relationName: 'reporting_line' }),
+  documents: many(employeeDocuments),
+}));
+
+export const employeeDocumentsRelations = relations(employeeDocuments, ({ one }) => ({
+  employee: one(employees, {
+    fields: [employeeDocuments.employeeId],
+    references: [employees.id],
+  }),
+  uploadedBy: one(users, {
+    fields: [employeeDocuments.uploadedByUserId],
+    references: [users.id],
+  }),
 }));

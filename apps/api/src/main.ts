@@ -14,6 +14,7 @@ import {
   registerJsonBodyParser,
   registerRequestContext,
 } from './common/security.plugins';
+import { runMigrations } from './database/migrate';
 import { loadEnv } from './config/env';
 import { setupDocs } from './docs/setup-docs';
 
@@ -22,6 +23,28 @@ async function bootstrap(): Promise<void> {
   // error rather than a 500 on the first request that touches the bad value.
   const env = loadEnv();
   const isProduction = env.NODE_ENV === 'production';
+
+  /**
+   * Bring the schema up to date before anything serves a request.
+   *
+   * Deliberately before the Nest app is even created: code compiled against a
+   * newer schema must not answer a request against an older one, and failing
+   * here — loudly, with a non-zero exit — is far better than a deploy that comes
+   * up healthy and then throws on the first query touching a missing column.
+   *
+   * Concurrency-safe under PM2 via an advisory lock inside `runMigrations`.
+   */
+  if (env.DB_AUTO_MIGRATE) {
+    const migrationLogger = new Logger('Migrations');
+    try {
+      await runMigrations((message: string) => migrationLogger.log(message));
+    } catch (error: unknown) {
+      migrationLogger.error(
+        `Schema migration failed — refusing to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exit(1);
+    }
+  }
 
   const adapter = new FastifyAdapter({
     // Behind Cloudflare and/or nginx in production. Off in development so a

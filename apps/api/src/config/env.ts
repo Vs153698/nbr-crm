@@ -63,6 +63,22 @@ export const envSchema = z
 
     DATABASE_URL: z.string().url(),
     DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(200).default(20),
+    /**
+     * Apply outstanding migrations on boot.
+     *
+     * On by default, so a deploy never needs someone to remember a terminal
+     * command. Safe under PM2's one-process-per-core model because the run holds
+     * a Postgres advisory lock: the first worker migrates, the rest wait and
+     * then find nothing to do.
+     *
+     * Set false where migrations are run as their own pipeline step and the app
+     * must not touch the schema — a read replica, or a blue/green cutover where
+     * the old version is still serving.
+     */
+    DB_AUTO_MIGRATE: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
 
     REDIS_URL: z.string().url(),
 

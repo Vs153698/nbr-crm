@@ -20,8 +20,11 @@ import {
   assignRecordSchema,
   convertLeadSchema,
   createLeadSchema,
+  confirmEmployeeDocumentSchema,
   employeeSchema,
+  legacyApplicationActionSchema,
   logLeadCallSchema,
+  presignEmployeeDocumentSchema,
   updateEmployeeSchema,
   updateLeadSchema,
   logCallSchema,
@@ -30,6 +33,7 @@ import {
   nbrWebhookApplicationSchema,
   packageSchema,
   presignUploadSchema,
+  selectionLetterSchema,
   recordTransactionSchema,
   resetPasswordSchema,
   revealIdentifierSchema,
@@ -1491,6 +1495,221 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'entries, records they handled and the reporting line all point at them. Refused ' +
       'while others still report to them.',
     errors: { '409': { description: 'Other employees report to this person.' } },
+  },
+
+  'IntegrationsController.reset': {
+    tag: 'Integration',
+    summary: 'Reset the website mirror',
+    description:
+      "Clears everything imported from the website so it can be re-pushed clean. Called by " +
+      'the website\'s own admin panel, which immediately follows it with a full backfill.',
+    response: {
+      type: 'object',
+      properties: {
+        recordsCleared: { type: 'integer' },
+        applicantsCleared: { type: 'integer' },
+        mirrorsCleared: { type: 'integer' },
+        eventsCleared: { type: 'integer' },
+      },
+    },
+    audited: 'integration.import_completed',
+    notes:
+      'Bounded three ways: only records carrying a `legacy_mirror` row are touched, so ' +
+      'anything created in the CRM survives; records and applicants are soft-deleted rather ' +
+      'than removed; and the append-only timeline and audit log refuse deletion at the ' +
+      'database level. An applicant is cleared only when every record they hold came from ' +
+      'the website. Authenticated by HMAC signature, like the application webhook.',
+    errors: { '401': { description: 'The signature did not verify.' } },
+  },
+
+  // ── Selection letter ──────────────────────────────────────────────────────
+  'CommunicationsController.selectionLetterPrefill': {
+    tag: 'Communication',
+    summary: 'Prefill the selection letter',
+    description:
+      "The letter's editable fields, filled in from the record — holder name, application " +
+      'id, approved title and description, place of origin and date of birth.',
+    pathParams: { recordId: 'The record the letter is about.' },
+    response: {
+      type: 'object',
+      properties: {
+        fields: { type: 'object' },
+        organisation: { type: 'object' },
+        attachmentName: { type: 'string' },
+      },
+    },
+    notes:
+      'Fetched before the composer opens so the operator corrects facts rather than retyping ' +
+      'them. The application id prefers the website\'s own code, which is what an applicant ' +
+      'quotes back.',
+  },
+  'CommunicationsController.sendSelectionLetter': {
+    tag: 'Communication',
+    summary: 'Send the selection letter',
+    description:
+      'Sends the approved selection letter to the applicant with the Achiever Pack options ' +
+      'PDF attached.',
+    pathParams: { recordId: 'The record the letter is about.' },
+    body: zodSchema(selectionLetterSchema, 'SelectionLetter'),
+    response: {
+      type: 'object',
+      properties: { communicationId: UUID, status: { type: 'string' } },
+    },
+    audited: 'communication.email_sent',
+    notes:
+      'The structure is fixed and only the body fields vary — the terms, the selectivity ' +
+      'figure and the two-working-day correction window are not per-letter decisions. ' +
+      '`kind` switches the three places a record and an appreciation differ: the titled ' +
+      'designation, the section heading and the verb describing the holder. The attachment ' +
+      'is unconditional, because the letter instructs the applicant to choose a package ' +
+      'from it; a missing file is refused rather than sent without.',
+    errors: {
+      '422': {
+        description: 'The applicant is marked do-not-contact, or the attachment is missing.',
+      },
+    },
+  },
+
+  // ── Website review actions ────────────────────────────────────────────────
+  'LegacyActionsController.available': {
+    tag: 'Integration',
+    summary: 'Website actions available on a record',
+    description:
+      'Which of the website\'s review decisions can be taken on this record right now, ' +
+      'filtered by where the application currently sits.',
+    pathParams: { id: 'The record.' },
+    response: {
+      type: 'object',
+      properties: {
+        mirrored: { type: 'boolean' },
+        externalId: { type: 'string', nullable: true },
+        externalUrl: { type: 'string', nullable: true },
+        appCode: { type: 'string', nullable: true },
+        actions: arrayOf({}),
+      },
+    },
+    notes:
+      'Empty for a record created in the CRM: it has no counterpart on the website, so ' +
+      'there is nothing over there to decide.',
+  },
+  'LegacyActionsController.run': {
+    tag: 'Integration',
+    summary: 'Take a website review decision',
+    description:
+      'Approve, reject, request information, mark verified, cancel or reopen an ' +
+      'application mirrored from the website.',
+    pathParams: { id: 'The record.' },
+    body: zodSchema(legacyApplicationActionSchema, 'LegacyApplicationAction'),
+    response: { type: 'object', properties: { ok: { type: 'boolean' }, action: { type: 'string' } } },
+    audited: 'record.status_changed',
+    notes:
+      'The decision is applied on the website, not here. It owns the applicant\'s portal ' +
+      'login, the address they applied with and the mail templates, so approving through ' +
+      'this endpoint produces byte-identical mail to approving in its own admin panel. ' +
+      'The record moves when the resulting snapshot is pushed back. Awaited rather than ' +
+      'queued, so a failure to reach the website is reported rather than swallowed.',
+    errors: {
+      '422': {
+        description:
+          'The record is CRM-only, the action is not available at this status, a required ' +
+          'reason is missing, or the website refused it.',
+      },
+    },
+  },
+
+  // ── Onboarding documents ──────────────────────────────────────────────────
+  'EmployeeDocumentsController.list': {
+    tag: 'Administration',
+    summary: 'List onboarding documents',
+    description: "The employee's joining file — letters, ID proofs, certificates and contracts.",
+    pathParams: { employeeId: 'The employee whose file is being read.' },
+    response: arrayOf({
+      id: UUID,
+      kind: { type: 'string' },
+      fileName: { type: 'string' },
+      contentType: { type: 'string' },
+      sizeBytes: { type: 'integer' },
+      originalSizeBytes: { type: 'integer', nullable: true },
+      isSensitive: { type: 'boolean' },
+      uploadedByName: { type: 'string', nullable: true },
+    }),
+    notes:
+      '`originalSizeBytes` is what the file weighed before the browser re-encoded it. It ' +
+      'equals `sizeBytes` when the file was stored untouched.',
+  },
+  'EmployeeDocumentsController.presign': {
+    tag: 'Administration',
+    summary: 'Get an upload URL for a document',
+    description:
+      'Step 1 of an upload: returns a short-lived presigned PUT URL. The browser sends the ' +
+      'bytes straight to storage, so a scanned contract never passes through the API.',
+    pathParams: { employeeId: 'The employee the document belongs to.' },
+    body: zodSchema(presignEmployeeDocumentSchema, 'PresignEmployeeDocument'),
+    response: {
+      type: 'object',
+      properties: {
+        uploadUrl: { type: 'string' },
+        storageKey: { type: 'string' },
+        expiresInSeconds: { type: 'integer' },
+      },
+    },
+    errors: { '422': { description: 'File type not accepted, or larger than 20 MB.' } },
+  },
+  'EmployeeDocumentsController.confirm': {
+    tag: 'Administration',
+    summary: 'Attach an uploaded document',
+    description:
+      'Step 2: records the file after checking its real size and type against storage, ' +
+      'rather than trusting what the client declared.',
+    pathParams: { employeeId: 'The employee the document belongs to.' },
+    body: zodSchema(confirmEmployeeDocumentSchema, 'ConfirmEmployeeDocument'),
+    response: { type: 'object', properties: { id: UUID } },
+    audited: 'employee.document_uploaded',
+    notes:
+      'Documents holding a government identifier — ID proof, address proof, PAN, bank ' +
+      'details — are flagged sensitive, and every opening of one is written to the audit log.',
+    errors: {
+      '422': {
+        description: 'The upload did not complete, or these exact bytes are already on file.',
+      },
+    },
+  },
+  'EmployeeDocumentsController.download': {
+    tag: 'Administration',
+    summary: 'Open a document',
+    description:
+      'A short-lived signed URL. `mode=inline` renders the file in the preview panel; the ' +
+      'default saves it to disk.',
+    pathParams: {
+      employeeId: 'The employee the document belongs to.',
+      documentId: 'The document being opened.',
+    },
+    query: [{ name: 'mode', description: 'inline | attachment', example: 'inline' }],
+    response: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        fileName: { type: 'string' },
+        contentType: { type: 'string' },
+      },
+    },
+    notes:
+      'Lookups are scoped to the employee in the path, so a document id cannot be read ' +
+      'through a different profile.',
+  },
+  'EmployeeDocumentsController.remove': {
+    tag: 'Administration',
+    summary: 'Remove a document',
+    description: 'Soft delete, for a mis-scan or a duplicate.',
+    pathParams: {
+      employeeId: 'The employee the document belongs to.',
+      documentId: 'The document being removed.',
+    },
+    response: OK,
+    audited: 'employee.document_deleted',
+    notes:
+      'The row and the stored object both survive — only the listing stops showing it — so ' +
+      'a file removed by mistake can still be produced.',
   },
 
   // ── Audit ─────────────────────────────────────────────────────────────────

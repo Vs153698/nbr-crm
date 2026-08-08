@@ -17,10 +17,12 @@ import {
   courierSchema,
   exportRequestSchema,
   packageSchema,
+  legacyApplicationActionSchema,
   reportQuerySchema,
   uuidSchema,
   WEBHOOK_SIGNATURE_HEADER,
   type ExportFormat,
+  type LegacyApplicationActionInput,
   type PermissionCode,
   type ReportType,
 } from '@nbr/shared';
@@ -33,6 +35,10 @@ import { ForbiddenError, ValidationError } from '../common/errors';
 import { requireActor } from '../common/request-context';
 import { LegacyLifecycleService } from '../integrations/legacy-lifecycle.service';
 import { LegacyPushService } from '../integrations/legacy-push.service';
+import {
+  LegacyActionsService,
+  type LegacyActionAvailability,
+} from '../integrations/legacy-actions.service';
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
 import { ImportedRecordsService } from '../integrations/imported-records.service';
 import { MailService } from '../mail/mail.service';
@@ -310,6 +316,29 @@ class IntegrationsController {
     );
   }
 
+  /**
+   * Clear everything that came from the website, ready for a full re-push.
+   *
+   * `@Public()` for the same reason as the webhook above: this is a
+   * server-to-server call from the website's own admin panel, authenticated by
+   * HMAC signature rather than a session. The signature check runs before
+   * anything is touched.
+   *
+   * Deliberately reachable only from over there. The reset is meaningful only
+   * when immediately followed by a backfill, and the website is the only side
+   * that can perform one — offering the button here would let an operator empty
+   * the mirror with no way to refill it.
+   */
+  @Public()
+  @Post('reset')
+  @HttpCode(200)
+  async reset(@Req() request: FastifyRequest & { rawBody?: string; body: unknown }) {
+    return this.nbr.resetFromWebsite(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+    );
+  }
+
   @Get('sync-status')
   @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
   async status() {
@@ -377,6 +406,43 @@ class IntegrationsController {
  * application behind them. See the schema comment on `importedRecords` for why
  * they are kept apart.
  */
+/**
+ * The website's review actions, on a record.
+ *
+ * A second controller on the `records` base path rather than a method on
+ * `RecordsController`: this needs `LegacyPushService`, which the governance
+ * module owns, and having the applicants module reach in for it would make the
+ * two modules mutually dependent. The URLs read the same either way.
+ */
+@Controller('records')
+class LegacyActionsController {
+  constructor(private readonly legacyActions: LegacyActionsService) {}
+
+  /** Empty for a record created here — there is nothing on the website to decide. */
+  @Get(':id/legacy-actions')
+  @Can(MODULES.RECORDS, ACTIONS.VIEW)
+  async available(@Param('id') id: string): Promise<LegacyActionAvailability> {
+    return this.legacyActions.available(uuidSchema.parse(id));
+  }
+
+  /**
+   * Take a review decision on an application mirrored from the website.
+   *
+   * Applied on the website, which mails the applicant from its own templates —
+   * so approving here is byte-identical, to the applicant, to approving there.
+   * Awaited rather than detached: an operator who clicks Approve has to be told
+   * if the applicant was not in fact written to.
+   */
+  @Post(':id/legacy-action')
+  @Can(MODULES.RECORDS, ACTIONS.CHANGE_STATUS)
+  async run(
+    @Param('id') id: string,
+    @Body(zodBody(legacyApplicationActionSchema)) body: LegacyApplicationActionInput,
+  ) {
+    return this.legacyActions.run(uuidSchema.parse(id), body);
+  }
+}
+
 @Controller('imported-records')
 class ImportedRecordsController {
   constructor(private readonly imported: ImportedRecordsService) {}
@@ -463,6 +529,7 @@ class ImportedRecordsController {
     AuditController,
     SettingsController,
     IntegrationsController,
+    LegacyActionsController,
     ImportedRecordsController,
   ],
   providers: [
@@ -472,6 +539,7 @@ class ImportedRecordsController {
     NbrWebsiteService,
     LegacyLifecycleService,
     LegacyPushService,
+    LegacyActionsService,
     ImportedRecordsService,
   ],
   exports: [

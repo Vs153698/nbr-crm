@@ -73,9 +73,16 @@ describe('OpenAPI document', () => {
       .sort();
 
     // Anything new appearing here is an endpoint that ships unauthenticated.
-    // The two integration routes carry no session because they are
-    // server-to-server calls from the website; both verify an HMAC signature
+    // The three integration routes carry no session because they are
+    // server-to-server calls from the website; each verifies an HMAC signature
     // over the raw body before touching it, which is their authentication.
+    //
+    // `reset` is the one to think hardest about, because it is the only
+    // unauthenticated route that *removes* anything. It is acceptable here for
+    // two reasons: the signature gate is the same shared secret that already
+    // authorises pushing applications, so it grants no capability an attacker
+    // could not otherwise reach; and what it clears is bounded to
+    // website-sourced rows, soft-deleted, with append-only history preserved.
     expect(publicOps).toEqual([
       'get /health',
       'get /health/live',
@@ -85,6 +92,7 @@ describe('OpenAPI document', () => {
       'post /api/v1/auth/reset-password',
       'post /api/v1/integrations/nbr-website/applications',
       'post /api/v1/integrations/nbr-website/imported-certificates',
+      'post /api/v1/integrations/nbr-website/reset',
     ]);
   });
 

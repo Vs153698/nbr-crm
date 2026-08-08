@@ -131,6 +131,16 @@ export const legacyMirror = pgTable(
     /** Deep link into the legacy admin panel. */
     legacyUrl: varchar('legacy_url', { length: 1000 }),
 
+    /**
+     * The award this application is for — "Bharat Vibhushan" and the like.
+     *
+     * Held here rather than on `records` because it is the website's data: it
+     * owns the award catalogue, applications here are always for one of its
+     * awards, and a record created in the CRM has no award at all.
+     */
+    awardTitle: varchar('award_title', { length: 200 }),
+    awardCategory: varchar('award_category', { length: 150 }),
+
     certificateNumber: varchar('certificate_number', { length: 80 }),
     certificateUrl: varchar('certificate_url', { length: 1000 }),
     certificateRevoked: boolean('certificate_revoked').notNull().default(false),

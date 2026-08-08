@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   DELIVERY_STATUS,
+  isLegacyDecisionStage,
   LEGACY_STAGE_RANK,
   LEGACY_STAGE_TO_STATUS,
   PAYMENT_MODE,
   PAYMENT_STATUS,
+  RECORD_STATUS,
   TIMELINE_EVENT,
   toPaise,
   toRupees,
@@ -459,11 +461,24 @@ export class LegacyLifecycleService {
     const target = LEGACY_STAGE_TO_STATUS[stage];
     if (!target || target === currentStatus) return false;
 
-    // Only advance. A record an operator has already carried past this point in
-    // the CRM must not be pulled back by a snapshot that is merely older.
-    const currentRank = this.rankOf(currentStatus);
-    const targetRank = LEGACY_STAGE_RANK[stage];
-    if (currentRank !== null && targetRank <= currentRank) return false;
+    /**
+     * The "only advance" rule applies between two points on the ladder, and
+     * only there.
+     *
+     * A rejection or cancellation is a decision, not a step — it can be taken
+     * from anywhere, including after approval, and comparing ranks would
+     * silently discard it. Leaving one is equally deliberate: reopening a
+     * rejected application on the website puts it back into evaluation, which
+     * *is* a move backwards and must be allowed to land.
+     */
+    const decisionInvolved =
+      isLegacyDecisionStage(stage) || this.isDecisionStatus(currentStatus);
+
+    if (!decisionInvolved) {
+      const currentRank = this.rankOf(currentStatus);
+      const targetRank = LEGACY_STAGE_RANK[stage];
+      if (currentRank !== null && targetRank <= currentRank) return false;
+    }
 
     await tx
       .update(schema.records)
@@ -488,15 +503,26 @@ export class LegacyLifecycleService {
     return true;
   }
 
+  /** Statuses that represent a decision rather than a point on the ladder. */
+  private isDecisionStatus(status: RecordStatus): boolean {
+    return (
+      status === RECORD_STATUS.REJECTED ||
+      status === RECORD_STATUS.CLOSED ||
+      status === RECORD_STATUS.ON_HOLD
+    );
+  }
+
   /**
    * Rank a CRM status on the same scale as the legacy stages.
    *
-   * `null` for statuses off the mirrored path — Rejected, On Hold, Closed.
-   * Those are decisions taken here, and a website snapshot should not overrule
-   * them; returning `null` makes `applyStatus` leave them alone.
+   * `null` for statuses off the ladder entirely. `applyStatus` never consults
+   * this for a decision status — those are handled before the guard — so the
+   * only `null` cases left are statuses this system has that the website has no
+   * concept of, where there is nothing meaningful to compare.
    */
   private rankOf(status: RecordStatus): number | null {
     for (const [stage, mapped] of Object.entries(LEGACY_STAGE_TO_STATUS)) {
+      if (isLegacyDecisionStage(stage as LegacyStage)) continue;
       if (mapped === status) return LEGACY_STAGE_RANK[stage as LegacyStage];
     }
 
@@ -526,6 +552,11 @@ export class LegacyLifecycleService {
       legacyStatus: typeof extra.legacyStatus === 'string' ? extra.legacyStatus : null,
       legacyStage: payload.stage ?? null,
       legacyUrl: payload.externalUrl ?? null,
+      // Older website builds send the award only inside `extra`; read both so a
+      // deployment that has not shipped the promoted block still badges.
+      awardTitle:
+        payload.award?.title ?? (typeof extra.awardTitle === 'string' ? extra.awardTitle : null),
+      awardCategory: payload.award?.category ?? null,
       certificateNumber: payload.certificate?.certificateId ?? null,
       certificateUrl: payload.certificate?.verificationUrl ?? null,
       certificateRevoked: payload.certificate?.revoked ?? false,

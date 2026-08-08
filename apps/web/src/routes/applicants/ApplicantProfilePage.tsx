@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime, formatRelative, humanise, initials } from '@/lib/format';
-import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
+import { ICON_SIZE, ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AssignRecordDialog } from './components/AssignRecordDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
@@ -25,24 +25,60 @@ import { PaymentTab } from './components/PaymentTab';
 import { TasksTab } from './components/TasksTab';
 import { NotesTab } from './components/NotesTab';
 import { SmartActionPanel } from './components/SmartActionPanel';
+import { WebsiteReviewPanel } from './components/WebsiteReviewPanel';
+import { RecordBadges } from './components/RecordBadges';
+import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
+import { DetailGrid, EMPTY, orEmpty } from './components/DetailGrid';
+import { PipelineRail } from './components/PipelineRail';
 import { TimelineFeed } from './components/TimelineFeed';
+import type { RecordStatus } from '@nbr/shared';
 import type { ApplicantProfile, AttachmentItem, SmartActionPanel as PanelData } from './types';
 
-const TABS = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'application', label: 'Application' },
-  { value: 'achievement', label: 'Achievement' },
-  { value: 'evidence', label: 'Evidence' },
-  { value: 'payment', label: 'Payment' },
-  { value: 'certificate', label: 'Certificate' },
-  { value: 'publications', label: 'Publications' },
-  { value: 'dispatch', label: 'Dispatch' },
-  { value: 'timeline', label: 'Timeline' },
-  { value: 'notes', label: 'Notes' },
-  { value: 'tasks', label: 'Tasks' },
-  { value: 'communication', label: 'Communication' },
-  { value: 'attachments', label: 'Attachments' },
-] as const;
+/**
+ * The panels, grouped down a sidebar.
+ *
+ * Thirteen destinations was more than a horizontal strip could hold: the last
+ * few sat off the right edge behind a scroll nobody discovered, so Dispatch and
+ * Communication were effectively hidden. A sidebar shows all thirteen at once
+ * and has room for the grouping — what the application *is*, how it is being
+ * fulfilled, and what has happened to it — which is roughly how an operator
+ * thinks about a file anyway.
+ */
+const TAB_GROUPS: ReadonlyArray<{
+  label: string;
+  tabs: ReadonlyArray<{ value: string; label: string; icon: LucideIcon }>;
+}> = [
+  {
+    label: 'Application',
+    tabs: [
+      { value: 'overview', label: 'Overview', icon: Icons.LayoutDashboard },
+      { value: 'application', label: 'Application', icon: Icons.FileText },
+      { value: 'achievement', label: 'Achievement', icon: Icons.Award },
+      { value: 'evidence', label: 'Evidence', icon: Icons.Upload },
+    ],
+  },
+  {
+    label: 'Fulfilment',
+    tabs: [
+      { value: 'payment', label: 'Payment', icon: Icons.IndianRupee },
+      { value: 'certificate', label: 'Certificate', icon: Icons.ShieldCheck },
+      { value: 'publications', label: 'Publications', icon: Icons.Newspaper },
+      { value: 'dispatch', label: 'Dispatch', icon: Icons.Truck },
+    ],
+  },
+  {
+    label: 'Activity',
+    tabs: [
+      { value: 'timeline', label: 'Timeline', icon: Icons.History },
+      { value: 'notes', label: 'Notes', icon: Icons.StickyNote },
+      { value: 'tasks', label: 'Tasks', icon: Icons.ClipboardCheck },
+      { value: 'communication', label: 'Communication', icon: Icons.MessageCircle },
+      { value: 'attachments', label: 'Attachments', icon: Icons.FilePlus2 },
+    ],
+  },
+];
+
+const TABS = TAB_GROUPS.flatMap((group) => group.tabs);
 
 /**
  * W-06 / H-06 Applicant profile — the primary working screen (§4, §5).
@@ -255,33 +291,52 @@ export default function ApplicantProfilePage() {
       />
 
       {/* §19 blacklist banner — full width, above everything */}
-      {applicant.isBlacklisted && activeBlacklist ? (
+      {/* Shown only when the applicant actually is blacklisted — the flag alone
+          is enough, because a blacklist whose detail row failed to load is still
+          a blacklist and staying silent about it is the one wrong answer. */}
+      {applicant.isBlacklisted ? (
         <div className="mb-4 rounded-card border border-danger-ring bg-danger-tint p-4">
           <div className="flex gap-3">
             <Icons.Ban size={20} strokeWidth={2} className="mt-0.5 shrink-0 text-danger" />
             <div className="min-w-0">
               <p className="text-sm font-bold text-danger">
-                Blacklisted — {humanise(activeBlacklist.kind)}
+                Blacklisted{activeBlacklist ? ` — ${humanise(activeBlacklist.kind)}` : ''}
               </p>
-              <p className="mt-0.5 text-xs text-ink-2">
-                <span className="font-semibold">{humanise(activeBlacklist.reason)}</span> ·{' '}
-                {activeBlacklist.reasonDetail}
-              </p>
+              {activeBlacklist ? (
+                <p className="mt-0.5 text-xs text-ink-2">
+                  <span className="font-semibold">{humanise(activeBlacklist.reason)}</span> ·{' '}
+                  {activeBlacklist.reasonDetail}
+                </p>
+              ) : null}
               <p className="mt-1 text-[11px] text-ink-3">
-                Effective {formatDate(activeBlacklist.effectiveFrom)}
-                {activeBlacklist.effectiveUntil
-                  ? ` until ${formatDate(activeBlacklist.effectiveUntil)}`
-                  : ' · permanent'}
-                . New applications are blocked unless an Admin overrides.
+                {activeBlacklist
+                  ? `Effective ${formatDate(activeBlacklist.effectiveFrom)}${
+                      activeBlacklist.effectiveUntil
+                        ? ` until ${formatDate(activeBlacklist.effectiveUntil)}`
+                        : ' · permanent'
+                    }. `
+                  : ''}
+                New applications are blocked unless an Admin overrides.
               </p>
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        {/* ── Left: identity, status cards, tabs ─────────────────────────── */}
-        <div className="space-y-4 xl:col-span-2">
+      {/* `grid-cols-1` rather than relying on the implicit track: an implicit
+          column is `auto`-sized, meaning it grows to its widest child, so the
+          panel area stretched the column past the viewport and everything to
+          the right of it was clipped. Tailwind's `grid-cols-1` is
+          `minmax(0, 1fr)`, which is what actually holds the column to the
+          screen. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {/* ── Left: identity, status cards, panels ────────────────────────
+            `min-w-0` because a grid item, like a flex item, sizes to its
+            widest child by default — the panel sidebar would otherwise stretch
+            this column past the viewport and the overflow would be clipped
+            rather than scrollable, putting the right-hand half of every value
+            out of reach on a narrow screen. */}
+        <div className="min-w-0 space-y-4 xl:col-span-2">
           <Card>
             <div className="flex flex-wrap gap-4">
               <span className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-navy text-lg font-bold text-white">
@@ -293,6 +348,17 @@ export default function ApplicantProfilePage() {
                   <h2 className="text-lg font-bold tracking-tight text-ink">{applicant.fullName}</h2>
                   {activeRecord ? <StatusBadge status={activeRecord.status} /> : null}
                 </div>
+
+                {/* What the selected record is: one person or a group, and
+                    which award it was filed for. */}
+                {activeRecord ? (
+                  <div className="mt-2">
+                    <RecordBadges
+                      recordId={activeRecord.id}
+                      recordType={activeRecord.recordType}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2">
                   <span className="flex items-center gap-1">
@@ -328,56 +394,62 @@ export default function ApplicantProfilePage() {
             </div>
           </Card>
 
-          {/* Six status cards (§4) */}
-          {activeRecord ? (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-              <StatusCard label="Application" value={activeRecord.status} tone="info" />
-              <StatusCard label="Payment" value={activeRecord.paymentStatus} tone="warn" />
-              <StatusCard
-                label="Certificate"
-                value={activeRecord.hasCertificate ? 'Issued' : 'Not issued'}
-                tone={activeRecord.hasCertificate ? 'ok' : 'slate'}
-              />
-              <StatusCard
-                label="Publication"
-                value={activeRecord.hasPublication ? 'Published' : '—'}
-                tone={activeRecord.hasPublication ? 'purple' : 'slate'}
-              />
-              <StatusCard label="Dispatch" value={activeRecord.deliveryStatus} tone="info" />
-              <StatusCard
-                label="Blacklist"
-                value={applicant.isBlacklisted ? 'Blacklisted' : 'Clear'}
-                tone={applicant.isBlacklisted ? 'danger' : 'ok'}
-              />
-            </div>
-          ) : null}
-
-          {/* 13-tab layout — panels are lazily mounted, so only the visible
-              tab's data is fetched. */}
+          {/* Sidebar layout — panels are lazily mounted, so only the visible
+              one's data is fetched. Vertical orientation tells Radix to move
+              selection with Up/Down rather than Left/Right. */}
           <Card padded={false}>
-            <Tabs.Root value={activeTab} onValueChange={setTab}>
-              <Tabs.List className="scrollbar-slim flex gap-0.5 overflow-x-auto border-b border-line px-2">
-                {TABS.map((tab) => (
-                  <Tabs.Trigger
-                    key={tab.value}
-                    value={tab.value}
-                    className={cn(
-                      'shrink-0 whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-xs font-medium transition-colors',
-                      'text-ink-2 hover:text-ink',
-                      'data-[state=active]:border-brand data-[state=active]:text-brand',
-                    )}
-                  >
-                    {tab.label}
-                    {tab.value === 'evidence' && activeRecord?.evidenceCount ? (
-                      <span className="tabular ml-1 rounded bg-slate2-tint px-1 text-[9px] font-semibold text-ink-2">
-                        {activeRecord.evidenceCount}
-                      </span>
-                    ) : null}
-                  </Tabs.Trigger>
+            <Tabs.Root
+              value={activeTab}
+              onValueChange={setTab}
+              orientation="vertical"
+              // `min-w-0` on both the row and its children: a flex item defaults to
+              // min-width:auto, so the tab strip and the panel could each push the
+              // page wider than the viewport instead of scrolling inside themselves.
+              className="flex w-full min-w-0 flex-col sm:flex-row"
+            >
+              <Tabs.List
+                className={cn(
+                  'shrink-0 gap-0.5 border-line p-2',
+                  // On a phone the sidebar lies down and scrolls horizontally.
+                  // `w-full` plus a `min-w-0` parent is what actually confines
+                  // it — without a definite width `overflow-x-auto` has nothing
+                  // to overflow *against*, so the strip silently widened the
+                  // whole column and clipped every value on the right.
+                  'scrollbar-slim flex w-full min-w-0 overflow-x-auto border-b',
+                  'sm:w-48 sm:shrink-0 sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r',
+                )}
+              >
+                {TAB_GROUPS.map((group) => (
+                  <div key={group.label} className="contents sm:block">
+                    <p className="hidden px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-ink-4 first:pt-1 sm:block">
+                      {group.label}
+                    </p>
+
+                    {group.tabs.map((tab) => (
+                      <Tabs.Trigger
+                        key={tab.value}
+                        value={tab.value}
+                        className={cn(
+                          'flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-medium transition-colors',
+                          'text-ink-2 hover:bg-slate2-tint hover:text-ink',
+                          'data-[state=active]:bg-brand-tint data-[state=active]:font-semibold data-[state=active]:text-brand',
+                          'sm:w-full',
+                        )}
+                      >
+                        <tab.icon size={14} strokeWidth={ICON_STROKE} className="shrink-0" aria-hidden />
+                        <span className="flex-1 text-left">{tab.label}</span>
+                        {tab.value === 'evidence' && activeRecord?.evidenceCount ? (
+                          <span className="tabular rounded bg-slate2-tint px-1 text-[9px] font-semibold text-ink-2">
+                            {activeRecord.evidenceCount}
+                          </span>
+                        ) : null}
+                      </Tabs.Trigger>
+                    ))}
+                  </div>
                 ))}
               </Tabs.List>
 
-              <div className="p-4">
+              <div className="w-full min-w-0 flex-1 overflow-x-hidden p-4">
                 <Tabs.Content value="overview">
                   <OverviewTab data={data} activeRecordId={activeRecord?.id} />
                 </Tabs.Content>
@@ -514,6 +586,12 @@ export default function ApplicantProfilePage() {
 
         {/* ── Right: smart actions, identifiers, records, recent activity ── */}
         <div className="space-y-4">
+          {/* Renders nothing unless this record came from the public website
+              and still has a decision open over there. */}
+          {activeRecord ? (
+            <WebsiteReviewPanel recordId={activeRecord.id} applicantId={applicant.id} />
+          ) : null}
+
           {activeRecord ? (
             <SmartActionPanel
               recordId={activeRecord.id}
@@ -737,63 +815,111 @@ function OverviewTab({ data, activeRecordId }: { data: ApplicantProfile; activeR
   const { applicant } = data;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold text-ink">Applicant summary</h4>
-        <dl className="rounded-lg border border-line p-3">
-          <DetailRow label="Applicant ID" value={<span className="tabular">{applicant.applicantCode}</span>} />
-          <DetailRow label="Father's name" value={applicant.fatherName} />
-          <DetailRow label="Mother's name" value={applicant.motherName} />
-          <DetailRow label="Date of birth" value={formatDate(applicant.dateOfBirth)} />
-          <DetailRow label="Gender" value={humanise(applicant.gender ?? '')} />
-          <DetailRow label="Nationality" value={applicant.nationality} />
-          {applicant.isMinorAtIntake ? (
-            <DetailRow label="Minor at intake" value={<Chip tone="orange">Guardian consent on file</Chip>} />
-          ) : null}
-        </dl>
-      </div>
+    <div className="space-y-6">
+      {/* Where it has got to, in the website's own five steps. */}
+      {record ? (
+        <section>
+          <SectionHeading icon={Icons.TrendingUp} title="Progress" />
+          <PipelineRail status={record.status as RecordStatus} />
+        </section>
+      ) : null}
 
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold text-ink">Record summary</h4>
-        <dl className="rounded-lg border border-line p-3">
-          <DetailRow label="Record title" value={record?.recordTitle} />
-          <DetailRow label="Record ID" value={<span className="tabular">{record?.recordCode}</span>} />
-          <DetailRow label="Applied" value={formatDate(record?.applicationDate)} />
-          <DetailRow label="Source" value={humanise(record?.source ?? '')} />
-          <DetailRow label="Type" value={humanise(record?.recordType ?? '')} />
-          <DetailRow label="Evidence files" value={record?.evidenceCount ?? 0} />
-        </dl>
-      </div>
+      <section>
+        <SectionHeading icon={Icons.User} title="Applicant" />
+        <DetailGrid
+          columns={3}
+          fields={[
+            { icon: Icons.ScanBarcode, label: 'Applicant ID', value: applicant.applicantCode, mono: true },
+            { icon: Icons.User, label: "Father's name", value: orEmpty(applicant.fatherName) },
+            { icon: Icons.User, label: "Mother's name", value: orEmpty(applicant.motherName) },
+            { icon: Icons.CalendarClock, label: 'Date of birth', value: orEmpty(formatDate(applicant.dateOfBirth)) },
+            { icon: Icons.Info, label: 'Gender', value: orEmpty(humanise(applicant.gender ?? '')) },
+            { icon: Icons.Globe, label: 'Nationality', value: orEmpty(applicant.nationality) },
+            ...(applicant.isMinorAtIntake
+              ? [{
+                  icon: Icons.ShieldCheck,
+                  label: 'Minor at intake',
+                  value: <Chip tone="orange">Guardian consent on file</Chip>,
+                }]
+              : []),
+          ]}
+        />
+      </section>
 
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold text-ink">Contact</h4>
-        <dl className="rounded-lg border border-line p-3">
-          <DetailRow label="Mobile" value={applicant.mobile} />
-          <DetailRow label="WhatsApp" value={applicant.whatsapp ?? applicant.mobile} />
-          <DetailRow label="Email" value={<span className="break-all">{applicant.email}</span>} />
-          <DetailRow label="Address" value={applicant.addressLine} />
-          <DetailRow
-            label="City / State"
-            value={[applicant.city, applicant.state].filter(Boolean).join(', ') || '—'}
+      <section>
+        <SectionHeading icon={Icons.Phone} title="Contact" />
+        <DetailGrid
+          columns={3}
+          fields={[
+            { icon: Icons.Phone, label: 'Mobile', value: applicant.mobile, mono: true },
+            { icon: Icons.MessageCircle, label: 'WhatsApp', value: applicant.whatsapp ?? applicant.mobile, mono: true },
+            { icon: Icons.Mail, label: 'Email', value: orEmpty(applicant.email) },
+            { icon: Icons.Building2, label: 'Address', value: orEmpty(applicant.addressLine), wide: true },
+            {
+              icon: Icons.Globe,
+              label: 'City / State',
+              value: orEmpty([applicant.city, applicant.state].filter(Boolean).join(', ')),
+            },
+            { icon: Icons.ScanBarcode, label: 'PIN', value: orEmpty(applicant.pincode), mono: true },
+          ]}
+        />
+      </section>
+
+      {record ? (
+        <section>
+          <SectionHeading icon={Icons.Award} title="Record" />
+          <DetailGrid
+            columns={3}
+            fields={[
+              { icon: Icons.Award, label: 'Record title', value: record.recordTitle, wide: true },
+              { icon: Icons.ScanBarcode, label: 'Record ID', value: record.recordCode, mono: true },
+              { icon: Icons.CalendarClock, label: 'Applied', value: orEmpty(formatDate(record.applicationDate)) },
+              { icon: Icons.Globe, label: 'Source', value: orEmpty(humanise(record.source ?? '')) },
+              { icon: Icons.Users, label: 'Type', value: orEmpty(humanise(record.recordType ?? '')) },
+              { icon: Icons.Upload, label: 'Evidence files', value: String(record.evidenceCount ?? 0), mono: true },
+            ]}
           />
-          <DetailRow label="PIN" value={applicant.pincode} />
-        </dl>
-      </div>
+        </section>
+      ) : null}
 
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold text-ink">Fulfilment</h4>
-        <dl className="rounded-lg border border-line p-3">
-          <DetailRow label="Payment" value={humanise(record?.paymentStatus ?? '')} />
-          <DetailRow label="Certificate" value={record?.hasCertificate ? 'Issued' : 'Not issued'} />
-          <DetailRow label="Publication" value={record?.hasPublication ? 'Published' : '—'} />
-          <DetailRow label="Dispatch" value={humanise(record?.deliveryStatus ?? '')} />
-        </dl>
-      </div>
+      {record ? (
+        <section>
+          <SectionHeading icon={Icons.Truck} title="Fulfilment" />
+          <DetailGrid
+            columns={3}
+            fields={[
+              { icon: Icons.IndianRupee, label: 'Payment', value: orEmpty(humanise(record.paymentStatus ?? '')) },
+              {
+                icon: Icons.ShieldCheck,
+                label: 'Certificate',
+                value: record.hasCertificate ? 'Issued' : EMPTY,
+              },
+              {
+                icon: Icons.Newspaper,
+                label: 'Publication',
+                value: record.hasPublication ? 'Published' : EMPTY,
+              },
+              { icon: Icons.Truck, label: 'Dispatch', value: orEmpty(humanise(record.deliveryStatus ?? '')) },
+            ]}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }
 
+/** A titled band, matching how the website's applicant screen introduces each block. */
+function SectionHeading({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
+  return (
+    <h4 className="mb-3 flex items-center gap-2 border-b border-line pb-2 text-xs font-bold text-ink">
+      <Icon size={14} strokeWidth={ICON_STROKE} className="text-brand" aria-hidden />
+      {title}
+    </h4>
+  );
+}
+
 function AttachmentsTab({ applicantId }: { applicantId: string }) {
+  const [previewing, setPreviewing] = useState<AttachmentItem | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.attachments(applicantId),
     queryFn: ({ signal }) => api.get<AttachmentItem[]>('/attachments', { applicantId }, signal),
@@ -812,19 +938,39 @@ function AttachmentsTab({ applicantId }: { applicantId: string }) {
   }
 
   return (
-    <ul className="space-y-2">
-      {data?.map((file) => (
-        <li key={file.id} className="flex items-center gap-3 rounded-lg border border-line p-3">
-          <Icons.FileText size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0 text-ink-3" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-ink">{file.fileName}</p>
-            <p className="text-[10px] text-ink-3">
-              {humanise(file.kind)} · {file.uploadedByName} ·{' '}
-              {formatRelative(file.createdAt)}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <>
+      {previewing ? (
+        <FilePreviewSheet
+          downloadPath={`/attachments/${previewing.id}/download`}
+          fileName={previewing.fileName}
+          subtitle={humanise(previewing.kind)}
+          onClose={() => setPreviewing(null)}
+        />
+      ) : null}
+
+      <ul className="space-y-2">
+        {data?.map((file) => (
+          <li
+            key={file.id}
+            className="flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-ring"
+          >
+            <Icons.FileText size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0 text-ink-3" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium text-ink">{file.fileName}</p>
+              <p className="text-[10px] text-ink-3">
+                {humanise(file.kind)} · {file.uploadedByName} ·{' '}
+                {formatRelative(file.createdAt)}
+              </p>
+            </div>
+
+            {/* This list previously showed files with no way to open them at
+                all — the name was the whole affordance. */}
+            <Button size="sm" variant="ghost" icon={Icons.Eye} onClick={() => setPreviewing(file)}>
+              Preview
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

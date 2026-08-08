@@ -36,38 +36,87 @@ const BOOTSTRAP_SQL = [
 ] as const;
 
 /**
- * Migration runner.
+ * A fixed key for the advisory lock guarding a migration run.
  *
- * Deliberately a standalone script rather than something the API does on boot:
- * with PM2 running one process per CPU core, boot-time migrations would race,
- * and a failed migration would take the whole cluster down instead of failing
- * one deploy step.
+ * A literal string interpolated into the statement rather than a bound
+ * parameter: the driver has no bigint binding, and this value is a compile-time
+ * constant that never touches user input.
+ *
+ * Any 64-bit integer works so long as every caller agrees; this one is
+ * arbitrary and must never change. The lock is held for the life of the
+ * connection and released automatically if the process dies mid-run, so a
+ * crashed deploy cannot leave it stuck.
  */
-async function main(): Promise<void> {
-  const sql = createPool();
-  const db = createDatabase(sql);
+const MIGRATION_LOCK_KEY = '8147263905411';
 
+export interface MigrationOutcome {
+  readonly durationMs: number;
+}
+
+/**
+ * Apply any outstanding migrations, safely, from anywhere.
+ *
+ * This was a standalone script only, on the reasoning that PM2 runs one process
+ * per core so boot-time migrations would race. That reasoning was right, so it
+ * is addressed rather than ignored: the run holds a Postgres advisory lock, so
+ * the first worker to arrive migrates and the rest block until it finishes and
+ * then find nothing left to do — Drizzle's `drizzle_migrations` table makes the
+ * second pass a no-op.
+ *
+ * The lock is taken on its own single connection rather than from the shared
+ * pool, because an advisory lock's lifetime is its connection's and a pooled
+ * one could be handed to another query underneath it.
+ */
+export async function runMigrations(
+  log: (message: string) => void = console.log,
+): Promise<MigrationOutcome> {
+  // No statement timeout: the request-shaped 15s default would abort an index
+  // build or a backfill part-way, which is the worst outcome for a schema change.
+  const sql = createPool(undefined, { max: 1, statementTimeoutMs: 0 });
+  const db = createDatabase(sql);
   const started = Date.now();
 
   try {
-    console.log('▶ Ensuring extensions…');
-    for (const statement of BOOTSTRAP_SQL) {
-      await sql.unsafe(statement);
-    }
+    await sql.unsafe(`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`);
 
-    console.log('▶ Running migrations…');
-    await migrate(db, {
-      migrationsFolder: join(__dirname, 'migrations'),
-      migrationsTable: 'drizzle_migrations',
-    });
-    console.log(`✓ Migrations applied in ${Date.now() - started}ms`);
+    try {
+      for (const statement of BOOTSTRAP_SQL) {
+        await sql.unsafe(statement);
+      }
+
+      await migrate(db, {
+        migrationsFolder: join(__dirname, 'migrations'),
+        migrationsTable: 'drizzle_migrations',
+      });
+
+      const durationMs = Date.now() - started;
+      log(`Schema up to date (${durationMs}ms)`);
+      return { durationMs };
+    } finally {
+      await sql.unsafe(`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`);
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }
 }
 
-main().catch((error: unknown) => {
-  console.error('✗ Migration failed');
-  console.error(error);
-  process.exit(1);
-});
+/** The `db:migrate` entry point, so the command still works by hand. */
+async function main(): Promise<void> {
+  console.log('▶ Running migrations…');
+  const { durationMs } = await runMigrations();
+  console.log(`✓ Migrations applied in ${durationMs}ms`);
+}
+
+/**
+ * Only self-execute as a script.
+ *
+ * Imported by the API bootstrap, this module must not run anything on load —
+ * otherwise every boot would migrate twice, once on import and once when asked.
+ */
+if (process.argv[1]?.includes('migrate')) {
+  main().catch((error: unknown) => {
+    console.error('✗ Migration failed');
+    console.error(error);
+    process.exit(1);
+  });
+}

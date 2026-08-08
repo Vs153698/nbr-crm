@@ -45,6 +45,62 @@ export const EMPLOYEE_STATUS_META: Readonly<
   [EMPLOYEE_STATUS.EXITED]: { label: 'Exited', tone: 'slate' },
 };
 
+/**
+ * ── Onboarding documents ─────────────────────────────────────────────────────
+ *
+ * The joining file: what HR collects on day one and refers back to for years.
+ * A closed list rather than free text, because "PAN" / "Pan card" / "pancard"
+ * typed by three people is a folder nobody can search.
+ */
+export const EMPLOYEE_DOCUMENT_KIND = {
+  OFFER_LETTER: 'offer_letter',
+  APPOINTMENT_LETTER: 'appointment_letter',
+  ID_PROOF: 'id_proof',
+  ADDRESS_PROOF: 'address_proof',
+  PAN_CARD: 'pan_card',
+  EDUCATION: 'education',
+  EXPERIENCE: 'experience',
+  BANK_DETAILS: 'bank_details',
+  PHOTOGRAPH: 'photograph',
+  CONTRACT: 'contract',
+  POLICY_ACKNOWLEDGEMENT: 'policy_acknowledgement',
+  OTHER: 'other',
+} as const;
+
+export type EmployeeDocumentKind =
+  (typeof EMPLOYEE_DOCUMENT_KIND)[keyof typeof EMPLOYEE_DOCUMENT_KIND];
+
+export const EMPLOYEE_DOCUMENT_KIND_LABELS: Readonly<Record<EmployeeDocumentKind, string>> = {
+  [EMPLOYEE_DOCUMENT_KIND.OFFER_LETTER]: 'Offer letter',
+  [EMPLOYEE_DOCUMENT_KIND.APPOINTMENT_LETTER]: 'Appointment letter',
+  [EMPLOYEE_DOCUMENT_KIND.ID_PROOF]: 'ID proof',
+  [EMPLOYEE_DOCUMENT_KIND.ADDRESS_PROOF]: 'Address proof',
+  [EMPLOYEE_DOCUMENT_KIND.PAN_CARD]: 'PAN card',
+  [EMPLOYEE_DOCUMENT_KIND.EDUCATION]: 'Education certificate',
+  [EMPLOYEE_DOCUMENT_KIND.EXPERIENCE]: 'Experience letter',
+  [EMPLOYEE_DOCUMENT_KIND.BANK_DETAILS]: 'Bank details',
+  [EMPLOYEE_DOCUMENT_KIND.PHOTOGRAPH]: 'Photograph',
+  [EMPLOYEE_DOCUMENT_KIND.CONTRACT]: 'Contract',
+  [EMPLOYEE_DOCUMENT_KIND.POLICY_ACKNOWLEDGEMENT]: 'Policy acknowledgement',
+  [EMPLOYEE_DOCUMENT_KIND.OTHER]: 'Other',
+};
+
+/**
+ * Kinds carrying a government identifier. Flagged on upload so the file is
+ * badged in the directory and every download of one is written to the audit
+ * log — the same treatment an applicant's ID proof gets under DPDP §8(4).
+ */
+export const SENSITIVE_EMPLOYEE_DOCUMENT_KINDS: readonly EmployeeDocumentKind[] = [
+  EMPLOYEE_DOCUMENT_KIND.ID_PROOF,
+  EMPLOYEE_DOCUMENT_KIND.ADDRESS_PROOF,
+  EMPLOYEE_DOCUMENT_KIND.PAN_CARD,
+  EMPLOYEE_DOCUMENT_KIND.BANK_DETAILS,
+];
+
+export function isSensitiveEmployeeDocument(kind: string): boolean {
+  return SENSITIVE_EMPLOYEE_DOCUMENT_KINDS.includes(kind as EmployeeDocumentKind);
+}
+
 /** Editable from Settings later; seeded so the form has something to offer. */
 export const DEFAULT_DEPARTMENTS: readonly string[] = [
   'Sales',

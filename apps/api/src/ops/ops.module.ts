@@ -11,7 +11,9 @@ import {
   setFlagSchema,
   updateTaskSchema,
   upsertTemplateSchema,
+  selectionLetterSchema,
   uuidSchema,
+  type SelectionLetterInput,
   whatsappLinkSchema,
 } from '@nbr/shared';
 import { Can, RequireAnyPermission } from '../auth/auth.decorators';
@@ -83,6 +85,37 @@ class TasksController {
 @Controller('communications')
 class CommunicationsController {
   constructor(private readonly comms: CommunicationsService) {}
+
+  /**
+   * The selection letter's fields, prefilled from the record.
+   *
+   * Fetched before the composer opens so the operator edits facts rather than
+   * retyping a name and date of birth the CRM already holds — which is where
+   * transcription errors on a printed certificate come from.
+   */
+  @Get('selection-letter/:recordId')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async selectionLetterPrefill(@Param('recordId') recordId: string) {
+    return this.comms.selectionLetterPrefill(uuidSchema.parse(recordId));
+  }
+
+  /**
+   * Send the selection letter.
+   *
+   * Its structure is fixed and only the fields in the body are variable — the
+   * wording of the terms, the selectivity figure and the correction window are
+   * not an operator's decision on the day. The Achiever Pack PDF is attached
+   * unconditionally, because the letter tells the applicant to choose from it.
+   */
+  @Post('selection-letter/:recordId')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  @HttpCode(202)
+  async sendSelectionLetter(
+    @Param('recordId') recordId: string,
+    @Body(zodBody(selectionLetterSchema)) body: SelectionLetterInput,
+  ) {
+    return this.comms.sendSelectionLetter(uuidSchema.parse(recordId), body);
+  }
 
   /** §22 unified history. */
   @Get()

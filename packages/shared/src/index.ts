@@ -32,3 +32,4 @@ export * from './utils/money';
 export * from './utils/identity';
 export * from './utils/template';
 export * from './utils/email-layout';
+export * from './utils/selection-letter';

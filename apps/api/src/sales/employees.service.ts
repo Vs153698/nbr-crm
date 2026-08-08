@@ -116,7 +116,19 @@ export class EmployeesService {
       )
       .orderBy(asc(schema.employees.fullName));
 
-    return { ...employee, reportsToName, reports };
+    // The profile always renders the onboarding section; the count lets it show
+    // "3 documents" in the header without a second round trip for the list.
+    const [documents] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.employeeDocuments)
+      .where(
+        and(
+          eq(schema.employeeDocuments.employeeId, employeeId),
+          isNull(schema.employeeDocuments.deletedAt),
+        ),
+      );
+
+    return { ...employee, reportsToName, reports, documentCount: documents?.count ?? 0 };
   }
 
   async create(input: EmployeeInput): Promise<{ id: string; employeeCode: string }> {

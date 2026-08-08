@@ -23,7 +23,7 @@ const ImportedRecordsPage = lazy(() => import('@/routes/imported/ImportedRecords
 const ImportedRecordDetailPage = lazy(() => import('@/routes/imported/ImportedRecordDetailPage'));
 const SalesDashboardPage = lazy(() => import('@/routes/sales/SalesDashboardPage'));
 const LeadsPage = lazy(() => import('@/routes/sales/LeadsPage'));
-const EmployeesPage = lazy(() => import('@/routes/sales/EmployeesPage'));
+const EmployeesPage = lazy(() => import('@/routes/sales/employees/EmployeesPage'));
 
 // The five queues share one module chunk — they are the same component with
 // different props, so splitting them further would only add round-trips.

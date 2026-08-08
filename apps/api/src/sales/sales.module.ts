@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ACTIONS,
+  confirmEmployeeDocumentSchema,
   convertLeadSchema,
   createLeadSchema,
   employeeListQuerySchema,
@@ -19,17 +20,20 @@ import {
   leadListQuerySchema,
   logLeadCallSchema,
   MODULES,
+  presignEmployeeDocumentSchema,
   salesDashboardQuerySchema,
   updateEmployeeSchema,
   updateLeadSchema,
   uuidSchema,
   type CallOutcome,
+  type EmployeeDocumentKind,
   type EmployeeInput,
   type LeadStatus,
 } from '@nbr/shared';
 import { ApplicantsModule } from '../applicants/applicants.module';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
+import { EmployeeDocumentsService, type EmployeeDocumentItem } from './employee-documents.service';
 import { EmployeesService } from './employees.service';
 import { LeadsService } from './leads.service';
 import { SalesReportService } from './sales-report.service';
@@ -175,6 +179,86 @@ class EmployeesController {
 }
 
 /**
+ * The onboarding file.
+ *
+ * Nested under the employee rather than sitting beside the evidence vault: the
+ * permission that matters is `employees:*`, and scoping every lookup to the
+ * employee in the path means a document id cannot be read through somebody
+ * else's profile.
+ */
+@Controller('employees/:employeeId/documents')
+class EmployeeDocumentsController {
+  constructor(private readonly documents: EmployeeDocumentsService) {}
+
+  @Get()
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async list(@Param('employeeId') employeeId: string): Promise<EmployeeDocumentItem[]> {
+    return this.documents.list(uuidSchema.parse(employeeId));
+  }
+
+  /** Step 1 of an upload: the browser PUTs the bytes straight to storage. */
+  @Post('presign')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async presign(
+    @Param('employeeId') employeeId: string,
+    @Body(zodBody(presignEmployeeDocumentSchema))
+    body: { fileName: string; contentType: string; sizeBytes: number },
+  ) {
+    return this.documents.presign(uuidSchema.parse(employeeId), body);
+  }
+
+  /** Step 2: the browser reports the upload landed; we verify and record it. */
+  @Post()
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  @HttpCode(201)
+  async confirm(
+    @Param('employeeId') employeeId: string,
+    @Body(zodBody(confirmEmployeeDocumentSchema))
+    body: {
+      kind: EmployeeDocumentKind;
+      storageKey: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+      originalSizeBytes?: number;
+      checksumSha256?: string;
+      description?: string;
+    },
+  ): Promise<{ id: string }> {
+    return this.documents.confirm(uuidSchema.parse(employeeId), body);
+  }
+
+  /** `?mode=inline` renders the file in the preview panel instead of saving it. */
+  @Get(':documentId/download')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async download(
+    @Param('employeeId') employeeId: string,
+    @Param('documentId') documentId: string,
+    @Query('mode') mode?: string,
+  ) {
+    return this.documents.downloadUrl(
+      uuidSchema.parse(employeeId),
+      uuidSchema.parse(documentId),
+      mode === 'inline' ? 'inline' : 'attachment',
+    );
+  }
+
+  @Delete(':documentId')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async remove(
+    @Param('employeeId') employeeId: string,
+    @Param('documentId') documentId: string,
+    @Query('reason') reason?: string,
+  ) {
+    return this.documents.remove(
+      uuidSchema.parse(employeeId),
+      uuidSchema.parse(documentId),
+      reason,
+    );
+  }
+}
+
+/**
  * Outbound sales and the staff directory.
  *
  * One module because both are administrative surfaces that hang off `users`
@@ -186,8 +270,13 @@ class EmployeesController {
   // lead gets the same duplicate detection, consent ledger and timeline as a
   // walk-in rather than a second, divergent code path.
   imports: [ApplicantsModule],
-  controllers: [LeadsController, SalesDashboardController, EmployeesController],
-  providers: [LeadsService, EmployeesService, SalesReportService],
+  controllers: [
+    LeadsController,
+    SalesDashboardController,
+    EmployeesController,
+    EmployeeDocumentsController,
+  ],
+  providers: [LeadsService, EmployeesService, EmployeeDocumentsService, SalesReportService],
   exports: [LeadsService, EmployeesService, SalesReportService],
 })
 export class SalesModule {}
