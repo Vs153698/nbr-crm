@@ -77,8 +77,8 @@ const SIGNATURE_FAILURE_HINT: Readonly<Record<string, string>> = {
  * title simply ended oddly.
  */
 const TRUNCATE_TO_FIT: ReadonlyArray<{ path: readonly string[]; max: number }> = [
-  { path: ['achievement', 'recordTitle'], max: 1000 },
-  { path: ['certificate', 'recordTitle'], max: 1000 },
+  { path: ['achievement', 'recordTitle'], max: 1400 },
+  { path: ['certificate', 'recordTitle'], max: 1400 },
   { path: ['achievement', 'location'], max: 250 },
   { path: ['applicant', 'fullName'], max: 150 },
 ];

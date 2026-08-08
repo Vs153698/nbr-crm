@@ -31,7 +31,7 @@ const cap = (limit: number) => z.string().trim().transform((value) => value.slic
 const legacyImportedCertificateSchema = z.object({
   certificateNumber: cap(120).pipe(z.string().min(1)),
   holderName: cap(200).pipe(z.string().min(1)),
-  recordTitle: cap(1000).pipe(z.string().min(1)),
+  recordTitle: cap(1400).pipe(z.string().min(1)),
   category: cap(150).nullish().default(null),
   issuedAt: z.string().datetime({ offset: true }),
   revoked: z.boolean().default(false),

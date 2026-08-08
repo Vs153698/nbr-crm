@@ -149,7 +149,7 @@ export const achievements = pgTable(
     recordId: uuid('record_id')
       .notNull()
       .references(() => records.id, { onDelete: 'cascade' }),
-    recordTitle: varchar('record_title', { length: 1000 }).notNull(),
+    recordTitle: varchar('record_title', { length: 1400 }).notNull(),
     categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'restrict' }),
     recordType: varchar('record_type', { length: 20 }).notNull().default('individual'),
     description: text('description'),

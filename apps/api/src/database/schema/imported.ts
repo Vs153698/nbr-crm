@@ -48,7 +48,7 @@ export const importedRecords = pgTable(
     certificateNumber: varchar('certificate_number', { length: 120 }).notNull(),
 
     holderName: varchar('holder_name', { length: 200 }).notNull(),
-    recordTitle: varchar('record_title', { length: 1000 }).notNull(),
+    recordTitle: varchar('record_title', { length: 1400 }).notNull(),
     category: varchar('category', { length: 150 }),
     issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
 
