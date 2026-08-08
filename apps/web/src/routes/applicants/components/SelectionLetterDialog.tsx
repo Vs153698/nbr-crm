@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -61,16 +61,22 @@ export function SelectionLetterDialog({
 
   const { data, isLoading } = useQuery({
     queryKey: ['communications', recordId, 'selection-letter'],
-    queryFn: async ({ signal }) => {
-      const prefill = await api.get<Prefill>(
-        `/communications/selection-letter/${recordId}`,
-        undefined,
-        signal,
-      );
-      setFields(prefill.fields);
-      return prefill;
-    },
+    queryFn: ({ signal }) =>
+      api.get<Prefill>(`/communications/selection-letter/${recordId}`, undefined, signal),
   });
+
+  /**
+   * Seed the form from whatever the query has, once.
+   *
+   * Deliberately an effect on the *data* rather than work done inside
+   * `queryFn`: a cached read never calls `queryFn`, so seeding there left the
+   * form stuck on its skeleton for anyone who had opened this dialog before —
+   * an empty grey box with a Send button under it.
+   */
+  useEffect(() => {
+    if (fields || !data) return;
+    setFields(data.fields);
+  }, [data, fields]);
 
   const send = useMutation({
     mutationFn: () =>

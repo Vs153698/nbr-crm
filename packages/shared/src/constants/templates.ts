@@ -28,8 +28,18 @@ export const TEMPLATE_CODE = {
 export type TemplateCode = (typeof TEMPLATE_CODE)[keyof typeof TEMPLATE_CODE];
 
 /** §7 lists 7 email templates; §8 lists 6 WhatsApp templates (no rejection). */
+/**
+ * Templates the generic email composer offers.
+ *
+ * `SELECTION` is deliberately absent. The selection letter has a fixed structure
+ * with its own composer — it asks whether the award is a record or an
+ * appreciation, prefills the approved title and description, and attaches the
+ * Achiever Pack unconditionally. Leaving the old free-form version in this list
+ * meant two ways to send the same letter, one of which produced neither the
+ * right wording nor the attachment. The template row still exists so historical
+ * sends resolve their code.
+ */
 export const EMAIL_TEMPLATE_CODES: readonly TemplateCode[] = [
-  TEMPLATE_CODE.SELECTION,
   TEMPLATE_CODE.REJECTION,
   TEMPLATE_CODE.PAYMENT_REMINDER,
   TEMPLATE_CODE.PAYMENT_CONFIRMATION,

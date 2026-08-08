@@ -385,6 +385,31 @@ export class VaultService {
 
     if (!file) throw new NotFoundError('File');
 
+    /**
+     * Attachments get the same treatment as evidence.
+     *
+     * This table carries an `isSensitive` column and nothing consulted it: an
+     * attachment flagged sensitive could be downloaded by anyone with
+     * `evidence:view`, with no permission check and no entry in the PII access
+     * log — while the identical file filed as evidence was gated and logged.
+     * The claim that opening an identity document is recorded was therefore
+     * true of one path and not the other.
+     */
+    const actor = requireActor();
+
+    if (file.isSensitive && !actor.isSuperAdmin && !actor.permissions.has('pii:reveal')) {
+      throw new ForbiddenError('You do not have permission to open identity documents.');
+    }
+
+    if (file.isSensitive) {
+      await this.audit.recordPiiAccess({
+        applicantId: file.applicantId,
+        field: file.kind,
+        accessType: 'download',
+        reason: `Opened ${file.fileName}`,
+      });
+    }
+
     const url = await this.storage.presignDownload(file.storageKey, file.fileName, mode);
     return { url, fileName: file.fileName, contentType: file.contentType };
   }

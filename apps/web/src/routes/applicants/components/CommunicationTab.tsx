@@ -322,7 +322,7 @@ function SendEmailDialog({
   onSent: () => void;
 }) {
   const [templateCode, setTemplateCode] = useState<string>(
-    initialTemplateCode ?? EMAIL_TEMPLATE_CODES[0] ?? 'selection',
+    initialTemplateCode ?? EMAIL_TEMPLATE_CODES[0] ?? 'congratulations',
   );
   const [edited, setEdited] = useState(false);
   const [subject, setSubject] = useState('');

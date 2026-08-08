@@ -51,6 +51,16 @@ const PAYMENT_TONE: Record<string, string> = {
  * view shareable, survivable across a refresh, and reachable from a dashboard
  * stat card — `/applicants?status=payment_pending` is a real destination.
  */
+/** Lifecycle stages, in the order a record passes through them. */
+const STAGE_GROUPS: ReadonlyArray<{ stage: string; label: string }> = [
+  { stage: 'intake', label: 'Intake' },
+  { stage: 'verification', label: 'Review' },
+  { stage: 'decision', label: 'Decision' },
+  { stage: 'payment', label: 'Payment' },
+  { stage: 'fulfilment', label: 'Fulfilment' },
+  { stage: 'closed', label: 'Closed' },
+];
+
 export default function ApplicantListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -107,6 +117,27 @@ export default function ApplicantListPage() {
     },
     [searchParams, setSearchParams],
   );
+
+  /**
+   * Select or clear a whole stage at once.
+   *
+   * "Show me everything in fulfilment" is a question operators actually ask, and
+   * answering it by clicking four chips is the kind of friction that makes a
+   * filter go unused.
+   */
+  function toggleStage(codes: readonly string[]) {
+    updateParams((params) => {
+      const current = params.getAll('status');
+      const allSelected = codes.every((code) => current.includes(code));
+      params.delete('status');
+
+      const next = allSelected
+        ? current.filter((code) => !codes.includes(code))
+        : [...new Set([...current, ...codes])];
+
+      for (const value of next) params.append('status', value);
+    });
+  }
 
   function toggleStatus(status: string) {
     updateParams((params) => {
@@ -271,26 +302,59 @@ export default function ApplicantListPage() {
           ) : null}
         </div>
 
-        {/* Status filter chips — the plan's filter row, kept visible rather than
-            hidden behind a dropdown because status is the filter staff use most. */}
-        <div className="scrollbar-slim flex gap-1.5 overflow-x-auto border-b border-line px-3 py-2">
-          {ORDERED_STATUSES.map((status) => {
-            const active = statusFilter.includes(status.code);
+        {/*
+          Status filters, grouped by lifecycle stage.
+          
+          Previously all seventeen sat in one horizontally scrolling row, so the
+          later ones — Dispatched, Delivered, Completed, Closed — were off the
+          right edge behind a scrollbar nobody discovered. Grouping wraps them
+          onto a few lines, all visible at once, and the stage labels say what
+          the group *means* rather than leaving an operator to infer it from
+          seventeen adjacent words.
+        */}
+        <div className="space-y-2 border-b border-line px-3 py-2.5">
+          {STAGE_GROUPS.map((group) => {
+            const statuses = ORDERED_STATUSES.filter((status) => status.stage === group.stage);
+            if (statuses.length === 0) return null;
+
+            const activeInGroup = statuses.filter((status) =>
+              statusFilter.includes(status.code),
+            ).length;
+
             return (
-              <button
-                key={status.code}
-                type="button"
-                onClick={() => toggleStatus(status.code)}
-                aria-pressed={active}
-                className={cn(
-                  'shrink-0 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
-                  active
-                    ? 'border-brand bg-brand text-white'
-                    : 'border-line bg-white text-ink-2 hover:border-ink-4/60 hover:bg-canvas',
-                )}
-              >
-                {status.label}
-              </button>
+              <div key={group.stage} className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleStage(statuses.map((status) => status.code))}
+                  className={cn(
+                    'w-[86px] shrink-0 text-left text-[10px] font-bold uppercase tracking-wider transition-colors',
+                    activeInGroup > 0 ? 'text-brand' : 'text-ink-4 hover:text-ink-2',
+                  )}
+                  title={`Select every ${group.label.toLowerCase()} status`}
+                >
+                  {group.label}
+                </button>
+
+                {statuses.map((status) => {
+                  const active = statusFilter.includes(status.code);
+                  return (
+                    <button
+                      key={status.code}
+                      type="button"
+                      onClick={() => toggleStatus(status.code)}
+                      aria-pressed={active}
+                      className={cn(
+                        'shrink-0 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+                        active
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-line bg-white text-ink-2 hover:border-ink-4/60 hover:bg-canvas',
+                      )}
+                    >
+                      {status.label}
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
