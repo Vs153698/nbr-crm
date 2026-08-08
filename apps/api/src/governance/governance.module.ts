@@ -339,6 +339,21 @@ class IntegrationsController {
     );
   }
 
+  /**
+   * The application ids this CRM holds, for the website's sync planner.
+   *
+   * `@Public()` like the other connector routes — a signed server-to-server
+   * call. Read-only, and returns nothing but opaque ids.
+   */
+  @Public()
+  @Get('known-ids')
+  async knownIds(@Req() request: FastifyRequest & { rawBody?: string }) {
+    return this.nbr.knownIdsForWebsite(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+    );
+  }
+
   @Get('sync-status')
   @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
   async status() {

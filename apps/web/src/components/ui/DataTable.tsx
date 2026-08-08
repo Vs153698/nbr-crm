@@ -15,6 +15,17 @@ export interface Column<T> {
   /** Sortable columns must match the API's allow-list of indexed columns. */
   sortable?: boolean;
   width?: string;
+  /**
+   * Hard ceiling on the cell's width.
+   *
+   * `truncate` inside a `td` does nothing on its own: an auto-layout table sizes
+   * each column to its widest unbroken content, so the cell grows to fit the
+   * text instead of the text being clipped to fit the cell. There is nothing for
+   * `overflow: hidden` to hide. Setting `max-width` on the cell itself gives the
+   * inner element a boundary to ellipsize against, and pushes the surplus width
+   * back to the columns that were being squeezed off the right edge.
+   */
+  maxWidth?: string;
   align?: 'left' | 'right' | 'center';
   render: (row: T) => ReactNode;
   /** Hidden below this breakpoint — the list stays usable on a tablet. */
@@ -143,6 +154,7 @@ export function DataTable<T>({
                   {columns.map((column) => (
                     <td
                       key={column.key}
+                      style={column.maxWidth ? { maxWidth: column.maxWidth } : undefined}
                       className={cn(
                         'px-4 py-2.5 align-middle',
                         column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',

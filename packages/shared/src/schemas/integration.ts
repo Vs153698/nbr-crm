@@ -312,12 +312,19 @@ export const nbrWebhookApplicationSchema = z.object({
   }),
 
   achievement: z.object({
-    recordTitle: trimmedString(1400),
+    /**
+     * No length cap, deliberately.
+     *
+     * A cap here rejects the whole snapshot over the tail of a display string,
+     * and the truncation that used to compensate silently altered a title that
+     * gets printed on a certificate. The column behind it is unbounded.
+     */
+    recordTitle: z.string().trim().min(1),
     /** Free text from the legacy system; mapped to a category by name, falling
      *  back to "Other" and flagging the record for review. */
     category: optionalTrimmedString(150),
     recordType: z.nativeEnum(RECORD_TYPE).default(RECORD_TYPE.INDIVIDUAL),
-    description: optionalTrimmedString(5000),
+    description: z.string().trim().optional(),
     achievementDate: z.coerce.date().optional(),
     location: optionalTrimmedString(250),
     participantCount: z.coerce.number().int().min(1).default(1),
@@ -395,7 +402,7 @@ export const nbrWebhookApplicationSchema = z.object({
     .object({
       certificateId: trimmedString(80),
       holderName: optionalTrimmedString(150),
-      recordTitle: optionalTrimmedString(1400),
+      recordTitle: z.string().trim().optional(),
       category: optionalTrimmedString(120),
       issuedAt: z.coerce.date().optional(),
       revoked: z.boolean().default(false),

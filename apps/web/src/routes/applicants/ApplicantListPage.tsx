@@ -69,6 +69,11 @@ export default function ApplicantListPage() {
   const [searchInput, setSearchInput] = useState(searchParams.get('q') ?? '');
   const debouncedSearch = useDebounce(searchInput, 300);
 
+  // Which stage's statuses are open, if any. Deliberately component state
+  // rather than a URL param: it is a disclosure, not a filter, and a shared
+  // link should reproduce the results, not which drawer happened to be open.
+  const [openStage, setOpenStage] = useState<string | null>(null);
+
   // Cursor history so "previous" works without re-querying from the start.
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -166,6 +171,7 @@ export default function ApplicantListPage() {
       key: 'name',
       header: 'Applicant',
       sortable: true,
+      maxWidth: '220px',
       render: (row) => (
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -192,9 +198,17 @@ export default function ApplicantListPage() {
       key: 'recordTitle',
       header: 'Record title',
       hideBelow: 'md',
+      // Record titles run from one word to a full sentence — "Proposed Record
+      // Title: Most Versatile Multi-Category Youth Achiever (65+ Certifications)"
+      // is real data. Left to size itself the column took whatever it needed and
+      // pushed Status, Payment and Dispatch off the right edge. Capped, the long
+      // ones ellipsize and the full text is one hover (or one click through) away.
+      maxWidth: '320px',
       render: (row) => (
         <div className="min-w-0">
-          <p className="truncate text-ink-2">{row.recordTitle ?? '—'}</p>
+          <p className="truncate text-ink-2" title={row.recordTitle ?? undefined}>
+            {row.recordTitle ?? '—'}
+          </p>
           <p className="tabular text-[10px] text-ink-3">
             {row.recordCode}
             {row.categoryName ? ` · ${row.categoryName}` : ''}
@@ -303,60 +317,99 @@ export default function ApplicantListPage() {
         </div>
 
         {/*
-          Status filters, grouped by lifecycle stage.
-          
-          Previously all seventeen sat in one horizontally scrolling row, so the
-          later ones — Dispatched, Delivered, Completed, Closed — were off the
-          right edge behind a scrollbar nobody discovered. Grouping wraps them
-          onto a few lines, all visible at once, and the stage labels say what
-          the group *means* rather than leaving an operator to infer it from
-          seventeen adjacent words.
+          Status filters as one stage bar that opens a single drawer.
+
+          The first attempt laid all seventeen statuses out at once in six
+          labelled rows. Everything was visible, but it cost roughly four
+          hundred pixels above the table — on a laptop the first record sat
+          below the fold, so the common case (glance at the list) paid the full price
+          of the rare case (build a precise filter). One row of stage chips is
+          the summary; the statuses inside a stage appear only when that stage
+          is opened, and close again on the next click.
         */}
-        <div className="space-y-2 border-b border-line px-3 py-2.5">
-          {STAGE_GROUPS.map((group) => {
-            const statuses = ORDERED_STATUSES.filter((status) => status.stage === group.stage);
-            if (statuses.length === 0) return null;
+        <div className="border-b border-line px-3 py-2">
+          <div className="scrollbar-slim flex items-center gap-1.5 overflow-x-auto">
+            {STAGE_GROUPS.map((group) => {
+              const statuses = ORDERED_STATUSES.filter((status) => status.stage === group.stage);
+              if (statuses.length === 0) return null;
 
-            const activeInGroup = statuses.filter((status) =>
-              statusFilter.includes(status.code),
-            ).length;
+              const activeInGroup = statuses.filter((status) =>
+                statusFilter.includes(status.code),
+              ).length;
+              const isOpen = openStage === group.stage;
 
-            return (
-              <div key={group.stage} className="flex flex-wrap items-center gap-1.5">
+              return (
                 <button
+                  key={group.stage}
                   type="button"
-                  onClick={() => toggleStage(statuses.map((status) => status.code))}
+                  onClick={() => setOpenStage(isOpen ? null : group.stage)}
+                  aria-expanded={isOpen}
                   className={cn(
-                    'w-[86px] shrink-0 text-left text-[10px] font-bold uppercase tracking-wider transition-colors',
-                    activeInGroup > 0 ? 'text-brand' : 'text-ink-4 hover:text-ink-2',
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    isOpen
+                      ? 'border-ink-4/70 bg-canvas text-ink'
+                      : activeInGroup > 0
+                        ? 'border-brand/40 bg-brand-tint text-brand'
+                        : 'border-line bg-white text-ink-2 hover:border-ink-4/60 hover:bg-canvas',
                   )}
-                  title={`Select every ${group.label.toLowerCase()} status`}
                 >
                   {group.label}
+                  {activeInGroup > 0 ? (
+                    <span className="tabular rounded-full bg-brand px-1.5 text-[10px] font-semibold leading-4 text-white">
+                      {activeInGroup}
+                    </span>
+                  ) : null}
+                  <Icons.ChevronDown
+                    size={12}
+                    strokeWidth={2.2}
+                    className={cn('transition-transform', isOpen && 'rotate-180')}
+                  />
                 </button>
+              );
+            })}
+          </div>
 
-                {statuses.map((status) => {
-                  const active = statusFilter.includes(status.code);
-                  return (
+          {openStage ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line/70 pt-2">
+              {(() => {
+                const statuses = ORDERED_STATUSES.filter((status) => status.stage === openStage);
+                const codes = statuses.map((status) => status.code);
+                const allSelected = codes.every((code) => statusFilter.includes(code));
+
+                return (
+                  <>
                     <button
-                      key={status.code}
                       type="button"
-                      onClick={() => toggleStatus(status.code)}
-                      aria-pressed={active}
-                      className={cn(
-                        'shrink-0 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
-                        active
-                          ? 'border-brand bg-brand text-white'
-                          : 'border-line bg-white text-ink-2 hover:border-ink-4/60 hover:bg-canvas',
-                      )}
+                      onClick={() => toggleStage(codes)}
+                      className="shrink-0 text-2xs font-semibold uppercase tracking-wider text-ink-3 transition-colors hover:text-brand"
                     >
-                      {status.label}
+                      {allSelected ? 'Clear all' : 'Select all'}
                     </button>
-                  );
-                })}
-              </div>
-            );
-          })}
+
+                    {statuses.map((status) => {
+                      const active = statusFilter.includes(status.code);
+                      return (
+                        <button
+                          key={status.code}
+                          type="button"
+                          onClick={() => toggleStatus(status.code)}
+                          aria-pressed={active}
+                          className={cn(
+                            'shrink-0 rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors',
+                            active
+                              ? 'border-brand bg-brand text-white'
+                              : 'border-line bg-white text-ink-2 hover:border-ink-4/60 hover:bg-canvas',
+                          )}
+                        >
+                          {status.label}
+                        </button>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+            </div>
+          ) : null}
         </div>
 
         <DataTable

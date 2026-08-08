@@ -1,0 +1,1 @@
+ALTER TABLE "achievements" ALTER COLUMN "record_title" SET DATA TYPE text;

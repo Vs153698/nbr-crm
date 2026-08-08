@@ -1977,6 +1977,27 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'than being public — a fingerprint served anonymously would let a weak secret be ' +
       'attacked offline.',
   },
+  'IntegrationsController.knownIds': {
+    tag: 'Integration',
+    summary: 'Applications this CRM holds',
+    description:
+      'Every website application id currently mirrored here, so the website can work out ' +
+      'what it still needs to send.',
+    response: {
+      type: 'object',
+      properties: {
+        externalIds: arrayOf({ type: 'string' }),
+        count: { type: 'integer' },
+      },
+    },
+    notes:
+      'The website used to decide what to sync from its own outbound log — what it ' +
+      'believed it had sent — which drifts from what this CRM actually holds the moment ' +
+      'anything is deleted here or restored from an older backup. This is the ' +
+      'authoritative answer. Signed with the shared webhook secret rather than a session, ' +
+      'because the caller is the website, not a user; soft-deleted records are excluded, ' +
+      'so a record removed here is offered for resend.',
+  },
   'IntegrationsController.pushStatus': {
     tag: 'Integration',
     summary: 'Outbound push status',

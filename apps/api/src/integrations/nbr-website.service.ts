@@ -77,8 +77,9 @@ const SIGNATURE_FAILURE_HINT: Readonly<Record<string, string>> = {
  * title simply ended oddly.
  */
 const TRUNCATE_TO_FIT: ReadonlyArray<{ path: readonly string[]; max: number }> = [
-  { path: ['achievement', 'recordTitle'], max: 1400 },
-  { path: ['certificate', 'recordTitle'], max: 1400 },
+  // Record titles and descriptions are no longer here: both columns are now
+  // unbounded TEXT, so trimming them would corrupt a title that is printed on a
+  // certificate in order to fit a limit that no longer exists.
   { path: ['achievement', 'location'], max: 250 },
   { path: ['applicant', 'fullName'], max: 150 },
 ];
@@ -1055,6 +1056,49 @@ export class NbrWebsiteService {
     await this.cache.invalidateTags(CacheTag.applicantList(), CacheTag.dashboard());
 
     return result;
+  }
+
+  /**
+   * Every website application id this CRM currently holds.
+   *
+   * The website used to decide what still needed syncing from its own outbound
+   * log — "have I ever pushed this successfully?" — which records its past
+   * intentions, not this system's present contents. The two diverge the moment
+   * anything happens here: a reset, a deleted record, an import that failed
+   * after the push was logged as sent. The website would then report nothing
+   * outstanding while the CRM sat empty.
+   *
+   * Answering from the mirror makes "what is missing?" a question about reality.
+   * Ids only — the caller needs set membership and nothing else.
+   */
+  async knownIdsForWebsite(
+    rawBody: string,
+    signatureHeader: string | undefined,
+  ): Promise<{ externalIds: string[]; count: number }> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody: rawBody || '{}',
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (!verification.valid) {
+      throw new UnauthorisedError(
+        'WEBHOOK_SIGNATURE_INVALID',
+        `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
+      );
+    }
+
+    const rows = await this.db
+      .select({ externalId: schema.legacyMirror.externalId })
+      .from(schema.legacyMirror)
+      .innerJoin(schema.records, eq(schema.records.id, schema.legacyMirror.recordId))
+      // A soft-deleted record is not held in any useful sense, so it should come
+      // back on the next sync rather than being reported as present.
+      .where(isNull(schema.records.deletedAt));
+
+    const externalIds = rows.map((row) => row.externalId);
+    return { externalIds, count: externalIds.length };
   }
 
   /** Replay a failed import after the underlying problem is fixed. */

@@ -82,6 +82,7 @@ export default function ImportedRecordsPage() {
     {
       key: 'holder',
       header: 'Holder',
+      maxWidth: '220px',
       render: (row) => (
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -103,9 +104,15 @@ export default function ImportedRecordsPage() {
       key: 'recordTitle',
       header: 'Record title',
       hideBelow: 'md',
+      // Capped for the same reason as the applicant list: an uncapped title
+      // column sizes itself to the longest record in the page and squeezes
+      // everything after it. See `Column.maxWidth`.
+      maxWidth: '320px',
       render: (row) => (
         <div className="min-w-0">
-          <p className="truncate text-ink-2">{row.recordTitle}</p>
+          <p className="truncate text-ink-2" title={row.recordTitle}>
+            {row.recordTitle}
+          </p>
           {row.category ? <p className="text-[10px] text-ink-3">{row.category}</p> : null}
         </div>
       ),

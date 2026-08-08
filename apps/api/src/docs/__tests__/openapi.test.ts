@@ -84,6 +84,10 @@ describe('OpenAPI document', () => {
     // could not otherwise reach; and what it clears is bounded to
     // website-sourced rows, soft-deleted, with append-only history preserved.
     expect(publicOps).toEqual([
+      // The website reads this to work out what it still owes us. It is signed
+      // with the same shared secret as the pushes and discloses only opaque
+      // ids the caller already generated.
+      'get /api/v1/integrations/nbr-website/known-ids',
       'get /health',
       'get /health/live',
       'post /api/v1/auth/forgot-password',

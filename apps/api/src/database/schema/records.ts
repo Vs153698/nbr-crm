@@ -149,7 +149,17 @@ export const achievements = pgTable(
     recordId: uuid('record_id')
       .notNull()
       .references(() => records.id, { onDelete: 'cascade' }),
-    recordTitle: varchar('record_title', { length: 1400 }).notNull(),
+    /**
+     * Unbounded, like the website's own column.
+     *
+     * This was varchar(1400) and had been widened twice already, each time
+     * after a real title was rejected. A record title is prose written by an
+     * applicant and there is no length at which the next one stops being
+     * valid — every cap is a future sync failure waiting for a long enough
+     * achievement. Postgres stores text and varchar identically, so the limit
+     * bought nothing.
+     */
+    recordTitle: text('record_title').notNull(),
     categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'restrict' }),
     recordType: varchar('record_type', { length: 20 }).notNull().default('individual'),
     description: text('description'),
