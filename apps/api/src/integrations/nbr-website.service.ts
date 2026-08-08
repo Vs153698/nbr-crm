@@ -10,6 +10,8 @@ import { createHash, createHmac } from 'node:crypto';
 const SECRET_FINGERPRINT_LABEL = 'nbr-crm:secret-fingerprint:v1';
 import {
   APPLICATION_SOURCE,
+  LEGACY_STAGE_TO_STATUS,
+  type LegacyStage,
   ageInYears,
   CHILD_AGE_THRESHOLD_YEARS,
   CONSENT_NOTICE_VERSION,
@@ -466,9 +468,18 @@ export class NbrWebsiteService {
         .values({
           recordCode,
           applicantId,
-          // Approved on the website, so it arrives ready for verification
-          // rather than as a cold lead.
-          status: RECORD_STATUS.APPLICATION_SUBMITTED,
+          /**
+           * The stage the website says it is at, not a fixed value.
+           *
+           * This was hardcoded to Application Submitted, from when only
+           * approved applications were mirrored and every import genuinely was
+           * one. Now that an application syncs from the moment it is filed, a
+           * hardcoded status made a draft and a dispatched record arrive
+           * looking identical — and the correction only ever came on a *later*
+           * push, because the stage mapping runs on the update path. Anything
+           * that synced once and never changed again stayed wrong forever.
+           */
+          status: LEGACY_STAGE_TO_STATUS[payload.stage as LegacyStage] ?? RECORD_STATUS.APPLICATION_SUBMITTED,
           source: APPLICATION_SOURCE.NBR_WEBSITE_SYNC,
           applicationDate: payload.approvedAt ?? new Date(),
           externalId: payload.externalId,

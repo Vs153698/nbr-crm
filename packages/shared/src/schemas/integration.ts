@@ -11,7 +11,19 @@ import { emailSchema, optionalTrimmedString, phoneSchema, trimmedString } from '
  * verbatim: that column stays at `paid` for the whole of fulfilment and so
  * cannot say whether a certificate has been issued or a parcel has shipped.
  */
+/**
+ * Stands in for a record title the website has not captured yet.
+ *
+ * Deliberately reads as a gap rather than as content: an operator scanning the
+ * list should see immediately that this record is incomplete, not mistake a
+ * plausible-looking filler for the applicant's own words.
+ */
+export const UNTITLED_RECORD_TITLE = '(Untitled — awaiting details)';
+
 export const LEGACY_STAGE = {
+  // Started on the website but never submitted. Mirrored so the sales team can
+  // see and chase an abandoned application; it is a lead, not a case.
+  DRAFT: 'draft',
   // Before any decision. An application is mirrored from the moment it is
   // filed, so the evaluation itself can be run from the CRM.
   SUBMITTED: 'submitted',
@@ -222,6 +234,9 @@ export function legacyPipelineIndex(status: RecordStatus): number {
  * "approved, awaiting money".
  */
 export const LEGACY_STAGE_TO_STATUS: Readonly<Record<LegacyStage, RecordStatus>> = {
+  // An unsubmitted draft is exactly what New Lead is for — someone who has
+  // shown intent and has not yet given the back office anything to act on.
+  [LEGACY_STAGE.DRAFT]: RECORD_STATUS.NEW_LEAD,
   [LEGACY_STAGE.SUBMITTED]: RECORD_STATUS.APPLICATION_SUBMITTED,
   [LEGACY_STAGE.UNDER_REVIEW]: RECORD_STATUS.UNDER_REVIEW,
   // The website's `validated` means the back-office team has checked the
@@ -249,6 +264,7 @@ export const LEGACY_STAGE_TO_STATUS: Readonly<Record<LegacyStage, RecordStatus>>
  * record's status is left where it is rather than being dragged backwards.
  */
 export const LEGACY_STAGE_RANK: Readonly<Record<LegacyStage, number>> = {
+  [LEGACY_STAGE.DRAFT]: -0.5,
   [LEGACY_STAGE.SUBMITTED]: 0,
   [LEGACY_STAGE.UNDER_REVIEW]: 1,
   [LEGACY_STAGE.VALIDATED]: 2,
@@ -302,7 +318,20 @@ export const nbrWebhookApplicationSchema = z.object({
     gender: optionalTrimmedString(20),
     mobile: trimmedString(20),
     whatsapp: phoneSchema.optional(),
-    email: emailSchema,
+    /**
+     * Absent or blank is accepted, and normalised to an empty string.
+     *
+     * A strict `emailSchema` here rejected the entire snapshot with "Enter a
+     * valid email address" for anyone who applied by phone and never gave one —
+     * so those applicants were invisible in this system rather than merely
+     * un-emailable. An address that is present must still be well-formed;
+     * duplicate matching probes only truthy values, so blanks never collapse
+     * two people into one.
+     */
+    email: z
+      .union([z.literal(''), emailSchema])
+      .optional()
+      .transform((value) => value ?? ''),
     addressLine: optionalTrimmedString(300),
     city: optionalTrimmedString(100),
     state: optionalTrimmedString(100),
@@ -318,8 +347,18 @@ export const nbrWebhookApplicationSchema = z.object({
      * A cap here rejects the whole snapshot over the tail of a display string,
      * and the truncation that used to compensate silently altered a title that
      * gets printed on a certificate. The column behind it is unbounded.
+     *
+     * Nor is a title required. Applications are mirrored from the moment they
+     * are filed, and at that point the title is often still blank — rejecting
+     * them left the earliest stages of the pipeline, the ones this system most
+     * needs to show, permanently unsynced. A blank arrives as a visible
+     * placeholder that the real title overwrites on the next push.
      */
-    recordTitle: z.string().trim().min(1),
+    recordTitle: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => value || UNTITLED_RECORD_TITLE),
     /** Free text from the legacy system; mapped to a category by name, falling
      *  back to "Other" and flagging the record for review. */
     category: optionalTrimmedString(150),
