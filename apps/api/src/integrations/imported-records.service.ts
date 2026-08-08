@@ -17,30 +17,39 @@ import { LegacyPushService } from './legacy-push.service';
 /**
  * What the website sends for one offline certificate.
  *
- * Mirrors `toImportedCertificatePayload` on that side. Only the fields that
- * genuinely identify the record are required; everything else is optional
- * because historic imports were catalogued with whatever was to hand.
+ * One schema for both directions — the pull below and the push the website
+ * fires on import carry the same record, and two schemas would drift.
+ *
+ * Over-long text is trimmed to the column width rather than rejected. The
+ * website's columns are unbounded and ours are not, so a long title would
+ * otherwise fail the row outright; losing the tail of a title an operator can
+ * click through to read is much the smaller loss, and matches how the
+ * application webhook already handles the same mismatch.
  */
-const importedCertificatePushSchema = z.object({
-  certificateNumber: z.string().trim().min(1).max(120),
-  holderName: z.string().trim().min(1).max(200),
-  recordTitle: z.string().trim().min(1).max(1000),
-  category: z.string().trim().max(150).nullish().default(null),
+const cap = (limit: number) => z.string().trim().transform((value) => value.slice(0, limit));
+
+const legacyImportedCertificateSchema = z.object({
+  certificateNumber: cap(120).pipe(z.string().min(1)),
+  holderName: cap(200).pipe(z.string().min(1)),
+  recordTitle: cap(1000).pipe(z.string().min(1)),
+  category: cap(150).nullish().default(null),
   issuedAt: z.string().datetime({ offset: true }),
   revoked: z.boolean().default(false),
   revokeReason: z.string().nullish().default(null),
-  email: z.string().trim().max(200).nullish().default(null),
-  phone: z.string().trim().max(30).nullish().default(null),
-  awardeeSlug: z.string().trim().max(250).nullish().default(null),
+  email: cap(200).nullish().default(null),
+  phone: cap(30).nullish().default(null),
+  awardeeSlug: cap(250).nullish().default(null),
   bio: z.string().nullish().default(null),
-  location: z.string().trim().max(250).nullish().default(null),
+  location: cap(250).nullish().default(null),
   achievementDate: z.string().datetime({ offset: true }).nullish().default(null),
-  coverImageUrl: z.string().trim().max(1000).nullish().default(null),
+  coverImageUrl: cap(1000).nullish().default(null),
   extraData: z.record(z.unknown()).default({}),
   isPublished: z.boolean().default(false),
-  verifyUrl: z.string().trim().max(1000).nullish().default(null),
-  awardeeUrl: z.string().trim().max(1000).nullish().default(null),
+  verifyUrl: cap(1000).nullish().default(null),
+  awardeeUrl: cap(1000).nullish().default(null),
 });
+
+type LegacyImportedCertificate = z.infer<typeof legacyImportedCertificateSchema>;
 
 /** Read-only endpoint on the website carrying its offline certificates. */
 const LEGACY_IMPORTED_PATH = '/api/crm-connector/imported-certificates';
@@ -48,31 +57,45 @@ const LEGACY_IMPORTED_PATH = '/api/crm-connector/imported-certificates';
 const FETCH_TIMEOUT_MS = 20_000;
 const PAGE_SIZE = 200;
 
-interface LegacyImportedCertificate {
-  readonly certificateNumber: string;
-  readonly holderName: string;
-  readonly recordTitle: string;
-  readonly category: string | null;
-  readonly issuedAt: string;
-  readonly revoked: boolean;
-  readonly revokeReason: string | null;
-  readonly email: string | null;
-  readonly phone: string | null;
-  readonly awardeeSlug: string | null;
-  readonly bio: string | null;
-  readonly location: string | null;
-  readonly achievementDate: string | null;
-  readonly coverImageUrl: string | null;
-  readonly extraData: Record<string, unknown>;
-  readonly isPublished: boolean;
-  readonly verifyUrl: string | null;
-  readonly awardeeUrl: string | null;
-}
 
 export interface ImportedSyncResult {
   readonly imported: number;
   readonly updated: number;
   readonly total: number;
+  /** Rows the website sent that could not be stored. */
+  readonly failed: number;
+  /** Certificate numbers and reasons, so a failure names itself. */
+  readonly failures: readonly string[];
+}
+
+/**
+ * Turn a thrown `fetch` into something the operator can act on.
+ *
+ * `TypeError: fetch failed` is what Node reports for a refused connection, an
+ * unresolvable host and a dead proxy alike; the actionable detail is on
+ * `cause.code`. Naming it is the difference between "check the URL" and a
+ * support ticket.
+ */
+function describeFetchFailure(cause: unknown, baseUrl: string): string {
+  if (cause instanceof Error && cause.name === 'TimeoutError') {
+    return `The website did not answer within ${FETCH_TIMEOUT_MS / 1000} seconds. It may be slow or overloaded.`;
+  }
+
+  const code = (cause as { cause?: { code?: string } })?.cause?.code;
+
+  switch (code) {
+    case 'ECONNREFUSED':
+      return `Nothing is listening at ${baseUrl}. Check the website URL in Settings, and that the site is running.`;
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      return `The host in ${baseUrl} could not be resolved. Check the website URL in Settings for a typo.`;
+    case 'CERT_HAS_EXPIRED':
+    case 'DEPTH_ZERO_SELF_SIGNED_CERT':
+    case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
+      return `The website's HTTPS certificate could not be verified (${code}).`;
+    default:
+      return `Could not reach ${baseUrl}${code ? ` (${code})` : ''}. Check the website URL in Settings, and that the site is running.`;
+  }
 }
 
 /** India's country code, prepended to the bare 10-digit numbers the site stores. */
@@ -142,13 +165,25 @@ export class ImportedRecordsService {
     url.searchParams.set('limit', String(PAGE_SIZE));
     if (since) url.searchParams.set('since', since.toISOString());
 
-    // The website signs GETs over the literal "{}" — no body to sign, and its
-    // verifier falls back to an empty object.
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { 'X-NBR-Signature': this.sign('{}', config.secret) },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    /**
+     * `fetch` rejects rather than returning a response when the host is
+     * unreachable, DNS fails or the timeout fires. Left uncaught that became a
+     * bare 500 — "something went wrong on our side" — for what is almost always
+     * a wrong URL or a website that is down, which is the operator's to fix and
+     * impossible to guess from that message.
+     */
+    let response: Response;
+    try {
+      // The website signs GETs over the literal "{}" — no body to sign, and its
+      // verifier falls back to an empty object.
+      response = await fetch(url, {
+        method: 'GET',
+        headers: { 'X-NBR-Signature': this.sign('{}', config.secret) },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+    } catch (cause) {
+      throw new ValidationError({ integration: [describeFetchFailure(cause, config.baseUrl)] });
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
@@ -159,19 +194,59 @@ export class ImportedRecordsService {
       });
     }
 
-    const body = (await response.json()) as { data?: LegacyImportedCertificate[] };
-    const rows = body.data ?? [];
+    // A proxy or login page answering instead of the API returns 200 with HTML,
+    // which fails to parse. Saying so names the misconfiguration.
+    let body: { data?: unknown };
+    try {
+      body = (await response.json()) as { data?: unknown };
+    } catch {
+      throw new ValidationError({
+        integration: [
+          `The website answered ${url.origin} with something that is not JSON. Check the URL points at the API rather than the site itself.`,
+        ],
+      });
+    }
+
+    const parsed = z.array(legacyImportedCertificateSchema).safeParse(body.data ?? []);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new ValidationError({
+        integration: [
+          `The website sent a certificate this system cannot read` +
+            `${issue ? ` (${issue.path.join('.')}: ${issue.message})` : ''}.`,
+        ],
+      });
+    }
+
+    const rows = parsed.data;
 
     let imported = 0;
     let updated = 0;
+    const failures: string[] = [];
 
     for (const row of rows) {
-      if (await this.upsert(row)) imported++;
-      else updated++;
+      /**
+       * One bad row must not lose the rest.
+       *
+       * A sync of two hundred certificates that aborts on the fiftieth leaves
+       * the operator with no idea which one, and re-running fails at the same
+       * place. Each failure is named and the run continues.
+       */
+      try {
+        if (await this.upsert(row)) imported++;
+        else updated++;
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        this.logger.warn(`Imported certificate ${row.certificateNumber} failed: ${reason}`);
+        failures.push(`${row.certificateNumber} (${reason})`);
+      }
     }
 
-    this.logger.log(`Imported records sync: ${imported} new, ${updated} refreshed`);
-    return { imported, updated, total: rows.length };
+    this.logger.log(
+      `Imported records sync: ${imported} new, ${updated} refreshed, ${failures.length} failed`,
+    );
+
+    return { imported, updated, total: rows.length, failed: failures.length, failures };
   }
 
   /**
@@ -250,7 +325,7 @@ export class ImportedRecordsService {
       );
     }
 
-    const payload = importedCertificatePushSchema.parse(parsedBody);
+    const payload = legacyImportedCertificateSchema.parse(parsedBody);
     const created = await this.upsert(payload);
 
     this.logger.log(
