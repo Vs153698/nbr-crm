@@ -323,20 +323,25 @@ export default function ApplicantProfilePage() {
         </div>
       ) : null}
 
-      {/* `grid-cols-1` rather than relying on the implicit track: an implicit
-          column is `auto`-sized, meaning it grows to its widest child, so the
-          panel area stretched the column past the viewport and everything to
-          the right of it was clipped. Tailwind's `grid-cols-1` is
-          `minmax(0, 1fr)`, which is what actually holds the column to the
-          screen. */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+      {/*
+        One full-width column, with the supporting panels stacked underneath.
+
+        This was a 2:1 split with a permanent right rail. The rail held three
+        things an operator consults occasionally — next steps, the other records
+        on the profile, recent activity — and to do it, it took a third of the
+        screen away from the thing they are actually reading. Fields wrapped and
+        truncated in two-thirds of the width while a mostly-idle column sat
+        beside them. The detail now gets the whole width and the panels sit
+        below it, side by side, where they cost nothing until wanted.
+      */}
+      <div className="space-y-4">
         {/* ── Left: identity, status cards, panels ────────────────────────
             `min-w-0` because a grid item, like a flex item, sizes to its
             widest child by default — the panel sidebar would otherwise stretch
             this column past the viewport and the overflow would be clipped
             rather than scrollable, putting the right-hand half of every value
             out of reach on a narrow screen. */}
-        <div className="min-w-0 space-y-4 xl:col-span-2">
+        <div className="min-w-0 space-y-4">
           <Card>
             <div className="flex flex-wrap gap-4">
               <span className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-navy text-lg font-bold text-white">
@@ -584,8 +589,12 @@ export default function ApplicantProfilePage() {
           </Card>
         </div>
 
-        {/* ── Right: smart actions, identifiers, records, recent activity ── */}
-        <div className="space-y-4">
+        {/* ── Below: smart actions, identifiers, records, recent activity ──
+            Three across on a wide screen, stacking on a narrow one. `min-w-0`
+            on every child for the usual reason: a grid item sizes to its widest
+            content unless told otherwise, and a long record title would push
+            the row past the viewport. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3 [&>*]:min-w-0">
           {/* Renders nothing unless this record came from the public website
               and still has a decision open over there. */}
           {activeRecord ? (

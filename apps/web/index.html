@@ -8,10 +8,14 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="theme-color" content="#0E1B3D" />
     <title>NBR CRM — National Book of Records</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230E1B3D'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='%23C08A2E'>★</text></svg>"
-    />
+    <!-- The real mark, not a stand-in. This was an inline SVG star drawn
+         because no asset was to hand; the logo has been in `public/` since
+         before that, so the placeholder was only ever an oversight. Kept as a
+         PNG link rather than inlined: it is 34 KB, and a data URI that size in
+         the document head delays first paint for an icon nobody sees until the
+         tab renders. -->
+    <link rel="icon" type="image/png" href="/nbr-logo.png" />
+    <link rel="apple-touch-icon" href="/nbr-logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
