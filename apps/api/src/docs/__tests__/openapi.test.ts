@@ -96,6 +96,9 @@ describe('OpenAPI document', () => {
       'post /api/v1/auth/reset-password',
       'post /api/v1/integrations/nbr-website/applications',
       'post /api/v1/integrations/nbr-website/imported-certificates',
+      // Triggers a re-read of the website's own catalogue. Signed, and it
+      // writes nothing that did not come from the website in the first place.
+      'post /api/v1/integrations/nbr-website/packages-changed',
       'post /api/v1/integrations/nbr-website/reset',
     ]);
   });

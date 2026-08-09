@@ -1977,6 +1977,26 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'than being public — a fingerprint served anonymously would let a weak secret be ' +
       'attacked offline.',
   },
+  'IntegrationsController.packagesChanged': {
+    tag: 'Integration',
+    summary: 'Website plan catalogue changed',
+    description:
+      'The website telling this system its packages changed, so the catalogue is re-read ' +
+      'immediately instead of waiting for someone to run the sync by hand.',
+    response: {
+      type: 'object',
+      properties: {
+        imported: { type: 'integer' },
+        updated: { type: 'integer' },
+        skipped: { type: 'integer' },
+        retired: { type: 'integer' },
+      },
+    },
+    notes:
+      'Carries no package data on purpose — it triggers the same pull as the manual sync, ' +
+      'so there is one importer rather than two that can disagree. Signed with the shared ' +
+      'webhook secret; the body is the literal "{}".',
+  },
   'IntegrationsController.knownIds': {
     tag: 'Integration',
     summary: 'Applications this CRM holds',

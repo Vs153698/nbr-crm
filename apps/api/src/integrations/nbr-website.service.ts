@@ -787,12 +787,23 @@ export class NbrWebsiteService {
       } catch (error: unknown) {
         // One unreachable file must not abandon the rest, and the record is
         // already imported — this is a gap to flag, not a failure to retry.
-        this.logger.warn(
-          `Evidence copy failed for ${file.url}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Evidence copy failed for ${file.url}: ${reason}`);
+
+        /**
+         * Name the file and say what went wrong.
+         *
+         * The alert used to be the bare URL and "ask the website team to
+         * re-share it", which reads as "the file is gone" whatever actually
+         * happened — and the common cause is not a missing file at all but a
+         * link the website signed for public access when the bucket is
+         * private. An operator seeing "returned 404" knows to check the
+         * storage settings; seeing "timed out" knows the file is simply large.
+         */
         await this.raiseOperatorAlert(
           'Evidence could not be imported',
-          `A file from the NBR website could not be copied: ${file.url}. Ask the website team to re-share it.`,
+          `${file.fileName ?? file.url.split('/').pop() ?? 'A file'} from the NBR website could not be copied (${reason}). ` +
+            `The record imported without it. Source: ${file.url}`,
           applicantId,
           recordId,
         );
@@ -1082,6 +1093,36 @@ export class NbrWebsiteService {
    * Answering from the mirror makes "what is missing?" a question about reality.
    * Ids only — the caller needs set membership and nothing else.
    */
+  /**
+   * Verify a website nudge, then run the package re-pull it is asking for.
+   *
+   * The pull itself belongs to LegacyPushService and is passed in rather than
+   * injected, because this service already sits on the inbound side of the
+   * integration and taking a dependency on the outbound one to run a callback
+   * would make the two mutually dependent.
+   */
+  async resyncPackagesForWebsite<T>(
+    rawBody: string,
+    signatureHeader: string | undefined,
+    resync: () => Promise<T>,
+  ): Promise<T> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody: rawBody || '{}',
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (!verification.valid) {
+      throw new UnauthorisedError(
+        'WEBHOOK_SIGNATURE_INVALID',
+        `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
+      );
+    }
+
+    return resync();
+  }
+
   async knownIdsForWebsite(
     rawBody: string,
     signatureHeader: string | undefined,

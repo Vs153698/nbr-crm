@@ -375,6 +375,31 @@ class IntegrationsController {
   }
 
   /**
+   * The website telling us its plan catalogue changed.
+   *
+   * Deliberately a nudge and not a payload. The importer above already knows
+   * how to match plans by code, update prices and retire what has disappeared;
+   * accepting a package body here would be a second, subtly different copy of
+   * that logic, and the two would drift. So this verifies the signature and
+   * then runs exactly the same pull an operator would have run by hand — the
+   * only thing that changes is that nobody has to remember to.
+   *
+   * The website was the source of truth for prices already; until now the CRM
+   * only learned about a new package when someone thought to press the button,
+   * so a package added over there was quietly unavailable here.
+   */
+  @Public()
+  @Post('packages-changed')
+  @HttpCode(200)
+  async packagesChanged(@Req() request: FastifyRequest & { rawBody?: string }) {
+    return this.nbr.resyncPackagesForWebsite(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+      () => this.legacyPush.syncPackages(),
+    );
+  }
+
+  /**
    * Mirror the website's category list into ours.
    *
    * Applications are created against the website's categories, so any category
