@@ -66,6 +66,7 @@ export function QueuePage({
     {
       key: 'applicant',
       header: 'Applicant',
+      maxWidth: '220px',
       render: (row) => (
         <div className="min-w-0">
           <p className="truncate font-semibold text-ink">{row.applicantName}</p>
@@ -77,7 +78,14 @@ export function QueuePage({
       key: 'recordTitle',
       header: 'Record',
       hideBelow: 'md',
-      render: (row) => <span className="truncate text-ink-2">{row.recordTitle ?? '—'}</span>,
+      // Titles run to a full sentence. Clamped by the table so the columns
+      // after it — status, payment, waiting — stay on screen.
+      truncate: true,
+      render: (row) => (
+        <span className="text-ink-2" title={row.recordTitle ?? undefined}>
+          {row.recordTitle ?? '—'}
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -245,11 +253,16 @@ export function DispatchQueuePage() {
           key: 'destination',
           header: 'Destination',
           hideBelow: 'lg',
-          render: (row) => (
-            <span className="truncate text-xs text-ink-2">
-              {[row.city, row.state, row.pincode].filter(Boolean).join(', ') || '—'}
-            </span>
-          ),
+          maxWidth: '200px',
+          truncate: true,
+          render: (row) => {
+            const destination = [row.city, row.state, row.pincode].filter(Boolean).join(', ');
+            return (
+              <span className="text-xs text-ink-2" title={destination || undefined}>
+                {destination || '—'}
+              </span>
+            );
+          },
         },
         {
           key: 'deliveryStatus',

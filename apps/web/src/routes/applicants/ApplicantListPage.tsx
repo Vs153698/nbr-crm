@@ -198,12 +198,9 @@ export default function ApplicantListPage() {
       key: 'recordTitle',
       header: 'Record title',
       hideBelow: 'md',
-      // Record titles run from one word to a full sentence — "Proposed Record
-      // Title: Most Versatile Multi-Category Youth Achiever (65+ Certifications)"
-      // is real data. Left to size itself the column took whatever it needed and
-      // pushed Status, Payment and Dispatch off the right edge. Capped, the long
-      // ones ellipsize and the full text is one hover (or one click through) away.
-      maxWidth: '320px',
+      // No explicit cap: the table's default is exactly right here, and the
+      // long ones — "Proposed Record Title: Most Versatile Multi-Category Youth
+      // Achiever (65+ Certifications)" is real data — ellipsize into it.
       render: (row) => (
         <div className="min-w-0">
           <p className="truncate text-ink-2" title={row.recordTitle ?? undefined}>

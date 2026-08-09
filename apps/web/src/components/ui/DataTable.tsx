@@ -16,20 +16,49 @@ export interface Column<T> {
   sortable?: boolean;
   width?: string;
   /**
-   * Hard ceiling on the cell's width.
+   * Ceiling on this column's width, overriding the table-wide default.
    *
-   * `truncate` inside a `td` does nothing on its own: an auto-layout table sizes
-   * each column to its widest unbroken content, so the cell grows to fit the
-   * text instead of the text being clipped to fit the cell. There is nothing for
-   * `overflow: hidden` to hide. Setting `max-width` on the cell itself gives the
-   * inner element a boundary to ellipsize against, and pushes the surplus width
-   * back to the columns that were being squeezed off the right edge.
+   * Pass `'none'` for a column that genuinely must size to its content. Most
+   * columns should pass nothing at all — see `DEFAULT_CELL_MAX_WIDTH`.
    */
   maxWidth?: string;
+  /**
+   * Clamp this cell's content to a single line with an ellipsis.
+   *
+   * Prefer this to putting `truncate` on the rendered element. `truncate` only
+   * works on a block-level box with a bounded width, so `<span className="truncate">`
+   * — the obvious thing to write, and what several columns did — silently does
+   * nothing at all, twice over: `span` is inline, and the cell had no width to
+   * clamp against. Setting it here applies it to the cell, which has both.
+   */
+  truncate?: boolean;
   align?: 'left' | 'right' | 'center';
   render: (row: T) => ReactNode;
   /** Hidden below this breakpoint — the list stays usable on a tablet. */
   hideBelow?: 'sm' | 'md' | 'lg' | 'xl';
+}
+
+/**
+ * Ceiling applied to any column that does not size itself.
+ *
+ * An HTML table in `auto` layout sizes each column to its widest content, and
+ * nothing in CSS stops it: a single long record title makes its column as wide
+ * as the text and pushes every column after it off the right edge, where the
+ * horizontal scrollbar is the only clue anything is missing. That is not a
+ * per-screen styling matter, it is how tables work, so the fix belongs here
+ * rather than being rediscovered on each new list.
+ *
+ * Columns that declare their own `width` are already sized and are left alone.
+ * A column that genuinely needs to grow can opt out with `maxWidth: 'none'`.
+ * Anything else gets a bound, and the worst case becomes wrapped or ellipsised
+ * text inside a table that still fits the screen.
+ */
+const DEFAULT_CELL_MAX_WIDTH = '320px';
+
+function cellMaxWidth<T>(column: Column<T>): string | undefined {
+  if (column.maxWidth) return column.maxWidth === 'none' ? undefined : column.maxWidth;
+  if (column.width) return undefined;
+  return DEFAULT_CELL_MAX_WIDTH;
 }
 
 const HIDE_CLASS = {
@@ -79,7 +108,7 @@ export function DataTable<T>({
                 <th
                   key={column.key}
                   scope="col"
-                  style={column.width ? { width: column.width } : undefined}
+                  style={{ width: column.width, maxWidth: cellMaxWidth(column) }}
                   aria-sort={isSorted ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   className={cn(
                     'sticky top-0 z-10 border-b border-line bg-canvas px-4 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-3',
@@ -154,9 +183,10 @@ export function DataTable<T>({
                   {columns.map((column) => (
                     <td
                       key={column.key}
-                      style={column.maxWidth ? { maxWidth: column.maxWidth } : undefined}
+                      style={{ width: column.width, maxWidth: cellMaxWidth(column) }}
                       className={cn(
                         'px-4 py-2.5 align-middle',
+                        column.truncate && 'truncate',
                         column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
                         column.hideBelow ? HIDE_CLASS[column.hideBelow] : '',
                       )}
