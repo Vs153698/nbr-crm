@@ -620,6 +620,27 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'mail configuration rather than stored — it is a property of the installation, and a ' +
       'copy frozen at send time would disagree with reality the first time the address changed.',
   },
+  'QueuesController.newApplications': {
+    tag: 'Queues',
+    summary: 'New applications queue',
+    description: `Submitted applications nobody has started verifying yet. ${QUEUE_NOTE}`,
+    response: QUEUE_ROW,
+    notes:
+      'The front of the pipeline, and the stage most likely to grow a backlog unnoticed: every '
+      + 'other stage had a list and this one did not, so an untouched application was invisible '
+      + 'until somebody filtered the applicant table by hand.',
+  },
+  'QueuesController.selectionSent': {
+    tag: 'Queues',
+    summary: 'Selection sent queue',
+    description: `Approved records whose selection letter and payment are still outstanding. ${QUEUE_NOTE}`,
+    response: QUEUE_ROW,
+    notes:
+      'Permissioned on Communications rather than Payments: the work here is writing to the '
+      + 'applicant. The stage looks finished because the record has been approved, which is '
+      + 'exactly why it needs a list — an approved applicant nobody wrote to leaves no trace on '
+      + 'the record until someone opens it.',
+  },
   'QueuesController.verification': {
     tag: 'Queues',
     summary: 'Verification queue',

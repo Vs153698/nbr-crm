@@ -26,17 +26,27 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 /**
- * The queues, in pipeline order.
+ * One list per pipeline stage, in the order a record passes through them.
  *
- * Deliberately ordered to match the stages a record passes through —
- * Verification → Approval → Payments → Certificates → Dispatch → Publications —
- * so the nav reads as the process rather than as an alphabetised list of
- * screens. Publications moved to the end with the stage itself.
+ * New Applications → Verification → Approval Pending → Selection Sent →
+ * Fees & Payments → Certificates → Dispatch → Publications.
+ *
+ * Every stage gets its own screen deliberately. The nav is how staff find the
+ * work that is theirs, and a stage with no list is a stage whose backlog nobody
+ * sees — New Applications and Selection Sent were both missing, which are the
+ * two most likely to accumulate quietly: one is the front door, and the other
+ * looks finished because the record has been approved while the letter and the
+ * invoice are still outstanding.
+ *
+ * The nav reading as the process, rather than as an alphabetised list of
+ * screens, is the point.
  */
 const PIPELINE_NAV: NavItem[] = [
+  { to: '/new-applications', label: 'New Applications', icon: Icons.FilePlus2, permission: 'verification:view' },
   { to: '/verification', label: 'Verification', icon: Icons.ShieldCheck, permission: 'verification:view' },
   { to: '/approvals', label: 'Approval Pending', icon: Icons.ClipboardCheck, permission: 'verification:view' },
-  { to: '/payments', label: 'Payments', icon: Icons.IndianRupee, permission: 'payments:view' },
+  { to: '/selection-sent', label: 'Selection Sent', icon: Icons.MailCheck, permission: 'communications:view' },
+  { to: '/payments', label: 'Fees & Payments', icon: Icons.IndianRupee, permission: 'payments:view' },
   { to: '/certificates', label: 'Certificates', icon: Icons.Award, permission: 'certificates:view' },
   { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view' },
   { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view' },

@@ -25,11 +25,13 @@ const SalesDashboardPage = lazy(() => import('@/routes/sales/SalesDashboardPage'
 const LeadsPage = lazy(() => import('@/routes/sales/LeadsPage'));
 const EmployeesPage = lazy(() => import('@/routes/sales/employees/EmployeesPage'));
 
-// The five queues share one module chunk — they are the same component with
+// The queues share one module chunk — they are the same component with
 // different props, so splitting them further would only add round-trips.
 const queues = () => import('@/routes/modules/QueuePage');
+const NewApplicationsQueuePage = lazy(async () => ({ default: (await queues()).NewApplicationsQueuePage }));
 const VerificationQueuePage = lazy(async () => ({ default: (await queues()).VerificationQueuePage }));
 const ApprovalsQueuePage = lazy(async () => ({ default: (await queues()).ApprovalsQueuePage }));
+const SelectionSentQueuePage = lazy(async () => ({ default: (await queues()).SelectionSentQueuePage }));
 const PaymentsQueuePage = lazy(async () => ({ default: (await queues()).PaymentsQueuePage }));
 const CertificatesQueuePage = lazy(async () => ({ default: (await queues()).CertificatesQueuePage }));
 const PublicationsQueuePage = lazy(async () => ({ default: (await queues()).PublicationsQueuePage }));
@@ -179,8 +181,10 @@ export function App() {
           <Route path="/applicants/:id" element={guarded('applicants:view', ApplicantProfilePage)} />
 
           {/* Operational queues (§7, §12, §16, §17, §18) */}
+          <Route path="/new-applications" element={guarded('verification:view', NewApplicationsQueuePage)} />
           <Route path="/verification" element={guarded('verification:view', VerificationQueuePage)} />
           <Route path="/approvals" element={guarded('verification:view', ApprovalsQueuePage)} />
+          <Route path="/selection-sent" element={guarded('communications:view', SelectionSentQueuePage)} />
           <Route path="/payments" element={guarded('payments:view', PaymentsQueuePage)} />
           <Route path="/certificates" element={guarded('certificates:view', CertificatesQueuePage)} />
           <Route path="/publications" element={guarded('publications:view', PublicationsQueuePage)} />

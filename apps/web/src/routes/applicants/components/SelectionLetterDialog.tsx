@@ -8,6 +8,7 @@ import {
 } from '@nbr/shared';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
 import { Input, Textarea } from '@/components/ui/Field';
 import { ApiError, api } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
@@ -58,6 +59,8 @@ export function SelectionLetterDialog({
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<SelectionKind | null>(null);
   const [fields, setFields] = useState<Prefill['fields'] | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['communications', recordId, 'selection-letter'],
@@ -92,6 +95,30 @@ export function SelectionLetterDialog({
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not send the letter'),
   });
+
+  /**
+   * Save the letter as a PDF, without sending it.
+   *
+   * Generated from the record by `GET /records/:id/documents/selection-letter`,
+   * which is the same document the applicant receives — not a second renderer
+   * that would drift from it. Fetched and opened in one gesture because the
+   * signed URL is short-lived.
+   */
+  async function downloadLetter() {
+    setDownloading(true);
+    try {
+      const doc = await api.get<{ url: string }>(
+        `/records/${recordId}/documents/selection-letter`,
+      );
+      window.open(doc.url, '_blank', 'noopener,noreferrer');
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof ApiError ? error.message : 'Could not generate the selection letter',
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const set = (key: keyof Prefill['fields']) => (value: string) =>
     setFields((current) => (current ? { ...current, [key]: value } : current));
@@ -169,6 +196,32 @@ export function SelectionLetterDialog({
           <Button variant="ghost" onClick={() => setKind(null)}>
             Back
           </Button>
+
+          {/*
+            Look at it, and keep a copy, without sending it.
+
+            Emailing was the only way to produce this letter, which meant the
+            only way to check the layout and the printed facts was to send it to
+            somebody — and the only way to get a PDF for a file or a courier was
+            to ask the applicant to forward theirs. Preview renders it in place;
+            Download saves the same PDF, generated from the same record.
+          */}
+          <Button
+            variant="secondary"
+            icon={Icons.Eye}
+            onClick={() => setPreviewOpen(true)}
+          >
+            Preview
+          </Button>
+          <Button
+            variant="secondary"
+            icon={Icons.Download}
+            loading={downloading}
+            onClick={() => void downloadLetter()}
+          >
+            Download
+          </Button>
+
           <Button
             variant="primary"
             icon={Icons.Mail}
@@ -278,6 +331,17 @@ export function SelectionLetterDialog({
           </div>
         </div>
       )}
+
+      {/* The letter as a PDF, in the same sheet that previews every other
+          document here — so it behaves the way an operator already expects. */}
+      {previewOpen ? (
+        <FilePreviewSheet
+          downloadPath={`/records/${recordId}/documents/selection-letter`}
+          fileName={`selection-letter-${fields?.applicationId ?? recordId}.pdf`}
+          subtitle="Check the wording and the printed facts before this goes to the applicant."
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
     </Dialog>
   );
 }

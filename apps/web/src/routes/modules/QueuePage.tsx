@@ -155,6 +155,29 @@ export function QueuePage({
   );
 }
 
+/**
+ * §Pipeline 1 — the front of the pipeline.
+ *
+ * Every other stage had a list and this one did not, which made it the stage
+ * most likely to grow a backlog nobody saw: an application nobody had started
+ * on was invisible until someone thought to filter the applicant table by hand.
+ * Opens on the Application tab, because the first thing anybody does with a new
+ * one is read what was submitted.
+ */
+export function NewApplicationsQueuePage() {
+  return (
+    <QueuePage
+      title="New applications"
+      subtitle="Submitted and not yet picked up, oldest first."
+      icon={Icons.FilePlus2}
+      endpoint="/queues/new-applications"
+      tab="application"
+      emptyTitle="Nothing waiting"
+      emptyDescription="Every submitted application has been started."
+    />
+  );
+}
+
 export function VerificationQueuePage() {
   return (
     <QueuePage
@@ -191,10 +214,32 @@ export function ApprovalsQueuePage() {
   );
 }
 
+/**
+ * §Pipeline 4 — approved, and the letter and invoice still to follow.
+ *
+ * The stage that most needs a list, because nothing about it is urgent-looking:
+ * the record has been approved, so it reads as done, and the outstanding work —
+ * telling the applicant, raising the payment — leaves no trace on the record
+ * until somebody does it.
+ */
+export function SelectionSentQueuePage() {
+  return (
+    <QueuePage
+      title="Selection sent"
+      subtitle="Approved records — check the selection letter went out, then raise the payment."
+      icon={Icons.Award}
+      endpoint="/queues/selection-sent"
+      tab="communication"
+      emptyTitle="Nothing awaiting selection follow-up"
+      emptyDescription="Every approved record has moved on to payment."
+    />
+  );
+}
+
 export function PaymentsQueuePage() {
   return (
     <QueuePage
-      title="Payments"
+      title="Fees & payments"
       subtitle="Records with money still outstanding, longest waiting first."
       icon={Icons.IndianRupee}
       endpoint="/queues/payments"

@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/AppShell';
 import { Chip, FlagChip, StatusBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, DetailRow, EmptyState } from '@/components/ui/Card';
+import { Card, CardHeader, DetailRow, EmptyState, QueryError } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
@@ -119,7 +119,7 @@ export default function ApplicantProfilePage() {
   const queryClient = useQueryClient();
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: queryKeys.applicant(id),
     queryFn: ({ signal }) => api.get<ApplicantProfile>(`/applicants/${id}/full`, undefined, signal),
     enabled: Boolean(id),
@@ -237,14 +237,39 @@ export default function ApplicantProfilePage() {
     setSearchParams(next, { replace: true });
   }
 
+  /**
+   * A failed load is not the same as a missing applicant.
+   *
+   * This branch used to say "Applicant not found" for *any* error — a 500, a
+   * dropped connection, an API that was restarting — which told the operator
+   * the profile had been deleted when nothing of the sort had happened, and
+   * offered them no way to try again. Only a real 404 means what that sentence
+   * says; everything else is us, and should say so and offer a retry.
+   */
   if (isError) {
+    const missing = error instanceof ApiError && error.status === 404;
+
     return (
       <div className="p-5">
-        <EmptyState
-          icon={Icons.Search}
-          title="Applicant not found"
-          description="This profile may have been removed, or the link is wrong."
-        />
+        {missing ? (
+          <EmptyState
+            icon={Icons.Search}
+            title="Applicant not found"
+            description="This profile may have been removed, or the link is wrong."
+          />
+        ) : (
+          <Card>
+            <QueryError
+              title="Couldn't load this profile"
+              description={
+                error instanceof ApiError
+                  ? error.message
+                  : 'The server did not respond. It may be restarting.'
+              }
+              onRetry={() => void refetch()}
+            />
+          </Card>
+        )}
       </div>
     );
   }

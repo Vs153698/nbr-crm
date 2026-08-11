@@ -14,6 +14,19 @@ import { QueuesService } from './queues.service';
 export class QueuesController {
   constructor(private readonly queues: QueuesService) {}
 
+  /**
+   * §Pipeline 1 — arrived, nobody has started on it.
+   *
+   * Permissioned against Verification rather than Records: the people who work
+   * this list are the ones who will verify it, and giving it its own module
+   * would mean a new permission on every role for no separation anybody wanted.
+   */
+  @Get('new-applications')
+  @Can(MODULES.VERIFICATION, ACTIONS.VIEW)
+  async newApplications() {
+    return this.queues.newApplications();
+  }
+
   @Get('verification')
   @Can(MODULES.VERIFICATION, ACTIONS.VIEW)
   async verification() {
@@ -32,6 +45,19 @@ export class QueuesController {
   @Can(MODULES.VERIFICATION, ACTIONS.VIEW)
   async approvals() {
     return this.queues.approvals();
+  }
+
+  /**
+   * §Pipeline 4 — approved, selection letter due or sent, payment not raised.
+   *
+   * Permissioned on Communications rather than Payments: the outstanding work
+   * here is writing to the applicant, and a finance user with no send rights
+   * has nothing to do with the list.
+   */
+  @Get('selection-sent')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.VIEW)
+  async selectionSent() {
+    return this.queues.selectionSent();
   }
 
   @Get('payments')

@@ -21,6 +21,22 @@ export class QueuesService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
   /**
+   * §Pipeline 1 — applications that have arrived and not been picked up.
+   *
+   * The front of the pipeline had no list of its own, so the only way to find
+   * an application nobody had started was to filter the applicant table by
+   * hand. A queue that exists for every other stage but not the first one is
+   * the one most likely to grow a backlog unnoticed, because nothing surfaces
+   * it until somebody goes looking.
+   */
+  async newApplications(limit = 100) {
+    return this.project(
+      inArray(schema.records.status, [RECORD_STATUS.APPLICATION_SUBMITTED]),
+      limit,
+    );
+  }
+
+  /**
    * §7 — applications whose documents are still being checked.
    *
    * Approval Pending used to be counted here, which merged two queues with two
@@ -39,6 +55,18 @@ export class QueuesService {
       inArray(schema.records.status, [RECORD_STATUS.VERIFICATION_PENDING]),
       limit,
     );
+  }
+
+  /**
+   * §Pipeline 4 — approved, and waiting on the payment being raised.
+   *
+   * The stage where the selection letter goes out and the invoice follows. A
+   * record can sit here for weeks having been approved and never written to,
+   * which is exactly what this list is for — the profile's Next Steps panel
+   * flags an unsent selection, but only once you already have the record open.
+   */
+  async selectionSent(limit = 100) {
+    return this.project(inArray(schema.records.status, [RECORD_STATUS.SELECTED]), limit);
   }
 
   /**
