@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  CERTIFICATE_VERIFICATION,
   DELIVERY_STATUS,
   isLegacyDecisionStage,
+  LEGACY_STAGE,
   LEGACY_STAGE_RANK,
   LEGACY_STAGE_TO_STATUS,
   PAYMENT_MODE,
@@ -45,6 +47,16 @@ const LEGACY_DELIVERY_MAP: Readonly<Record<string, string>> = {
 
 /** Package name used when the legacy plan has no counterpart in our catalogue. */
 const IMPORTED_PACKAGE_PREFIX = 'Website';
+
+/**
+ * Where Certificate Verification sits on the website's ladder.
+ *
+ * It has no legacy stage of its own — it is a step the CRM adds — so it cannot
+ * be looked up in `LEGACY_STAGE_RANK`. It falls between fees received and the
+ * website's automatic certificate issue, which is exactly what the half-step
+ * expresses: past payment, short of anything the website did on its own.
+ */
+const CERTIFICATE_VERIFICATION_RANK = LEGACY_STAGE_RANK[LEGACY_STAGE.PAYMENT_RECEIVED] + 0.5;
 
 export interface ApplyResult {
   readonly statusChanged: boolean;
@@ -278,12 +290,27 @@ export class LegacyLifecycleService {
   }
 
   /**
-   * Mirror the certificate the legacy system issued.
+   * Record — but never adopt — the certificate the website issued.
    *
-   * No PDF is copied. The customer site both issues and verifies certificates,
-   * and its verification page is the authoritative view — the CRM stores the
-   * number and links across rather than holding a snapshot that could drift out
-   * of date after a reissue.
+   * The website mints a certificate number of its own the moment a payment
+   * settles. That is fine over there and it must keep happening: its public
+   * verification page and the applicant's portal are built on it.
+   *
+   * What it must not do is finish the certificate stage here. The CRM's stage
+   * is deliberately employee-controlled — a person prepares the certificate,
+   * uploads it, and signs it off — and an auto-minted number arriving on a
+   * webhook is none of those things. This method therefore:
+   *
+   *  • never overwrites a number the CRM allocated for a certificate somebody
+   *    actually uploaded;
+   *  • never sets `has_certificate`, which would make an empty row look like a
+   *    file on record;
+   *  • never touches `verification_status`, which only `verify` may set.
+   *
+   * The number is still stored, because it is genuinely useful: it is what an
+   * applicant quotes, and what the website's verification page will answer to.
+   * It just does not count as the CRM's certificate until an employee's upload
+   * gives it a file and their sign-off makes it official.
    */
   private async applyCertificate(
     tx: Database,
@@ -295,13 +322,33 @@ export class LegacyLifecycleService {
     if (!legacy) return false;
 
     const [existing] = await tx
-      .select({ id: schema.certificates.id, number: schema.certificates.certificateNumber })
+      .select({
+        id: schema.certificates.id,
+        number: schema.certificates.certificateNumber,
+        currentVersion: schema.certificates.currentVersion,
+      })
       .from(schema.certificates)
       .where(eq(schema.certificates.recordId, recordId))
       .limit(1);
 
+    // Does a real, uploaded certificate stand behind this row? If so its number
+    // is the one on the PDF in the applicant's hands, and the website's
+    // auto-minted string must not replace it.
+    const [uploaded] = existing
+      ? await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.certificateVersions)
+          .where(eq(schema.certificateVersions.certificateId, existing.id))
+      : [];
+
+    const hasUploadedFile = (uploaded?.count ?? 0) > 0;
+
     if (existing) {
-      if (existing.number === legacy.certificateId) return false;
+      if (hasUploadedFile || existing.number === legacy.certificateId) {
+        // Nothing to adopt. The mirror row already carries the website's number
+        // for cross-reference, and `upsertMirror` keeps it current.
+        return false;
+      }
 
       await tx
         .update(schema.certificates)
@@ -313,13 +360,12 @@ export class LegacyLifecycleService {
         applicantId,
         certificateNumber: legacy.certificateId,
         issueDate: legacy.issuedAt ?? null,
+        // No file behind it yet, so the stage has not even started.
+        verificationStatus: CERTIFICATE_VERIFICATION.AWAITING_UPLOAD,
+        // Counts uploads, of which there are none. The first real upload is v1.
+        currentVersion: 0,
       });
     }
-
-    await tx
-      .update(schema.records)
-      .set({ hasCertificate: !legacy.revoked })
-      .where(eq(schema.records.id, recordId));
 
     await this.timeline.writeMany(
       [
@@ -329,12 +375,14 @@ export class LegacyLifecycleService {
           eventType: TIMELINE_EVENT.CERTIFICATE_UPLOADED,
           summary: legacy.revoked
             ? `Certificate ${legacy.certificateId} revoked on the NBR website`
-            : `Certificate ${legacy.certificateId} issued on the NBR website`,
+            : `Certificate number ${legacy.certificateId} allocated by the NBR website — upload and verify the certificate here to complete this stage`,
           meta: {
             certificateNumber: legacy.certificateId,
             verificationUrl: legacy.verificationUrl ?? null,
             revoked: legacy.revoked,
             revokeReason: legacy.revokeReason ?? null,
+            /** Reference only — it did not complete the CRM's certificate stage. */
+            adopted: false,
           },
           actorKind: 'integration' as const,
           actorName: INTEGRATION_ACTOR_NAME,
@@ -458,8 +506,54 @@ export class LegacyLifecycleService {
     const stage = payload.stage as LegacyStage | undefined;
     if (!stage) return false;
 
-    const target = LEGACY_STAGE_TO_STATUS[stage];
-    if (!target || target === currentStatus) return false;
+    let target = LEGACY_STAGE_TO_STATUS[stage];
+    if (!target) return false;
+
+    /**
+     * The certificate stage is a gate the mirror cannot open.
+     *
+     * The website issues a certificate automatically on payment and then runs
+     * ahead — certificate issued, dispatch pending, dispatched — so its
+     * snapshots used to carry the CRM straight past Certificate Verification
+     * on the strength of a document no employee had ever seen. That is exactly
+     * the automatic completion this stage exists to prevent.
+     *
+     * So a snapshot may bring a record *up to* Certificate Verification and no
+     * further until someone here has signed the certificate off. Everything
+     * else in the snapshot still lands: the payment is banked, the courier and
+     * tracking number are written, the certificate number is recorded. Only the
+     * record's own status waits, and the timeline says why — so an operator
+     * looking at a record whose parcel has already shipped can see that the
+     * one outstanding thing is their sign-off.
+     */
+    let cappedAtCertificate = false;
+    if (LEGACY_STAGE_RANK[stage] >= LEGACY_STAGE_RANK[LEGACY_STAGE.PAYMENT_RECEIVED]) {
+      const verified = await this.hasVerifiedCertificate(tx, recordId);
+      if (!verified) {
+        /**
+         * Fees received on the website lands the record in Certificate
+         * Verification here, and goes no further until it is signed off.
+         *
+         * Both halves of that are the same rule seen from two sides. A record
+         * paid for on the website belongs to the certificate team immediately,
+         * exactly as one paid for here does — and the website, which issues a
+         * certificate automatically the moment money lands and then runs on
+         * through dispatch, must not be able to carry the CRM past a stage
+         * whose entire purpose is that a person completes it.
+         *
+         * Everything else in the snapshot still lands: the payment is banked,
+         * the courier and tracking number are written, the website's
+         * certificate number is recorded. Only the record's own status waits,
+         * and the timeline says why — so an operator looking at a record whose
+         * parcel has already shipped can see that the one thing outstanding is
+         * their sign-off.
+         */
+        target = RECORD_STATUS.CERTIFICATE_PENDING;
+        cappedAtCertificate = true;
+      }
+    }
+
+    if (target === currentStatus) return false;
 
     /**
      * The "only advance" rule applies between two points on the ladder, and
@@ -476,7 +570,20 @@ export class LegacyLifecycleService {
 
     if (!decisionInvolved) {
       const currentRank = this.rankOf(currentStatus);
-      const targetRank = LEGACY_STAGE_RANK[stage];
+      // Rank the *target*, not the stage, when the certificate gate held the
+      // move back. Comparing the website's own rank would let a "dispatched"
+      // snapshot pass the forward-only check and then write Certificate
+      // Verification onto a record that is already at Dispatch here — turning a
+      // guard meant to hold a record still into one that drags it backwards.
+      // Rank the *target*, not the website's stage, when the certificate gate
+      // held the move back. Comparing the website's own rank would let a
+      // "dispatched" snapshot pass the forward-only check and then write
+      // Certificate Verification onto a record already at Dispatch here —
+      // turning a guard meant to hold a record still into one that drags it
+      // backwards.
+      const targetRank = cappedAtCertificate
+        ? CERTIFICATE_VERIFICATION_RANK
+        : LEGACY_STAGE_RANK[stage];
       if (currentRank !== null && targetRank <= currentRank) return false;
     }
 
@@ -491,8 +598,15 @@ export class LegacyLifecycleService {
           applicantId,
           recordId,
           eventType: TIMELINE_EVENT.STATUS_CHANGED,
-          summary: `Status advanced to ${target.replace(/_/g, ' ')} — mirrored from the NBR website`,
-          meta: { from: currentStatus, to: target, legacyStage: stage },
+          summary: cappedAtCertificate
+            ? `Status advanced to ${target.replace(/_/g, ' ')} — the NBR website reports "${stage.replace(/_/g, ' ')}", but the certificate has not been uploaded and verified here yet`
+            : `Status advanced to ${target.replace(/_/g, ' ')} — mirrored from the NBR website`,
+          meta: {
+            from: currentStatus,
+            to: target,
+            legacyStage: stage,
+            heldForCertificateVerification: cappedAtCertificate,
+          },
           actorKind: 'integration' as const,
           actorName: INTEGRATION_ACTOR_NAME,
         },
@@ -501,6 +615,24 @@ export class LegacyLifecycleService {
     );
 
     return true;
+  }
+
+  /**
+   * Has an employee here uploaded a certificate and signed it off?
+   *
+   * Both halves are checked deliberately. A `certificates` row on its own means
+   * nothing — that is how the website's auto-minted number is stored — and a
+   * `verified` status is only ever written by `CertificatesService.verify`,
+   * which requires an uploaded version behind it.
+   */
+  private async hasVerifiedCertificate(tx: Database, recordId: string): Promise<boolean> {
+    const [row] = await tx
+      .select({ status: schema.certificates.verificationStatus })
+      .from(schema.certificates)
+      .where(eq(schema.certificates.recordId, recordId))
+      .limit(1);
+
+    return row?.status === CERTIFICATE_VERIFICATION.VERIFIED;
   }
 
   /** Statuses that represent a decision rather than a point on the ladder. */

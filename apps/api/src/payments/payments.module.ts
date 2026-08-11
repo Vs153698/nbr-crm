@@ -9,6 +9,7 @@ import {
   uploadCertificateSchema,
   upsertDispatchSchema,
   uuidSchema,
+  verifyCertificateSchema,
 } from '@nbr/shared';
 import { z } from 'zod';
 import { Can } from '../auth/auth.decorators';
@@ -115,6 +116,23 @@ class CertificatesController {
     },
   ) {
     return this.certificates.upload(body);
+  }
+
+  /**
+   * M-04b — the employee's sign-off, and the only thing that completes the
+   * certificate stage.
+   *
+   * A separate endpoint from the upload rather than a flag on it, because they
+   * are separate decisions taken at separate times by possibly different
+   * people: one hands over a file, the other says it is correct and lets it go
+   * out. Completing this releases the record to Dispatch.
+   */
+  @Post('verify')
+  @Can(MODULES.CERTIFICATES, ACTIONS.CREATE)
+  async verify(
+    @Body(zodBody(verifyCertificateSchema)) body: { recordId: string; notes?: string },
+  ) {
+    return this.certificates.verify(body);
   }
 
   /** Superseded versions stay downloadable — that is the point of keeping them. */

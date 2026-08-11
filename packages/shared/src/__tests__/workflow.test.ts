@@ -126,3 +126,57 @@ describe('status state machine', () => {
     expect(new Set(orders).size).toBe(orders.length);
   });
 });
+
+/**
+ * The certificate stage is employee-controlled by construction, not by
+ * convention. These assert the parts of that which live in the state machine —
+ * the rest is enforced in `CertificatesService.verify` and the
+ * `certificate_verified` guard, both of which read their rules from here.
+ */
+describe('certificate stage', () => {
+  it('routes fees received into certificate verification', () => {
+    const transition = findTransition(
+      RECORD_STATUS.PAYMENT_RECEIVED,
+      RECORD_STATUS.CERTIFICATE_PENDING,
+    );
+
+    expect(transition, 'a paid record must be able to reach certificate verification').toBeDefined();
+  });
+
+  it('completes the certificate stage only on a verified certificate', () => {
+    const transition = findTransition(
+      RECORD_STATUS.CERTIFICATE_PENDING,
+      RECORD_STATUS.CERTIFICATE_UPLOADED,
+    );
+
+    expect(transition).toBeDefined();
+    // `has_certificate` would pass on any uploaded file, including a draft the
+    // designer sent for comment. The stage completes on a person's sign-off.
+    expect(transition?.guards).toContain('certificate_verified');
+    expect(transition?.guards).not.toContain('has_certificate');
+  });
+
+  it('offers no way out of certificate verification except completing it', () => {
+    const exits = allowedTransitions(RECORD_STATUS.CERTIFICATE_PENDING).map((t) => t.to);
+
+    // Anything else here would be a path around the sign-off — which is the
+    // one thing this stage exists to make unavoidable.
+    expect(exits).toEqual([RECORD_STATUS.CERTIFICATE_UPLOADED]);
+  });
+
+  it('sends a completed certificate on to dispatch', () => {
+    const exits = allowedTransitions(RECORD_STATUS.CERTIFICATE_UPLOADED).map((t) => t.to);
+    expect(exits).toContain(RECORD_STATUS.DISPATCH_PENDING);
+  });
+
+  it('names the two stages the way the process does', () => {
+    expect(STATUS_META[RECORD_STATUS.CERTIFICATE_PENDING].label).toBe('Certificate Verification');
+    expect(STATUS_META[RECORD_STATUS.CERTIFICATE_UPLOADED].label).toBe('Certificate Completed');
+  });
+
+  it('puts both manual steps on the certificate verification panel', () => {
+    const actions = STAGE_ACTIONS[RECORD_STATUS.CERTIFICATE_PENDING].map((action) => action.id);
+    expect(actions).toContain('upload-certificate');
+    expect(actions).toContain('verify-certificate');
+  });
+});

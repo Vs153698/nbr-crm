@@ -44,6 +44,7 @@ import {
   updateTaskSchema,
   updateUserSchema,
   uploadCertificateSchema,
+  verifyCertificateSchema,
   upsertDispatchSchema,
   upsertRoleSchema,
   upsertTemplateSchema,
@@ -694,15 +695,45 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   },
   'CertificatesController.upload': {
     tag: 'Certificates',
-    summary: 'Issue or re-issue a certificate',
-    description: 'Appends a new version. Nothing is ever overwritten.',
+    summary: 'Upload a certificate (or a new version)',
+    description:
+      'Appends a new version and leaves the certificate awaiting verification. Nothing is ' +
+      'ever overwritten, and this does not complete the certificate stage.',
     body: zodSchema(uploadCertificateSchema, 'UploadCertificate'),
     response: { type: 'object', properties: { certificateNumber: { type: 'string' }, version: { type: 'integer' } } },
     audited: 'certificate.issued',
     notes:
-      'The certificate number is allocated once, on first issue, and survives every ' +
+      'The certificate number is allocated once, on first upload, and survives every ' +
       're-issue. Previous versions cannot be edited or deleted — a database trigger refuses, ' +
-      'independently of this API.',
+      'independently of this API. Uploading always sets the certificate back to ' +
+      '`pending_verification`, including a correction to one that was already signed off: the ' +
+      'approval belonged to the file it replaced. Call `POST /certificates/verify` to complete ' +
+      'the stage.',
+  },
+  'CertificatesController.verify': {
+    tag: 'Certificates',
+    summary: 'Mark a certificate verified and complete the stage',
+    description:
+      'The employee sign-off. Records who verified it, when, and which version — then moves ' +
+      'the record to Certificate Completed and on to Dispatch Pending.',
+    body: zodSchema(verifyCertificateSchema, 'VerifyCertificate'),
+    response: {
+      type: 'object',
+      properties: {
+        certificateNumber: { type: 'string', nullable: true },
+        verifiedVersion: { type: 'integer' },
+        status: { type: 'string' },
+      },
+    },
+    audited: 'certificate.issued',
+    notes:
+      'The only thing that completes the certificate stage. Nothing automatic may do it — not ' +
+      'a payment settling, and notably not the NBR website, which mints a certificate number ' +
+      'of its own as soon as a fee is paid; that number is recorded for reference and a ' +
+      'mirrored snapshot cannot carry a record past Certificate Verification without this ' +
+      'call. Rejected when no file has been uploaded, and when the latest version has already ' +
+      'been verified — correct a certificate by uploading a new version, which reopens the ' +
+      'stage.',
   },
   'CertificatesController.queue': {
     tag: 'Certificates',
@@ -949,21 +980,42 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   'BlacklistController.add': {
     tag: 'Blacklist',
     summary: 'Blacklist an applicant',
-    description: 'Blocks the applicant from opening new records.',
+    description:
+      'Blocks the applicant from opening new records, and suspends their account on the NBR ' +
+      'website so they cannot log in and file there instead.',
     body: zodSchema(createBlacklistSchema, 'CreateBlacklist'),
     response: ID_ONLY,
     audited: 'blacklist.added',
+    notes:
+      'The website push is detached and never fails the call: the register entry here is ' +
+      'already written and enforced, and a website outage must not undo it. Where the push ' +
+      'does fail it is logged and shown on the integrations screen.',
   },
   'BlacklistController.lift': {
     tag: 'Blacklist',
     summary: 'Lift a blacklist',
-    description: 'Restores the applicant’s ability to apply.',
+    description:
+      'Restores the applicant’s ability to apply, and un-suspends their website account — but ' +
+      'only once no other blacklist entry is still in force against them.',
     body: zodSchema(liftBlacklistSchema, 'LiftBlacklist'),
     response: OK,
     audited: 'blacklist.lifted',
     notes:
       'Stamps the row with the lift reason rather than deleting it. The register is the ' +
       'evidence trail for a decision that blocked someone from applying, so it is never erased.',
+  },
+  'WebsiteBlacklistController.userBlock': {
+    tag: 'Integration',
+    summary: 'Website blocked or unblocked an account',
+    description:
+      'Inbound from the NBR website’s Users screen. A block opens a permanent blacklist entry ' +
+      'against the matching applicant here; an unblock lifts the active one.',
+    notes:
+      'Authenticated by HMAC signature over the raw body, not by a session — this is a ' +
+      'server-to-server call. The applicant is matched on mobile first, then email; matching ' +
+      'nobody answers 200 with `matched: false`, because a website account that never reached ' +
+      'an application is a person this CRM has legitimately never met, and a 404 would only ' +
+      'make the website retry a push that can never land.',
   },
   'FlagsController.list': {
     tag: 'Blacklist',

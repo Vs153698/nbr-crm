@@ -73,9 +73,9 @@ describe('OpenAPI document', () => {
       .sort();
 
     // Anything new appearing here is an endpoint that ships unauthenticated.
-    // The three integration routes carry no session because they are
-    // server-to-server calls from the website; each verifies an HMAC signature
-    // over the raw body before touching it, which is their authentication.
+    // The integration routes carry no session because they are server-to-server
+    // calls from the website; each verifies an HMAC signature over the raw body
+    // before touching it, which is their authentication.
     //
     // `reset` is the one to think hardest about, because it is the only
     // unauthenticated route that *removes* anything. It is acceptable here for
@@ -100,6 +100,13 @@ describe('OpenAPI document', () => {
       // writes nothing that did not come from the website in the first place.
       'post /api/v1/integrations/nbr-website/packages-changed',
       'post /api/v1/integrations/nbr-website/reset',
+      // The website telling us it blocked or unblocked an account, which opens
+      // or lifts a blacklist entry here. Signed like the rest. Worth noting
+      // that it is the one public route whose effect is a *restriction*: the
+      // worst an attacker with the shared secret could do is block an applicant
+      // who was never blocked, which is visible on the register, reversible by
+      // any operator, and destroys nothing.
+      'post /api/v1/integrations/nbr-website/user-block',
     ]);
   });
 

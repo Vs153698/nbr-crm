@@ -114,6 +114,35 @@ export const recordTransactionSchema = z.object({
 
 // ── Certificates (§10, M-04) ─────────────────────────────────────────────────
 
+/**
+ * Where a certificate stands in the employee-controlled flow.
+ *
+ * `AWAITING_UPLOAD` is the state of a record in Certificate Verification with
+ * no file yet. Uploading moves it to `PENDING_VERIFICATION` — a file exists but
+ * nobody has said it is right — and only an employee's sign-off makes it
+ * `VERIFIED`, which is the point at which it becomes the official certificate
+ * and the record moves on to Dispatch.
+ *
+ * Uploading a corrected version returns it to `PENDING_VERIFICATION`: the new
+ * file inherits nothing from the approval given to the one it replaced.
+ */
+export const CERTIFICATE_VERIFICATION = {
+  AWAITING_UPLOAD: 'awaiting_upload',
+  PENDING_VERIFICATION: 'pending_verification',
+  VERIFIED: 'verified',
+} as const;
+
+export type CertificateVerification =
+  (typeof CERTIFICATE_VERIFICATION)[keyof typeof CERTIFICATE_VERIFICATION];
+
+export const CERTIFICATE_VERIFICATION_LABELS: Readonly<
+  Record<CertificateVerification, string>
+> = {
+  [CERTIFICATE_VERIFICATION.AWAITING_UPLOAD]: 'Awaiting upload',
+  [CERTIFICATE_VERIFICATION.PENDING_VERIFICATION]: 'Uploaded — awaiting verification',
+  [CERTIFICATE_VERIFICATION.VERIFIED]: 'Verified & completed',
+};
+
 export const uploadCertificateSchema = z.object({
   recordId: uuidSchema,
   certificateNumber: optionalTrimmedString(80),
@@ -123,6 +152,19 @@ export const uploadCertificateSchema = z.object({
   editableFileKey: optionalTrimmedString(500),
   /** Why a new version exists — shown in the immutable version history. */
   versionReason: optionalTrimmedString(300),
+});
+
+/**
+ * M-04b Mark Certificate Verified / Complete the certificate stage.
+ *
+ * Separate from the upload on purpose. Uploading is a file transfer; this is a
+ * decision, taken by a named person, that the certificate is correct and may
+ * go out — and it is what releases the record to Dispatch.
+ */
+export const verifyCertificateSchema = z.object({
+  recordId: uuidSchema,
+  /** What was checked. Lands on the timeline beside who checked it. */
+  notes: optionalTrimmedString(1000),
 });
 
 // ── Publications (§11) ───────────────────────────────────────────────────────

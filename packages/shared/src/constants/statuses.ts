@@ -144,18 +144,24 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     terminal: false,
     slaWatched: true,
   },
+  // Named for what the stage *is*: an employee checking and preparing the
+  // certificate. "Pending" read as a queue nobody owned, which is how records
+  // came to sit here while the website quietly issued something of its own.
   [RECORD_STATUS.CERTIFICATE_PENDING]: {
     code: RECORD_STATUS.CERTIFICATE_PENDING,
-    label: 'Certificate Pending',
+    label: 'Certificate Verification',
     tone: 'orange',
     order: 100,
     stage: 'fulfilment',
     terminal: false,
     slaWatched: true,
   },
+  // "Uploaded" described a file arriving, which is not the milestone — a file
+  // can be uploaded and still be wrong. This status means an employee has
+  // checked it and signed it off, and the record moves straight to Dispatch.
   [RECORD_STATUS.CERTIFICATE_UPLOADED]: {
     code: RECORD_STATUS.CERTIFICATE_UPLOADED,
-    label: 'Certificate Uploaded',
+    label: 'Certificate Completed',
     tone: 'teal',
     order: 110,
     stage: 'fulfilment',

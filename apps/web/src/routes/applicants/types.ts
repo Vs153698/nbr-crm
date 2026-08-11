@@ -1,5 +1,7 @@
 /** Shapes returned by the applicant-facing endpoints. */
 
+import type { CertificateVerification } from '@nbr/shared';
+
 export interface Lookups {
   categories: Array<{ id: string; name: string }>;
   packages: Array<{ id: string; name: string; amount: string; gstPercent: string }>;
@@ -203,6 +205,14 @@ export interface CertificateView {
   recordNumber: string | null;
   currentVersion: number;
   issueDate: string | null;
+  /** `awaiting_upload | pending_verification | verified` — the stage gate. */
+  verificationStatus: CertificateVerification;
+  verifiedAt: string | null;
+  verifiedByName: string | null;
+  verifiedVersion: number | null;
+  verificationNotes: string | null;
+  /** False after a correction: the latest version is not the approved one. */
+  isCurrentVersionVerified: boolean;
   versions: Array<{
     id: string;
     version: number;
@@ -213,6 +223,7 @@ export interface CertificateView {
     uploadedByName: string | null;
     createdAt: string;
     isCurrent: boolean;
+    isVerified: boolean;
   }>;
 }
 

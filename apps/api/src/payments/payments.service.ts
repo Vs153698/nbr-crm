@@ -4,6 +4,7 @@ import {
   financialYearOf,
   formatInvoiceNumber,
   PAYMENT_STATUS,
+  RECORD_STATUS,
   settle,
   TIMELINE_EVENT,
   toPaise,
@@ -18,6 +19,7 @@ import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { LegacyPushService } from '../integrations/legacy-push.service';
+import { RecordAdvanceService } from '../records/auto-advance.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 
@@ -80,6 +82,7 @@ export class PaymentsService {
     private readonly audit: AuditService,
     private readonly cache: CacheService,
     private readonly legacy: LegacyPushService,
+    private readonly advance: RecordAdvanceService,
   ) {}
 
   /** §11 stage 4 — "Set Payment Deadline". Creates or replaces the plan. */
@@ -268,6 +271,33 @@ export class PaymentsService {
         },
         tx,
       );
+
+      /**
+       * Fees received → Certificate Verification.
+       *
+       * The record moves itself the moment the invoice is settled in full,
+       * rather than waiting for someone to remember two separate clicks —
+       * "Mark payment received", then "Queue certificate" — neither of which
+       * was a decision. A record left at Payment Pending because the second
+       * click never happened is invisible to the certificate queue.
+       *
+       * Only the payment stages are accepted as a starting point, so a
+       * back-dated receipt against a record already at Dispatch changes nothing.
+       * Nothing about the certificate itself is touched: it is still uploaded
+       * and signed off by hand.
+       */
+      if (settlement.isSettled) {
+        await this.advance.advance(
+          {
+            recordId: payment.recordId,
+            applicantId: payment.applicantId,
+            expectedFrom: [RECORD_STATUS.PAYMENT_PENDING, RECORD_STATUS.PAYMENT_RECEIVED],
+            to: RECORD_STATUS.CERTIFICATE_PENDING,
+            reason: 'fees received in full — certificate verification opened',
+          },
+          tx,
+        );
+      }
 
       return { transactionId: transaction!.id, settlement };
     });

@@ -35,6 +35,11 @@ const LEGACY_PATHS = {
    * all of which read from its columns — can see it.
    */
   evidence: '/api/crm-connector/evidence',
+  /**
+   * A blacklist added or lifted here. Applicant-scoped, not record-scoped —
+   * see `pushBlacklist` for why it cannot go through `push` below.
+   */
+  blacklist: '/api/crm-connector/blacklist',
 } as const;
 
 /** Read-only endpoints carrying the website's reference data. */
@@ -218,6 +223,47 @@ export class LegacyPushService {
       return { ok: false, skipped: true, reason: 'echo of an inbound change' };
     }
 
+    const outcome = await this.send(kind, body, config);
+
+    if (outcome.ok) {
+      await this.db
+        .update(schema.legacyMirror)
+        .set({ outboundHash: fingerprint, lastOutboundAt: new Date(), lastOutboundError: null })
+        .where(eq(schema.legacyMirror.recordId, recordId));
+
+      await this.audit.record({
+        action: AUDIT.WEBHOOK_RECEIVED,
+        entityType: 'integration',
+        entityId: recordId,
+        entityLabel: `push:${kind} → ${mirror.externalId}`,
+      });
+
+      return outcome;
+    }
+
+    this.logger.error(`${outcome.reason} — record ${recordId}`);
+
+    await this.db
+      .update(schema.legacyMirror)
+      .set({ lastOutboundError: outcome.reason ?? null, lastOutboundAt: new Date() })
+      .where(eq(schema.legacyMirror.recordId, recordId));
+
+    return outcome;
+  }
+
+  /**
+   * POST one signed body to a connector endpoint, retrying transient failures.
+   *
+   * Knows nothing about mirror rows or echo suppression — those are properties
+   * of a *record* push, and the blacklist below has no record behind it. Split
+   * out so both callers retry, sign and interpret a 4xx identically rather than
+   * carrying two copies of the same loop that drift apart.
+   */
+  private async send(
+    kind: LegacyPushKind,
+    body: string,
+    config: LegacyConfig,
+  ): Promise<PushResult> {
     const url = `${config.baseUrl}${LEGACY_PATHS[kind]}`;
     let lastStatus: number | undefined;
     let lastError: string | undefined;
@@ -237,22 +283,7 @@ export class LegacyPushService {
         });
 
         lastStatus = response.status;
-
-        if (response.ok) {
-          await this.db
-            .update(schema.legacyMirror)
-            .set({ outboundHash: fingerprint, lastOutboundAt: new Date(), lastOutboundError: null })
-            .where(eq(schema.legacyMirror.recordId, recordId));
-
-          await this.audit.record({
-            action: AUDIT.WEBHOOK_RECEIVED,
-            entityType: 'integration',
-            entityId: recordId,
-            entityLabel: `push:${kind} → ${mirror.externalId}`,
-          });
-
-          return { ok: true, skipped: false, httpStatus: response.status };
-        }
+        if (response.ok) return { ok: true, skipped: false, httpStatus: response.status };
 
         lastError = (await response.text().catch(() => '')).slice(0, 500);
 
@@ -268,15 +299,12 @@ export class LegacyPushService {
       }
     }
 
-    const message = `${kind} push failed${lastStatus ? ` (HTTP ${lastStatus})` : ''}: ${lastError ?? 'no response'}`;
-    this.logger.error(`${message} — record ${recordId}`);
-
-    await this.db
-      .update(schema.legacyMirror)
-      .set({ lastOutboundError: message, lastOutboundAt: new Date() })
-      .where(eq(schema.legacyMirror.recordId, recordId));
-
-    return { ok: false, skipped: false, httpStatus: lastStatus, reason: message };
+    return {
+      ok: false,
+      skipped: false,
+      httpStatus: lastStatus,
+      reason: `${kind} push failed${lastStatus ? ` (HTTP ${lastStatus})` : ''}: ${lastError ?? 'no response'}`,
+    };
   }
 
   /**
@@ -691,6 +719,109 @@ export class LegacyPushService {
         },
       );
     });
+  }
+
+  /**
+   * Tell the website that an applicant has been blacklisted, or that the
+   * blacklist has been lifted.
+   *
+   * Deliberately *not* routed through `push` above. That method is built around
+   * one record and its `legacy_mirror` row, and a blacklist belongs to a person:
+   * they may have no application on the website at all — walked in, blacklisted
+   * on the spot — or several, filed years apart under different accounts.
+   * Requiring a mirror row would silently drop exactly the cases that matter
+   * most, since someone worth blacklisting is often someone who applied more
+   * than once.
+   *
+   * Identity therefore travels as email and mobile, plus every legacy
+   * application id we do know, and the website resolves the account from
+   * whichever of those it can match. Nothing happens over there if it matches
+   * nobody — that is a person who only ever existed in the CRM.
+   *
+   * Detached and non-throwing: the register entry here is already written and
+   * enforced, and a website that is offline must not roll that back.
+   */
+  pushBlacklist(
+    applicantId: string,
+    input: {
+      action: 'add' | 'lift';
+      kind?: string;
+      reason?: string;
+      reasonDetail?: string;
+      effectiveUntil?: Date | null;
+    },
+  ): void {
+    setImmediate(() => {
+      void this.sendBlacklist(applicantId, input).catch((error: unknown) => {
+        this.logger.error(
+          `Detached blacklist push threw: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    });
+  }
+
+  /** The awaited body of `pushBlacklist`, separated so it can be tested. */
+  async sendBlacklist(
+    applicantId: string,
+    input: {
+      action: 'add' | 'lift';
+      kind?: string;
+      reason?: string;
+      reasonDetail?: string;
+      effectiveUntil?: Date | null;
+    },
+  ): Promise<PushResult> {
+    const config = await this.getConfig();
+    if (!config.enabled) return { ok: false, skipped: true, reason: 'legacy sync is switched off' };
+
+    const [applicant] = await this.db
+      .select({
+        applicantCode: schema.applicants.applicantCode,
+        fullName: schema.applicants.fullName,
+        email: schema.applicants.email,
+        mobile: schema.applicants.mobile,
+      })
+      .from(schema.applicants)
+      .where(eq(schema.applicants.id, applicantId))
+      .limit(1);
+
+    if (!applicant) return { ok: false, skipped: true, reason: 'applicant not found' };
+
+    // Every website application we hold for this person. The website prefers
+    // these over the identifiers: an application names its own account, whereas
+    // an email match can be defeated by someone applying under a second address.
+    const mirrors = await this.db
+      .select({ externalId: schema.legacyMirror.externalId })
+      .from(schema.legacyMirror)
+      .where(eq(schema.legacyMirror.applicantId, applicantId));
+
+    const body = JSON.stringify({
+      action: input.action,
+      applicantCode: applicant.applicantCode,
+      fullName: applicant.fullName,
+      email: applicant.email ?? null,
+      phone: applicant.mobile ?? null,
+      applicationIds: mirrors.map((mirror) => mirror.externalId),
+      kind: input.kind ?? null,
+      reason: input.reason ?? null,
+      reasonDetail: input.reasonDetail ?? null,
+      effectiveUntil: input.effectiveUntil?.toISOString() ?? null,
+    });
+
+    const outcome = await this.send('blacklist', body, config);
+
+    if (outcome.ok) {
+      await this.audit.record({
+        action: AUDIT.WEBHOOK_RECEIVED,
+        entityType: 'integration',
+        entityId: applicantId,
+        entityLabel: `push:blacklist.${input.action} → ${applicant.applicantCode}`,
+      });
+    } else {
+      this.logger.error(`${outcome.reason} — applicant ${applicant.applicantCode}`);
+    }
+
+    return outcome;
   }
 
   /** Connection health for the integrations screen. */

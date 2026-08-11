@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
+import { GovernanceModule } from '../governance/governance.module';
 import { PrivacyModule } from '../privacy/privacy.module';
 import { QueuesController } from '../records/queues.controller';
 import { QueuesService } from '../records/queues.service';
@@ -18,7 +19,17 @@ import { DuplicateService } from './duplicate.service';
  * rows and timeline entries as a single atomic operation.
  */
 @Module({
-  imports: [TimelineModule, PrivacyModule],
+  /**
+   * The governance import is circular and deliberately so.
+   *
+   * Governance needs `DuplicateService` from here, to merge a website
+   * submission onto an existing profile. This module needs
+   * `LegacyActionsService` from there, so that closing or rejecting a mirrored
+   * record through the ordinary Change Status modal reaches the website instead
+   * of quietly leaving the two systems disagreeing. Both directions are real;
+   * `forwardRef` is what lets Nest resolve them.
+   */
+  imports: [TimelineModule, PrivacyModule, forwardRef(() => GovernanceModule)],
   controllers: [ApplicantsController, RecordsController, QueuesController],
   providers: [
     ApplicantsService,

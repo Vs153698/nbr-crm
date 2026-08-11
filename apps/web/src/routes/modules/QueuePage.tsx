@@ -18,6 +18,8 @@ interface QueueRow {
   status: string;
   paymentStatus?: string;
   deliveryStatus?: string;
+  /** Certificates queue: whether the row needs the file or the sign-off. */
+  waitingOn?: 'upload' | 'verification';
   city?: string | null;
   state?: string | null;
   pincode?: string | null;
@@ -217,13 +219,28 @@ export function CertificatesQueuePage() {
   return (
     <QueuePage
       title="Certificates"
-      subtitle="Records that are paid for and waiting on a certificate."
+      subtitle="Paid records whose certificate has not yet been uploaded and verified."
       icon={Icons.Award}
       endpoint="/certificates/queue"
       tab="certificate"
       emptyTitle="No certificates pending"
-      emptyDescription="Every paid record has its certificate issued."
+      emptyDescription="Every paid record has its certificate uploaded and verified."
       extraColumns={[
+        {
+          // The two halves of this stage are different jobs — one needs the
+          // designer's file, the other needs someone to check it — and a queue
+          // that cannot tell them apart makes an operator open every row to
+          // find out which is which.
+          key: 'waitingOn',
+          header: 'Waiting on',
+          width: '140px',
+          render: (row) =>
+            row.waitingOn === 'verification' ? (
+              <span className="text-xs font-medium text-warn">Verification</span>
+            ) : (
+              <span className="text-xs text-ink-2">Upload</span>
+            ),
+        },
         {
           key: 'paymentStatus',
           header: 'Payment',

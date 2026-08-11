@@ -16,6 +16,7 @@ import { formatDate, formatDateTime, formatRelative, humanise, initials } from '
 import { ICON_SIZE, ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AssignRecordDialog } from './components/AssignRecordDialog';
+import { BlacklistDialog, LiftBlacklistDialog } from './components/BlacklistDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
 import { EditApplicantDialog } from './components/EditApplicantDialog';
 import { CommunicationTab } from './components/CommunicationTab';
@@ -108,9 +109,11 @@ export default function ApplicantProfilePage() {
   const [revealedAadhaar, setRevealedAadhaar] = useState<string | null>(null);
   const [addRecordOpen, setAddRecordOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [blacklistOpen, setBlacklistOpen] = useState(false);
+  const [liftOpen, setLiftOpen] = useState(false);
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.applicant(id),
     queryFn: ({ signal }) => api.get<ApplicantProfile>(`/applicants/${id}/full`, undefined, signal),
     enabled: Boolean(id),
@@ -281,6 +284,14 @@ export default function ApplicantProfilePage() {
                 Export PDF
               </Button>
             ) : null}
+            {/* §19 — sits beside Edit rather than buried in the register,
+                because the moment an operator learns a document was forged is
+                the moment they are looking at this profile. */}
+            {!applicant.isBlacklisted && can('blacklist:create') ? (
+              <Button variant="secondary" icon={Icons.Ban} onClick={() => setBlacklistOpen(true)}>
+                Blacklist
+              </Button>
+            ) : null}
             {can('records:create') ? (
               <Button variant="primary" icon={Icons.FilePlus2} onClick={() => setAddRecordOpen(true)}>
                 New record
@@ -298,7 +309,7 @@ export default function ApplicantProfilePage() {
         <div className="mb-4 rounded-card border border-danger-ring bg-danger-tint p-4">
           <div className="flex gap-3">
             <Icons.Ban size={20} strokeWidth={2} className="mt-0.5 shrink-0 text-danger" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-danger">
                 Blacklisted{activeBlacklist ? ` — ${humanise(activeBlacklist.kind)}` : ''}
               </p>
@@ -316,9 +327,19 @@ export default function ApplicantProfilePage() {
                         : ' · permanent'
                     }. `
                   : ''}
-                New applications are blocked unless an Admin overrides.
+                New applications are blocked unless an Admin overrides, and their NBR website
+                account is suspended.
               </p>
             </div>
+
+            {/* Lifting was only reachable from the register at Admin →
+                Blacklist, which meant an operator reading the banner had no way
+                to act on it from where they were standing. */}
+            {activeBlacklist && can('blacklist:edit') ? (
+              <Button size="sm" variant="secondary" onClick={() => setLiftOpen(true)}>
+                Lift
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -729,6 +750,28 @@ export default function ApplicantProfilePage() {
       </div>
 
       <EditApplicantDialog profile={applicant} open={editOpen} onOpenChange={setEditOpen} />
+
+      <BlacklistDialog
+        open={blacklistOpen}
+        onOpenChange={setBlacklistOpen}
+        applicant={{
+          id: applicant.id,
+          fullName: applicant.fullName,
+          applicantCode: applicant.applicantCode,
+        }}
+        onDone={() => void refetch()}
+      />
+
+      {activeBlacklist ? (
+        <LiftBlacklistDialog
+          blacklistId={activeBlacklist.id}
+          applicantId={applicant.id}
+          applicantName={applicant.fullName}
+          open={liftOpen}
+          onOpenChange={setLiftOpen}
+          onDone={() => void refetch()}
+        />
+      ) : null}
 
       {activeRecord ? (
         <AssignRecordDialog

@@ -240,7 +240,16 @@ export class ReportsService {
       JOIN applicants a ON a.id = r.applicant_id
       LEFT JOIN achievements ach ON ach.record_id = r.id
       WHERE r.deleted_at IS NULL
-        AND r.has_certificate = false
+        -- Outstanding means "not signed off", not "no file". A certificate
+        -- uploaded and left unchecked is precisely the row this report is for,
+        -- and testing has_certificate dropped it the moment anything landed —
+        -- including the number the NBR website mints by itself, which is no
+        -- file at all.
+        AND NOT EXISTS (
+          SELECT 1 FROM certificates c
+           WHERE c.record_id = r.id
+             AND c.verification_status = 'verified'
+        )
         AND r.status IN ('payment_received','certificate_pending')
       ORDER BY r.updated_at
       LIMIT 1000

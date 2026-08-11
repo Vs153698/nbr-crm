@@ -1,4 +1,6 @@
 import {
+  CERTIFICATE_VERIFICATION,
+  CERTIFICATE_VERIFICATION_LABELS,
   DELIVERY_STATUS,
   PUBLICATION_KIND,
   type PublicationKind,
@@ -41,9 +43,14 @@ async function uploadFile(
 /**
  * W-11 Certificate tab (§10, M-04).
  *
- * Every upload appends a version and the previous ones stay downloadable —
- * the UI says so explicitly, because a user who believes "upload" means
- * "replace" will hesitate to correct a typo on a certificate.
+ * The stage runs in two deliberate steps — **upload**, then **verify** — and
+ * this screen is built around that separation rather than hiding it. Uploading
+ * hands over a file; verifying is a named person saying it is correct, and only
+ * that releases the record to Dispatch.
+ *
+ * Every upload appends a version and the previous ones stay downloadable — the
+ * UI says so explicitly, because a user who believes "upload" means "replace"
+ * will hesitate to correct a typo on a certificate.
  */
 export function CertificateTab({
   recordId,
@@ -59,6 +66,7 @@ export function CertificateTab({
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
 
   useAutoOpen(autoOpen, { certificate: () => setUploadOpen(true) }, onAutoOpened);
 
@@ -85,38 +93,104 @@ export function CertificateTab({
 
   if (isLoading) return <div className="skeleton h-40" />;
 
+  const uploaded = (certificate?.versions.length ?? 0) > 0;
+  const verified = certificate?.verificationStatus === CERTIFICATE_VERIFICATION.VERIFIED;
+  const canSignOff = uploaded && !certificate?.isCurrentVersionVerified;
+
   return (
     <div className="space-y-4">
       <CardHeader
         title="Certificate"
         subtitle={
-          certificate
-            ? `${certificate.certificateNumber} · version ${certificate.currentVersion}`
-            : 'Not issued yet'
+          certificate && uploaded
+            ? `${certificate.certificateNumber} · version ${certificate.currentVersion} · ${CERTIFICATE_VERIFICATION_LABELS[certificate.verificationStatus]}`
+            : 'Not uploaded yet'
         }
         icon={Icons.Award}
         action={
           can('certificates:create') ? (
-            <Button size="sm" variant="primary" icon={Icons.Upload} onClick={() => setUploadOpen(true)}>
-              {certificate ? 'Upload new version' : 'Upload certificate'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={canSignOff ? 'secondary' : 'primary'}
+                icon={Icons.Upload}
+                onClick={() => setUploadOpen(true)}
+              >
+                {uploaded ? 'Upload new version' : 'Upload certificate'}
+              </Button>
+              {/* The stage-completing action, and the only one. Shown as the
+                  primary once a file is waiting on it, because at that point
+                  it is the single thing standing between the record and
+                  Dispatch. */}
+              {canSignOff ? (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Icons.ShieldCheck}
+                  onClick={() => setVerifyOpen(true)}
+                >
+                  Mark verified & complete
+                </Button>
+              ) : null}
+            </div>
           ) : null
         }
       />
 
-      {!certificate ? (
-        <EmptyState
-          icon={Icons.Award}
-          title="No certificate issued"
-          description="Certificates are designed manually and uploaded here. A number is allocated automatically on first issue."
-        />
+      {!certificate || !uploaded ? (
+        <>
+          <EmptyState
+            icon={Icons.Award}
+            title="No certificate uploaded"
+            description="Certificates are prepared manually and uploaded here. Nothing is generated automatically — the record stays in Certificate Verification until an employee uploads the certificate and marks it verified."
+          />
+          {/* The website allocates a number of its own when the fee settles.
+              Showing it here stops an operator hunting for a certificate that
+              exists only as a string on the public verification page. */}
+          {certificate?.certificateNumber ? (
+            <p className="flex gap-2 rounded-card border border-line bg-canvas px-3 py-2.5 text-[11px] text-ink-2">
+              <Icons.Info
+                size={ICON_SIZE.sm}
+                strokeWidth={ICON_STROKE}
+                className="mt-px shrink-0 text-ink-3"
+              />
+              <span>
+                The NBR website has reserved certificate number{' '}
+                <span className="tabular font-semibold text-ink">
+                  {certificate.certificateNumber}
+                </span>{' '}
+                for this record. It is a reference only — it becomes the official certificate when
+                you upload the file and mark it verified.
+              </span>
+            </p>
+          ) : null}
+        </>
       ) : (
         <>
+          <CertificateVerificationBanner certificate={certificate} />
+
           <dl className="rounded-lg border border-line p-3 sm:max-w-md">
             <DetailRow label="Certificate number" value={certificate.certificateNumber} />
             <DetailRow label="Record number" value={certificate.recordNumber} />
             <DetailRow label="Issue date" value={formatDate(certificate.issueDate)} />
             <DetailRow label="Current version" value={`v${certificate.currentVersion}`} />
+            <DetailRow
+              label="Verification"
+              value={CERTIFICATE_VERIFICATION_LABELS[certificate.verificationStatus]}
+            />
+            {verified ? (
+              <>
+                <DetailRow
+                  label="Verified by"
+                  value={
+                    certificate.verifiedByName
+                      ? `${certificate.verifiedByName} (v${certificate.verifiedVersion})`
+                      : null
+                  }
+                />
+                <DetailRow label="Verified on" value={formatDate(certificate.verifiedAt)} />
+              </>
+            ) : null}
           </dl>
 
           <div>
@@ -154,10 +228,17 @@ export function CertificateTab({
                       ) : (
                         <span className="ml-1.5 text-2xs font-normal text-ink-3">superseded</span>
                       )}
+                      {/* Which version carries the sign-off, not merely which
+                          is newest. After a correction these differ, and that
+                          difference is the whole reason the stage reopens. */}
+                      {version.isVerified ? (
+                        <span className="ml-1.5 text-2xs font-semibold text-ok">verified</span>
+                      ) : null}
                     </p>
                     <p className="text-[10px] text-ink-3">
-                      {formatDate(version.issueDate)} · {version.uploadedByName} ·{' '}
-                      {formatRelative(version.createdAt)}
+                      Uploaded by {version.uploadedByName ?? 'unknown'} ·{' '}
+                      {formatRelative(version.createdAt)} · issue date{' '}
+                      {formatDate(version.issueDate)}
                     </p>
                   </div>
 
@@ -189,6 +270,15 @@ export function CertificateTab({
         </>
       )}
 
+      {verifyOpen && certificate ? (
+        <VerifyCertificateDialog
+          recordId={recordId}
+          certificate={certificate}
+          onClose={() => setVerifyOpen(false)}
+          onSaved={invalidate}
+        />
+      ) : null}
+
       {uploadOpen ? (
         <UploadCertificateDialog
           recordId={recordId}
@@ -198,6 +288,160 @@ export function CertificateTab({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Where the certificate stands, stated plainly at the top of the tab.
+ *
+ * Three states, three different things for the reader to do — and the middle
+ * one is the state this whole flow exists to make visible. A file that has been
+ * uploaded but not checked used to be indistinguishable from a finished
+ * certificate, which is how drafts went out.
+ */
+function CertificateVerificationBanner({ certificate }: { certificate: CertificateView }) {
+  if (certificate.isCurrentVersionVerified) {
+    return (
+      <p className="flex gap-2 rounded-card border border-ok-ring bg-ok-tint px-3 py-2.5 text-[11px] text-ink-2">
+        <Icons.ShieldCheck
+          size={ICON_SIZE.sm}
+          strokeWidth={ICON_STROKE}
+          className="mt-px shrink-0 text-ok"
+        />
+        <span>
+          <span className="font-semibold text-ok">Verified and complete.</span> v
+          {certificate.verifiedVersion} was signed off by{' '}
+          {certificate.verifiedByName ?? 'an employee'} on {formatDate(certificate.verifiedAt)} and
+          is the official certificate. The record has moved on to Dispatch.
+          {certificate.verificationNotes ? ` — ${certificate.verificationNotes}` : ''}
+        </span>
+      </p>
+    );
+  }
+
+  // Signed off, then corrected. The newest file has nobody's approval on it,
+  // and saying "verified" here because the certificate *once* was would be the
+  // most dangerous thing this panel could do.
+  if (certificate.verificationStatus === CERTIFICATE_VERIFICATION.VERIFIED) {
+    return (
+      <p className="flex gap-2 rounded-card border border-warn-ring bg-warn-tint px-3 py-2.5 text-[11px] text-ink-2">
+        <Icons.ShieldAlert
+          size={ICON_SIZE.sm}
+          strokeWidth={ICON_STROKE}
+          className="mt-px shrink-0 text-warn"
+        />
+        <span>
+          <span className="font-semibold text-warn">
+            v{certificate.currentVersion} has not been verified.
+          </span>{' '}
+          The sign-off on record is for v{certificate.verifiedVersion}, which this version
+          replaced. Check the new file and mark it verified before it goes out.
+        </span>
+      </p>
+    );
+  }
+
+  return (
+    <p className="flex gap-2 rounded-card border border-warn-ring bg-warn-tint px-3 py-2.5 text-[11px] text-ink-2">
+      <Icons.Clock
+        size={ICON_SIZE.sm}
+        strokeWidth={ICON_STROKE}
+        className="mt-px shrink-0 text-warn"
+      />
+      <span>
+        <span className="font-semibold text-warn">Awaiting verification.</span> The certificate has
+        been uploaded but is not yet official. Check it, then mark it verified — that completes the
+        certificate stage and sends the record to Dispatch.
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The sign-off.
+ *
+ * Deliberately a dialog with a confirm rather than a one-click toggle: it
+ * publishes the certificate to the public verification page and moves the
+ * record to Dispatch, and both of those are awkward to walk back. What it
+ * asks for is small — optional notes on what was checked — but what it states
+ * before the click is not.
+ */
+function VerifyCertificateDialog({
+  recordId,
+  certificate,
+  onClose,
+  onSaved,
+}: {
+  recordId: string;
+  certificate: CertificateView;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [notes, setNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => api.post('/certificates/verify', { recordId, notes: notes.trim() || undefined }),
+    onSuccess: () => {
+      toast.success('Certificate verified', {
+        description: 'The certificate stage is complete and the record has moved to Dispatch.',
+      });
+      onSaved();
+      onClose();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not verify the certificate'),
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Mark certificate verified"
+      description={`v${certificate.currentVersion} becomes the official certificate for this record.`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            icon={Icons.ShieldCheck}
+            loading={mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            Verify & complete stage
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <dl className="rounded-lg border border-line p-3">
+          <DetailRow label="Certificate number" value={certificate.certificateNumber} />
+          <DetailRow label="Version being verified" value={`v${certificate.currentVersion}`} />
+          <DetailRow
+            label="Uploaded by"
+            value={certificate.versions[0]?.uploadedByName ?? null}
+          />
+          <DetailRow label="Issue date" value={formatDate(certificate.issueDate)} />
+        </dl>
+
+        <p className="text-xs text-ink-2">
+          Download and check the PDF first. On confirming, this version becomes the official
+          certificate, its number is registered on the NBR website's public verification page, and
+          the record moves to <strong className="text-ink">Dispatch Pending</strong>.
+        </p>
+
+        <Textarea
+          label="What you checked"
+          hint="Optional. Recorded against your name on the permanent timeline."
+          rows={3}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="Name spelling, category and achievement date checked against the application."
+        />
+      </div>
+    </Dialog>
   );
 }
 

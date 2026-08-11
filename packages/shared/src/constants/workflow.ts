@@ -20,6 +20,16 @@ export type TransitionGuard =
   | 'payment_settled'
   /** At least one certificate version must be uploaded. */
   | 'has_certificate'
+  /**
+   * An employee must have uploaded a certificate *and* signed it off.
+   *
+   * Deliberately distinct from `has_certificate`. A file existing is not the
+   * milestone — it can be the wrong name, the wrong year, or a draft the
+   * designer sent for comment. The certificate stage completes when a person
+   * says it is right, and this guard is what makes that a rule rather than a
+   * convention.
+   */
+  | 'certificate_verified'
   /** A dispatch row with a tracking number must exist. */
   | 'has_dispatch'
   /** Applicant must not be under an active blacklist (Admin may override). */
@@ -119,16 +129,31 @@ export const STATUS_TRANSITIONS: Readonly<Record<RecordStatus, readonly StatusTr
     { to: RECORD_STATUS.ON_HOLD, label: 'Put on hold', permission: CHANGE_STATUS, requiresRemark: true },
   ],
 
+  // Reaching Payment Received advances to Certificate Verification on its own —
+  // there was never a decision to take here, only a click to remember. The
+  // transition is kept for the rare manual correction.
   [RECORD_STATUS.PAYMENT_RECEIVED]: [
-    { to: RECORD_STATUS.CERTIFICATE_PENDING, label: 'Queue certificate', permission: CHANGE_STATUS },
+    {
+      to: RECORD_STATUS.CERTIFICATE_PENDING,
+      label: 'Send to certificate verification',
+      permission: CHANGE_STATUS,
+    },
   ],
 
+  /**
+   * The certificate stage completes only when an employee says so.
+   *
+   * The guard is `certificate_verified`, not `has_certificate`, so this reads
+   * the same whether it is reached from the Certificate tab's sign-off button
+   * or from the Change Status modal — neither can complete the stage on an
+   * unchecked file, and nothing automatic can complete it at all.
+   */
   [RECORD_STATUS.CERTIFICATE_PENDING]: [
     {
       to: RECORD_STATUS.CERTIFICATE_UPLOADED,
-      label: 'Certificate uploaded',
+      label: 'Mark certificate completed',
       permission: p(MODULES.CERTIFICATES, ACTIONS.CREATE),
-      guards: ['has_certificate'],
+      guards: ['certificate_verified'],
     },
   ],
 
@@ -296,8 +321,17 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'payment-confirmation', label: 'Send payment confirmation', icon: 'Mail', kind: 'modal', target: 'email:payment_confirmation', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
   ],
 
+  /**
+   * §11.6b Certificate Verification.
+   *
+   * Two steps, both by hand, in the order they happen. The second is the one
+   * that completes the stage and sends the record to Dispatch — it opens the
+   * Certificate tab rather than firing a transition, because the operator is
+   * meant to look at the file before signing it off.
+   */
   [RECORD_STATUS.CERTIFICATE_PENDING]: [
     { id: 'upload-certificate', label: 'Upload certificate', icon: 'Award', kind: 'modal', target: 'certificate', permission: p(MODULES.CERTIFICATES, ACTIONS.CREATE), variant: 'primary' },
+    { id: 'verify-certificate', label: 'Mark certificate verified', icon: 'ShieldCheck', kind: 'modal', target: 'certificate', permission: p(MODULES.CERTIFICATES, ACTIONS.CREATE), variant: 'success' },
     { id: 'assign-operations', label: 'Assign operations team', icon: 'Users', kind: 'modal', target: 'assign', permission: p(MODULES.RECORDS, ACTIONS.EDIT) },
   ],
 

@@ -22,6 +22,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
+import { BlacklistDialog } from '../applicants/components/BlacklistDialog';
 import { TemplateEditor, type TemplateRow } from './templates/TemplateEditor';
 
 // ── W-25 Blacklist & restrictions ───────────────────────────────────────────
@@ -54,6 +55,7 @@ export function BlacklistPage() {
   const { can } = useAuth();
   const [activeOnly, setActiveOnly] = useState(true);
   const [liftTarget, setLiftTarget] = useState<BlacklistRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [...queryKeys.blacklist, activeOnly],
@@ -79,26 +81,34 @@ export function BlacklistPage() {
         title="Blacklist & restrictions"
         subtitle="Blacklisted applicants cannot open a new record without an audited Admin override."
         actions={
-          <div className="flex gap-1.5">
-            {[
-              { value: true, label: 'Active' },
-              { value: false, label: 'All (incl. lifted)' },
-            ].map((option) => (
-              <button
-                key={String(option.value)}
-                type="button"
-                onClick={() => setActiveOnly(option.value)}
-                aria-pressed={activeOnly === option.value}
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                  activeOnly === option.value
-                    ? 'border-brand bg-brand text-white'
-                    : 'border-line bg-white text-ink-2 hover:bg-canvas',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex gap-1.5">
+              {[
+                { value: true, label: 'Active' },
+                { value: false, label: 'All (incl. lifted)' },
+              ].map((option) => (
+                <button
+                  key={String(option.value)}
+                  type="button"
+                  onClick={() => setActiveOnly(option.value)}
+                  aria-pressed={activeOnly === option.value}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    activeOnly === option.value
+                      ? 'border-brand bg-brand text-white'
+                      : 'border-line bg-white text-ink-2 hover:bg-canvas',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {can('blacklist:create') ? (
+              <Button variant="danger" icon={Icons.Ban} onClick={() => setAddOpen(true)}>
+                Blacklist applicant
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -119,6 +129,13 @@ export function BlacklistPage() {
             icon={Icons.ShieldCheck}
             title="No blacklisted applicants"
             description="Nobody is currently blocked from applying."
+            action={
+              can('blacklist:create') ? (
+                <Button variant="danger" icon={Icons.Ban} onClick={() => setAddOpen(true)}>
+                  Blacklist applicant
+                </Button>
+              ) : undefined
+            }
           />
         </Card>
       ) : (
@@ -175,6 +192,8 @@ export function BlacklistPage() {
           ))}
         </div>
       )}
+
+      <BlacklistDialog open={addOpen} onOpenChange={setAddOpen} />
 
       <ConfirmDialog
         open={liftTarget !== null}

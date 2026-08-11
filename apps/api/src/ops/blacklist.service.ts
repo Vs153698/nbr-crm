@@ -1,22 +1,47 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   BLACKLIST_KIND,
+  BLACKLIST_REASON,
   BLACKLIST_REASON_LABELS,
   FLAG,
   FLAG_META,
   TIMELINE_EVENT,
   type BlacklistReason,
+  legacyUserBlockSchema,
   type FlagCode,
+  type LegacyUserBlockInput,
 } from '@nbr/shared';
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
-import { ConflictError, NotFoundError, ValidationError } from '../common/errors';
-import { requireActor } from '../common/request-context';
+import { verifyWebhookSignature } from '../common/crypto';
+import {
+  ConflictError,
+  NotFoundError,
+  UnauthorisedError,
+  ValidationError,
+} from '../common/errors';
+import { getActor, INTEGRATION_ACTOR_NAME, requireActor } from '../common/request-context';
+import { ENV } from '../config/config.module';
+import type { Env } from '../config/env';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
+
+/**
+ * Where a blacklist change came from.
+ *
+ * `crm` pushes the block on to the website. `website` does not — it *is* the
+ * website telling us, and echoing it straight back would have the two systems
+ * volleying one block between them.
+ */
+export type BlacklistOrigin = 'crm' | 'website';
+
+/** Detail recorded when the website blocks an account with no reason of its own. */
+const WEBSITE_BLOCK_DETAIL = 'Account blocked on the NBR website.';
+const WEBSITE_UNBLOCK_REASON = 'Account unblocked on the NBR website.';
 
 /**
  * Blacklist and restriction flags (§19, §20 — P2-09).
@@ -29,14 +54,63 @@ import { TimelineService } from '../timeline/timeline.service';
  */
 @Injectable()
 export class BlacklistService {
+  private readonly logger = new Logger(BlacklistService.name);
+
   constructor(
     @Inject(DB) private readonly db: Database,
+    @Inject(ENV) private readonly env: Env,
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    private readonly legacyPush: LegacyPushService,
   ) {}
 
-  /** M-09 Blacklist Applicant. */
+  /**
+   * Verify the website's signature, then apply the block.
+   *
+   * The signature check runs before the body is parsed as our schema — an
+   * unsigned request should cost nothing beyond one HMAC. Same secret and same
+   * tolerance as the application webhook, so an operator configures one value.
+   */
+  async receiveWebsiteBlock(
+    rawBody: string,
+    signatureHeader: string | undefined,
+    parsedBody: unknown,
+  ): Promise<{ matched: boolean; applicantId: string | null; changed: boolean }> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody,
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (!verification.valid) {
+      this.logger.warn(`Rejected website user-block push: ${verification.reason}`);
+
+      await this.audit.record({
+        action: AUDIT.WEBHOOK_REJECTED,
+        entityType: 'integration',
+        entityLabel: 'nbr_website:user-block',
+        meta: { reason: verification.reason },
+      });
+
+      throw new UnauthorisedError(
+        'WEBHOOK_SIGNATURE_INVALID',
+        `The signature did not verify (${verification.reason}).`,
+      );
+    }
+
+    return this.applyFromWebsite(legacyUserBlockSchema.parse(parsedBody));
+  }
+
+  /**
+   * M-09 Blacklist Applicant.
+   *
+   * `origin` decides whether the block is mirrored on to the website. An
+   * operator acting here is authoritative and the website is told; a block that
+   * *arrived* from the website is already in force over there and must not be
+   * sent back.
+   */
   async add(input: {
     applicantId: string;
     kind: string;
@@ -45,8 +119,13 @@ export class BlacklistService {
     effectiveUntil?: Date;
     documentKeys: string[];
     remarks?: string;
+    origin?: BlacklistOrigin;
   }): Promise<{ id: string }> {
-    const actor = requireActor();
+    // Not `requireActor` any more: the website's own block arrives on a signed
+    // server-to-server call with no session behind it, and the timeline and
+    // audit writers already record an authorless change as System.
+    const actor = getActor();
+    const origin = input.origin ?? 'crm';
 
     const [applicant] = await this.db
       .select({
@@ -95,7 +174,7 @@ export class BlacklistService {
           remarks: input.remarks ?? null,
           documentKeys: input.documentKeys,
           effectiveUntil: input.effectiveUntil ?? null,
-          createdByUserId: actor.userId,
+          createdByUserId: actor?.userId ?? null,
         })
         .returning({ id: schema.blacklists.id });
 
@@ -114,7 +193,7 @@ export class BlacklistService {
           flag: FLAG.BLACKLISTED,
           reason: input.reasonDetail,
           expiresAt: input.effectiveUntil ?? null,
-          setByUserId: actor.userId,
+          setByUserId: actor?.userId ?? null,
         })
         .onConflictDoNothing();
 
@@ -125,13 +204,20 @@ export class BlacklistService {
         {
           applicantId: input.applicantId,
           eventType: TIMELINE_EVENT.BLACKLISTED,
-          summary: `Blacklisted (${input.kind}) — ${reasonLabel}`,
+          summary:
+            origin === 'website'
+              ? `Blacklisted (${input.kind}) — ${reasonLabel} · mirrored from the NBR website`
+              : `Blacklisted (${input.kind}) — ${reasonLabel}`,
           meta: {
             kind: input.kind,
             reason: input.reason,
             detail: input.reasonDetail,
             effectiveUntil: input.effectiveUntil?.toISOString() ?? null,
+            origin,
           },
+          ...(origin === 'website'
+            ? { actorKind: 'integration' as const, actorName: INTEGRATION_ACTOR_NAME }
+            : {}),
         },
         tx,
       );
@@ -151,12 +237,30 @@ export class BlacklistService {
     });
 
     await this.bust(input.applicantId);
+
+    // Block the website account too, so a blacklisted person cannot simply log
+    // in over there and file again. Detached: the register entry here is
+    // already written and enforced, and a website outage must not undo it.
+    if (origin === 'crm') {
+      this.legacyPush.pushBlacklist(input.applicantId, {
+        action: 'add',
+        kind: input.kind,
+        reason: input.reason,
+        reasonDetail: input.reasonDetail,
+        effectiveUntil: input.effectiveUntil ?? null,
+      });
+    }
+
     return { id };
   }
 
   /** Lifting keeps the record — it stamps `liftedAt` rather than deleting. */
-  async lift(blacklistId: string, reason: string): Promise<void> {
-    const actor = requireActor();
+  async lift(
+    blacklistId: string,
+    reason: string,
+    origin: BlacklistOrigin = 'crm',
+  ): Promise<void> {
+    const actor = getActor();
 
     const [blacklist] = await this.db
       .select()
@@ -172,7 +276,7 @@ export class BlacklistService {
     await this.db.transaction(async (tx) => {
       await tx
         .update(schema.blacklists)
-        .set({ liftedAt: new Date(), liftedByUserId: actor.userId, liftReason: reason })
+        .set({ liftedAt: new Date(), liftedByUserId: actor?.userId ?? null, liftReason: reason })
         .where(eq(schema.blacklists.id, blacklistId));
 
       // Only clear the applicant-level flag if nothing else is still in force.
@@ -195,7 +299,7 @@ export class BlacklistService {
 
         await tx
           .update(schema.applicantFlags)
-          .set({ removedAt: new Date(), removedByUserId: actor.userId })
+          .set({ removedAt: new Date(), removedByUserId: actor?.userId ?? null })
           .where(
             and(
               eq(schema.applicantFlags.applicantId, blacklist.applicantId),
@@ -209,8 +313,14 @@ export class BlacklistService {
         {
           applicantId: blacklist.applicantId,
           eventType: TIMELINE_EVENT.BLACKLIST_LIFTED,
-          summary: `Blacklist lifted — ${reason}`,
-          meta: { blacklistId, reason },
+          summary:
+            origin === 'website'
+              ? `Blacklist lifted — ${reason} · mirrored from the NBR website`
+              : `Blacklist lifted — ${reason}`,
+          meta: { blacklistId, reason, origin },
+          ...(origin === 'website'
+            ? { actorKind: 'integration' as const, actorName: INTEGRATION_ACTOR_NAME }
+            : {}),
         },
         tx,
       );
@@ -220,13 +330,147 @@ export class BlacklistService {
           action: AUDIT.BLACKLIST_LIFTED,
           entityType: 'applicant',
           entityId: blacklist.applicantId,
-          meta: { blacklistId, reason },
+          meta: { blacklistId, reason, origin },
         },
         tx,
       );
     });
 
     await this.bust(blacklist.applicantId);
+
+    // Unblock the website account, but only once nothing else is still in
+    // force here — two blacklists and one lift must not restore their login.
+    if (origin === 'crm') {
+      const [stillBlocked] = await this.db
+        .select({ id: schema.blacklists.id })
+        .from(schema.blacklists)
+        .where(
+          and(
+            eq(schema.blacklists.applicantId, blacklist.applicantId),
+            isNull(schema.blacklists.liftedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!stillBlocked) {
+        this.legacyPush.pushBlacklist(blacklist.applicantId, { action: 'lift' });
+      }
+    }
+  }
+
+  /**
+   * ── Inbound: the website blocked or unblocked an account ──────────────────
+   *
+   * The website's Users screen has always had a block switch, and it already
+   * refuses that person's login and refuses an admin filing an application for
+   * them. What it had no way to do was tell anyone — so a person blocked over
+   * there stayed fully active here, and the CRM would happily open a new record
+   * for them the same afternoon.
+   *
+   * Matching is on mobile first, then email. Mobile is the identifier the CRM
+   * treats as identity — it carries a unique index and drives duplicate
+   * detection — whereas an email is routinely shared inside a family or reused
+   * by an agent filing on someone's behalf, so matching on it alone would
+   * occasionally blacklist the wrong person.
+   *
+   * Someone the CRM has never met is not an error: they registered on the
+   * website and never got as far as an application. Reported as `matched:
+   * false` so the website's log says so plainly.
+   */
+  async applyFromWebsite(
+    input: LegacyUserBlockInput,
+  ): Promise<{ matched: boolean; applicantId: string | null; changed: boolean }> {
+    const applicant = await this.findByIdentifiers(input.email, input.phone);
+
+    if (!applicant) {
+      this.logger.warn(
+        `Website ${input.action} for ${input.email ?? input.phone ?? input.userId} matched no applicant`,
+      );
+      return { matched: false, applicantId: null, changed: false };
+    }
+
+    const [active] = await this.db
+      .select({ id: schema.blacklists.id })
+      .from(schema.blacklists)
+      .where(
+        and(eq(schema.blacklists.applicantId, applicant.id), isNull(schema.blacklists.liftedAt)),
+      )
+      .limit(1);
+
+    if (input.action === 'block') {
+      // Already blocked here. The two systems agree, which is the point —
+      // report success so the website stops retrying.
+      if (active) return { matched: true, applicantId: applicant.id, changed: false };
+
+      await this.add({
+        applicantId: applicant.id,
+        // The website's switch has no end date, so the honest mirror is a
+        // permanent entry. An operator here can lift it at any time, and that
+        // lift travels back and unblocks the account.
+        kind: BLACKLIST_KIND.PERMANENT,
+        reason: BLACKLIST_REASON.OTHER,
+        reasonDetail: input.reason?.trim() || WEBSITE_BLOCK_DETAIL,
+        documentKeys: [],
+        remarks: `Blocked on the NBR website (user ${input.userId}).`,
+        origin: 'website',
+      });
+
+      return { matched: true, applicantId: applicant.id, changed: true };
+    }
+
+    if (!active) return { matched: true, applicantId: applicant.id, changed: false };
+
+    await this.lift(active.id, input.reason?.trim() || WEBSITE_UNBLOCK_REASON, 'website');
+    return { matched: true, applicantId: applicant.id, changed: true };
+  }
+
+  /**
+   * Find the applicant behind a website account.
+   *
+   * Deliberately exact-match only. A fuzzy name match is right for the
+   * duplicate-detection warning, where a human reads the result and decides;
+   * it is wrong here, where the outcome is an automatic block applied with
+   * nobody looking.
+   */
+  private async findByIdentifiers(email?: string, phone?: string) {
+    const digits = phone?.replace(/\D/g, '') ?? '';
+    // The website stores bare ten-digit Indian mobiles; the CRM normalises to
+    // the last ten. Comparing the tails is what makes "+91 98765 43210" and
+    // "9876543210" the same person.
+    const tail = digits.length >= 10 ? digits.slice(-10) : null;
+    const normalisedEmail = email?.trim().toLowerCase() || null;
+
+    if (!tail && !normalisedEmail) return null;
+
+    const [byMobile] = tail
+      ? await this.db
+          .select({ id: schema.applicants.id })
+          .from(schema.applicants)
+          .where(
+            and(
+              isNull(schema.applicants.deletedAt),
+              sql`right(regexp_replace(${schema.applicants.mobileNormalised}, '\\D', '', 'g'), 10) = ${tail}`,
+            ),
+          )
+          .limit(1)
+      : [];
+
+    if (byMobile) return byMobile;
+
+    const [byEmail] = normalisedEmail
+      ? await this.db
+          .select({ id: schema.applicants.id })
+          .from(schema.applicants)
+          .where(
+            and(
+              isNull(schema.applicants.deletedAt),
+              eq(schema.applicants.emailNormalised, normalisedEmail),
+            ),
+          )
+          .limit(1)
+      : [];
+
+    return byEmail ?? null;
   }
 
   /** W-25 register — every entry, active and historical. */

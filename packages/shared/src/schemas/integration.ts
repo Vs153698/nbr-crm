@@ -533,3 +533,48 @@ export interface IntegrationSyncStatus {
 /** Header carrying the HMAC signature on inbound webhook requests. */
 export const WEBHOOK_SIGNATURE_HEADER = 'x-nbr-signature';
 export const WEBHOOK_IDEMPOTENCY_HEADER = 'x-nbr-idempotency-key';
+
+/**
+ * ── Blacklist, across the two systems ────────────────────────────────────────
+ *
+ * The CRM keeps the register — kind, reason, supporting documents, who lifted
+ * it and why — because that is the record that has to survive being challenged
+ * years later. The website keeps the *effect*: `users.is_blocked`, which its
+ * login and its admin intake already honour.
+ *
+ * So the two halves are deliberately asymmetric. A blacklist added here sends
+ * the website "block this person"; the website blocking someone from its own
+ * Users screen sends back "they are blocked", and the CRM opens a register
+ * entry for it so the reason is not lost the moment it crosses over.
+ *
+ * Identity travels as email and mobile rather than an id, because there is no
+ * shared key for a *person* — `legacy_mirror` links applications, and a
+ * blacklisted applicant may have none, or several belonging to different
+ * website accounts.
+ */
+export const LEGACY_BLACKLIST_ACTION = {
+  ADD: 'add',
+  LIFT: 'lift',
+} as const;
+
+export type LegacyBlacklistAction =
+  (typeof LEGACY_BLACKLIST_ACTION)[keyof typeof LEGACY_BLACKLIST_ACTION];
+
+/**
+ * What the website sends when an operator blocks or unblocks a user account.
+ *
+ * `userId` is the website's own primary key. It is carried for the audit trail
+ * and for the reverse lookup on a later unblock; the CRM matches on the
+ * identifiers, since a person here may predate the website account entirely.
+ */
+export const legacyUserBlockSchema = z.object({
+  action: z.enum(['block', 'unblock']),
+  userId: trimmedString(120),
+  email: optionalTrimmedString(320),
+  phone: optionalTrimmedString(40),
+  fullName: optionalTrimmedString(200),
+  /** Free text the operator typed on the website, if its screen collected any. */
+  reason: optionalTrimmedString(2000),
+});
+
+export type LegacyUserBlockInput = z.infer<typeof legacyUserBlockSchema>;

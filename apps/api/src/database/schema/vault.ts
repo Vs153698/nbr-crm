@@ -167,6 +167,30 @@ export const certificates = pgTable(
     recordNumber: varchar('record_number', { length: 80 }),
     currentVersion: integer('current_version').notNull().default(1),
     issueDate: timestamp('issue_date', { withTimezone: true, mode: 'date' }),
+
+    /**
+     * Employee sign-off (§10) — `awaiting_upload | pending_verification | verified`.
+     *
+     * The certificate stage is completely operator-controlled: a file being
+     * present is not the milestone, a person saying it is correct is. Nothing
+     * automatic may set this to `verified` — not the website's own certificate
+     * push, not a payment settling — which is the whole reason it exists as a
+     * column rather than being inferred from "a version row exists".
+     *
+     * A new version resets it to `pending_verification`: approval belongs to
+     * the file that was approved, never to the one that replaced it.
+     */
+    verificationStatus: varchar('verification_status', { length: 30 })
+      .notNull()
+      .default('awaiting_upload'),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'date' }),
+    verifiedByUserId: uuid('verified_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** Which version the sign-off applies to, so a later upload cannot inherit it. */
+    verifiedVersion: integer('verified_version'),
+    verificationNotes: text('verification_notes'),
+
     ...timestamps(),
   },
   (t) => [

@@ -1,9 +1,23 @@
-import { Body, Controller, Delete, Get, HttpCode, Module, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Module,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
+  WEBHOOK_SIGNATURE_HEADER,
   createBlacklistSchema,
   createTaskSchema,
+  legacyUserBlockSchema,
   liftBlacklistSchema,
   logCallSchema,
   markWhatsappSentSchema,
@@ -16,8 +30,10 @@ import {
   type SelectionLetterInput,
   whatsappLinkSchema,
 } from '@nbr/shared';
-import { Can, RequireAnyPermission } from '../auth/auth.decorators';
+import type { FastifyRequest } from 'fastify';
+import { Can, Public, RequireAnyPermission } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
+import { GovernanceModule } from '../governance/governance.module';
 import { BlacklistService } from './blacklist.service';
 import { CommunicationsService } from './communications.service';
 import { NotificationsService } from './notifications.service';
@@ -282,6 +298,37 @@ class BlacklistController {
   }
 }
 
+/**
+ * The website telling us it blocked or unblocked one of its accounts.
+ *
+ * On the `integrations/nbr-website` path with the other connector endpoints, so
+ * the website configures one base URL and finds everything under it — but
+ * declared here rather than in the governance module, because it needs
+ * `BlacklistService` and having governance reach into ops would make the two
+ * modules mutually dependent. Exactly the arrangement `LegacyActionsController`
+ * already uses in the other direction; the URL reads the same either way.
+ *
+ * `@Public()` because this is a server-to-server call authenticated by HMAC
+ * signature, not by a session — there is no user on the far end to log in.
+ */
+@Controller('integrations/nbr-website')
+class WebsiteBlacklistController {
+  constructor(private readonly blacklist: BlacklistService) {}
+
+  @Public()
+  @Post('user-block')
+  @HttpCode(200)
+  async userBlock(
+    @Req() request: FastifyRequest & { rawBody?: string; body: unknown },
+  ): Promise<{ matched: boolean; applicantId: string | null; changed: boolean }> {
+    return this.blacklist.receiveWebsiteBlock(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+      request.body,
+    );
+  }
+}
+
 @Controller('flags')
 class FlagsController {
   constructor(private readonly blacklist: BlacklistService) {}
@@ -372,12 +419,16 @@ class NotificationsController {
  * applicant and writes to the same timeline.
  */
 @Module({
+  // For `LegacyPushService`: a blacklist added here blocks the person's website
+  // account too, otherwise they simply log in over there and file again.
+  imports: [GovernanceModule],
   controllers: [
     TasksController,
     CommunicationsController,
     TemplatesController,
     BlacklistController,
     FlagsController,
+    WebsiteBlacklistController,
     NotificationsController,
   ],
   providers: [TasksService, CommunicationsService, BlacklistService, NotificationsService],

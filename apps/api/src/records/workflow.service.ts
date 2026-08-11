@@ -1,7 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import {
+  CERTIFICATE_VERIFICATION,
   findTransition,
   isTerminalStatus,
+  RECORD_STATUS,
   stageActions,
   STATUS_META,
   TIMELINE_EVENT,
@@ -26,6 +28,8 @@ import { requireActor, type Actor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { LegacyActionsService } from '../integrations/legacy-actions.service';
+import { RecordAdvanceService } from './auto-advance.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 
@@ -86,6 +90,11 @@ export class WorkflowService {
     private readonly timeline: TimelineService,
     private readonly audit: AuditService,
     private readonly cache: CacheService,
+    // Circular: governance needs this module's duplicate engine, and this
+    // service needs governance's website connector. See ApplicantsModule.
+    @Inject(forwardRef(() => LegacyActionsService))
+    private readonly legacyActions: LegacyActionsService,
+    private readonly advanceService: RecordAdvanceService,
   ) {}
 
   /**
@@ -263,6 +272,20 @@ export class WorkflowService {
       );
     });
 
+    /**
+     * Fees received → Certificate Verification, with no second click.
+     *
+     * There was never a decision to take between these two: money has landed,
+     * so the certificate team owns the record. Making it a manual "Queue
+     * certificate" transition only created a step to forget, and a record
+     * forgotten at Payment Received is one the certificate queue never shows.
+     */
+    let finalStatus = to;
+    if (to === RECORD_STATUS.PAYMENT_RECEIVED) {
+      const advanced = await this.advanceToCertificateVerification(recordId, record.applicantId);
+      if (advanced) finalStatus = RECORD_STATUS.CERTIFICATE_PENDING;
+    }
+
     await this.cache.invalidateTags(
       CacheTag.record(recordId),
       CacheTag.applicant(record.applicantId),
@@ -270,7 +293,55 @@ export class WorkflowService {
       CacheTag.dashboard(),
     );
 
-    return { status: to };
+    /**
+     * Tell the website, if this record came from there and this transition
+     * means something over there.
+     *
+     * Closing and rejecting are the two that do — the website cancels or
+     * rejects its application, unpublishes the awardee page where one exists,
+     * and writes to the applicant from its own templates — plus reopening a
+     * record it has closed. Everything else is CRM-internal: the website has no
+     * notion of "verification pending", and it learns about payments,
+     * certificates and dispatch from their own services.
+     *
+     * After the commit and outside it: a fetch inside a transaction holds a
+     * pooled connection open for the length of a network round trip.
+     */
+    this.legacyActions.mirrorStatusChange({
+      recordId,
+      applicantId: record.applicantId,
+      from,
+      to,
+      remark: input.remark ?? null,
+      overrideReason: input.overrideReason ?? null,
+    });
+
+    return { status: finalStatus };
+  }
+
+  /**
+   * Move a record that has just been paid into Certificate Verification.
+   *
+   * Shared with `PaymentsService`, which reaches the same point from the other
+   * direction — a final transaction settling the invoice. Either way the record
+   * lands in the certificate team's queue, and nothing beyond that happens
+   * without an employee: the certificate itself is uploaded and signed off by
+   * hand, and this only decides whose queue the record is sitting in.
+   */
+  async advanceToCertificateVerification(
+    recordId: string,
+    applicantId: string,
+  ): Promise<boolean> {
+    const advanced = await this.advanceService.advance({
+      recordId,
+      applicantId,
+      expectedFrom: [RECORD_STATUS.PAYMENT_RECEIVED],
+      to: RECORD_STATUS.CERTIFICATE_PENDING,
+      reason: 'fees received — certificate verification opened',
+    });
+
+    if (advanced) await this.advanceService.bust(recordId, applicantId);
+    return advanced;
   }
 
   /**
@@ -417,6 +488,46 @@ export class WorkflowService {
           .where(eq(schema.certificates.recordId, recordId))
           .limit(1);
         return row ? null : 'Upload the certificate before moving to this stage.';
+      }
+
+      case 'certificate_verified': {
+        const [row] = await this.db
+          .select({
+            id: schema.certificates.id,
+            verificationStatus: schema.certificates.verificationStatus,
+            verifiedVersion: schema.certificates.verifiedVersion,
+            currentVersion: schema.certificates.currentVersion,
+          })
+          .from(schema.certificates)
+          .where(eq(schema.certificates.recordId, recordId))
+          .limit(1);
+
+        if (!row) {
+          return 'Upload the certificate and mark it verified before completing this stage.';
+        }
+
+        const [uploaded] = await this.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(schema.certificateVersions)
+          .where(eq(schema.certificateVersions.certificateId, row.id));
+
+        // A certificate row can exist with nothing behind it — that is how the
+        // website's auto-minted number is recorded. It is not a file.
+        if ((uploaded?.count ?? 0) === 0) {
+          return 'No certificate file has been uploaded yet. Upload it, then mark it verified.';
+        }
+
+        if (row.verificationStatus !== CERTIFICATE_VERIFICATION.VERIFIED) {
+          return 'The certificate has been uploaded but not verified. Open the Certificate tab and mark it verified.';
+        }
+
+        // Signed off, then corrected. The version that goes out is not the one
+        // anybody checked, so the stage is not complete.
+        if (row.verifiedVersion !== row.currentVersion) {
+          return `Version ${row.currentVersion} has not been verified — only v${row.verifiedVersion} was. Verify the latest version first.`;
+        }
+
+        return null;
       }
 
       case 'has_dispatch': {

@@ -9,6 +9,7 @@ import {
   Put,
   Query,
   Req,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ACTIONS,
@@ -562,7 +563,7 @@ class ImportedRecordsController {
   // The importer reuses the same duplicate-detection engine the manual Add
   // Applicant form uses, so a website submission from a returning applicant
   // merges onto their existing profile rather than creating a second one.
-  imports: [ApplicantsModule],
+  imports: [forwardRef(() => ApplicantsModule)],
   controllers: [
     ReportsController,
     ExportsController,
@@ -590,6 +591,10 @@ class ImportedRecordsController {
     // Payments, certificates and dispatch inject this to push their changes
     // back to the public site.
     LegacyPushService,
+    // The workflow engine injects this so a Close or Reject taken in the
+    // ordinary Change Status modal reaches the website, not just one taken in
+    // the Website Review panel.
+    LegacyActionsService,
   ],
 })
 export class GovernanceModule {}
