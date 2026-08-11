@@ -521,6 +521,44 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   },
 
   // ── Queues ────────────────────────────────────────────────────────────────
+  'RecordsController.clientProgress': {
+    tag: 'Records',
+    summary: 'Client progress badge',
+    description:
+      'The eleven milestones NBR reports to its client — Submitted through Photo Uploaded — ' +
+      'each with whether it has been reached and when.',
+    response: {
+      type: 'object',
+      properties: {
+        completed: { type: 'integer' },
+        total: { type: 'integer' },
+        stages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              label: { type: 'string' },
+              step: { type: 'integer' },
+              reached: { type: 'boolean' },
+              at: { type: 'string', format: 'date-time', nullable: true },
+              skipped: { type: 'boolean' },
+              needsEmployeeAction: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+    notes:
+      'Read-only, and derived entirely from dated facts — the timeline, a settled payment, the ' +
+      'certificate sign-off, the courier row, the evidence vault — never from the record\'s ' +
+      'status. Status says where a record *is*; this says what has *happened*, and the two come ' +
+      'apart constantly. A stage needing an employee is reached only once they have acted. ' +
+      '`skipped` marks a stage the process moved past without it ever occurring — a fee settled ' +
+      'before any reminder was sent, say — which is reported honestly rather than ticked to ' +
+      'make the run look unbroken. Nothing here drives the workflow, and the record\'s own ' +
+      'status rail is unaffected.',
+  },
   'QueuesController.verification': {
     tag: 'Queues',
     summary: 'Verification queue',

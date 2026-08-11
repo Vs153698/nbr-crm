@@ -10,6 +10,7 @@
 
 export * from './constants/statuses';
 export * from './constants/workflow';
+export * from './constants/client-progress';
 export * from './constants/permissions';
 export * from './constants/roles';
 export * from './constants/flags';

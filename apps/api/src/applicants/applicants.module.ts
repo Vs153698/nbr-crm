@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { GovernanceModule } from '../governance/governance.module';
 import { PrivacyModule } from '../privacy/privacy.module';
+import { ClientProgressService } from '../records/client-progress.service';
 import { QueuesController } from '../records/queues.controller';
 import { QueuesService } from '../records/queues.service';
 import { RecordsController } from '../records/records.controller';
@@ -37,6 +38,7 @@ import { DuplicateService } from './duplicate.service';
     AddRecordService,
     DuplicateService,
     WorkflowService,
+    ClientProgressService,
     QueuesService,
   ],
   exports: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],

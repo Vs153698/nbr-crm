@@ -5,11 +5,13 @@ import {
   assignRecordSchema,
   changeStatusSchema,
   uuidSchema,
+  type ClientProgress,
   type RecordStatus,
 } from '@nbr/shared';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
 import { TimelineService } from '../timeline/timeline.service';
+import { ClientProgressService } from './client-progress.service';
 import { WorkflowService, type SmartActionPanel } from './workflow.service';
 
 @Controller('records')
@@ -17,6 +19,7 @@ export class RecordsController {
   constructor(
     private readonly workflow: WorkflowService,
     private readonly timeline: TimelineService,
+    private readonly clientProgressService: ClientProgressService,
   ) {}
 
   /**
@@ -28,6 +31,24 @@ export class RecordsController {
   @Can(MODULES.RECORDS, ACTIONS.VIEW)
   async actions(@Param('id') id: string): Promise<SmartActionPanel> {
     return this.workflow.getActionPanel(uuidSchema.parse(id));
+  }
+
+  /**
+   * The eleven-stage progress badge NBR reports to its client.
+   *
+   * A separate, read-only projection rather than a field on the record: it is
+   * derived from dated facts scattered across the timeline, payments,
+   * certificates, dispatch and evidence, and folding that into every record
+   * response would make eight extra queries on every list render for something
+   * only the detail view shows.
+   *
+   * Reports what has happened, never where the record sits — see
+   * `ClientProgressService`.
+   */
+  @Get(':id/client-progress')
+  @Can(MODULES.RECORDS, ACTIONS.VIEW)
+  async clientProgress(@Param('id') id: string): Promise<ClientProgress> {
+    return this.clientProgressService.forRecord(uuidSchema.parse(id));
   }
 
   @Post(':id/status')

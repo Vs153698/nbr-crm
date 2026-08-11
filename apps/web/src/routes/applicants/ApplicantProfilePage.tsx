@@ -17,6 +17,7 @@ import { ICON_SIZE, ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AssignRecordDialog } from './components/AssignRecordDialog';
 import { BlacklistDialog, LiftBlacklistDialog } from './components/BlacklistDialog';
+import { ClientProgressBadge } from './components/ClientProgressBadge';
 import { EmailComposerDialog } from './components/EmailComposerDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
 import { EditApplicantDialog } from './components/EditApplicantDialog';
@@ -408,6 +409,10 @@ export default function ApplicantProfilePage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold tracking-tight text-ink">{applicant.fullName}</h2>
                   {activeRecord ? <StatusBadge status={activeRecord.status} /> : null}
+                  {/* The client's eleven-stage view, beside the internal status
+                      rather than instead of it. The workflow rail further down
+                      is untouched. */}
+                  {activeRecord ? <ClientProgressBadge recordId={activeRecord.id} /> : null}
                 </div>
 
                 {/* What the selected record is: one person or a group, and
