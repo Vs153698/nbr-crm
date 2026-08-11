@@ -104,6 +104,25 @@ export const attachments = pgTable(
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+
+    /**
+     * Withdrawn, not destroyed.
+     *
+     * A miscellaneous attachment can legitimately need removing — a superseded
+     * correction letter, a file put on the wrong profile — but the fact that it
+     * was here, and who took it away, is exactly what somebody asks about
+     * later. The row and the stored object both survive; the file stops being
+     * listed and stops being downloadable.
+     *
+     * Evidence files have no equivalent. They are permanent by database
+     * trigger and no permission reaches them.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+    deletedByUserId: uuid('deleted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    deleteReason: text('delete_reason'),
+
     createdAt: createdAt(),
   },
   (t) => [

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   APPLICATION_SOURCE,
   GENDER,
+  RECOGNITION_TYPE,
   RECORD_TYPE,
 } from '../constants/catalog';
 import { CONSENT_ARTEFACT, CONSENT_CHANNEL, PROCESSING_PURPOSE } from '../constants/dpdp';
@@ -67,7 +68,7 @@ export const applicantIdentifiersSchema = z.object({
     .optional(),
 });
 
-/** §6 Achievement details, captured with the record. */
+/** §6 Record details, captured with the record. */
 export const achievementSchema = z.object({
   recordTitle: trimmedString(1400),
   categoryId: uuidSchema,
@@ -79,6 +80,26 @@ export const achievementSchema = z.object({
   location: optionalTrimmedString(250),
   participantCount: z.coerce.number().int().min(1).max(1_000_000).default(1),
 });
+
+/**
+ * §Record Details — NBR's own wording, edited separately from the applicant's.
+ *
+ * A deliberately narrow schema. It carries only the three official fields, so
+ * that the endpoint behind it *cannot* touch the applicant's title or
+ * description however it is called — the separation the client asked for is a
+ * property of the contract rather than a convention the next handler has to
+ * remember.
+ *
+ * Every field is nullable, because clearing one is a legitimate act: an
+ * official title written in error should be removable, not merely overwritable.
+ */
+export const officialRecordDetailsSchema = z.object({
+  officialRecordTitle: optionalTrimmedString(1400).nullable(),
+  approvedDescription: optionalTrimmedString(5000).nullable(),
+  recognitionType: z.nativeEnum(RECOGNITION_TYPE).nullable().optional(),
+});
+
+export type OfficialRecordDetailsInput = z.infer<typeof officialRecordDetailsSchema>;
 
 /**
  * DPDP §6 consent block. Captured at intake for every purpose, with the notice

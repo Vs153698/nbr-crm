@@ -4,14 +4,17 @@ import {
   MODULES,
   assignRecordSchema,
   changeStatusSchema,
+  officialRecordDetailsSchema,
   uuidSchema,
   type ClientProgress,
+  type OfficialRecordDetailsInput,
   type RecordStatus,
 } from '@nbr/shared';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
 import { TimelineService } from '../timeline/timeline.service';
 import { ClientProgressService } from './client-progress.service';
+import { RecordDetailsService } from './record-details.service';
 import { WorkflowService, type SmartActionPanel } from './workflow.service';
 
 @Controller('records')
@@ -20,6 +23,7 @@ export class RecordsController {
     private readonly workflow: WorkflowService,
     private readonly timeline: TimelineService,
     private readonly clientProgressService: ClientProgressService,
+    private readonly recordDetails: RecordDetailsService,
   ) {}
 
   /**
@@ -49,6 +53,22 @@ export class RecordsController {
   @Can(MODULES.RECORDS, ACTIONS.VIEW)
   async clientProgress(@Param('id') id: string): Promise<ClientProgress> {
     return this.clientProgressService.forRecord(uuidSchema.parse(id));
+  }
+
+  /**
+   * NBR's own wording for the record, and what was recognised.
+   *
+   * Deliberately cannot reach the applicant's title or description — the schema
+   * behind it carries only the three official fields, so the separation is a
+   * property of the contract rather than a rule the next handler has to keep.
+   */
+  @Post(':id/official-details')
+  @Can(MODULES.RECORDS, ACTIONS.EDIT)
+  async updateOfficialDetails(
+    @Param('id') id: string,
+    @Body(zodBody(officialRecordDetailsSchema)) body: OfficialRecordDetailsInput,
+  ): Promise<{ ok: true }> {
+    return this.recordDetails.updateOfficial(uuidSchema.parse(id), body);
   }
 
   @Post(':id/status')

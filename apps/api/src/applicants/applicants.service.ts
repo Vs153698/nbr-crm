@@ -427,6 +427,12 @@ export class ApplicantsService {
           achievementDate: schema.achievements.achievementDate,
           location: schema.achievements.location,
           participantCount: schema.achievements.participantCount,
+          // The applicant's words and NBR's, kept apart. Both travel so the
+          // profile can show which is which rather than one merged title.
+          description: schema.achievements.description,
+          officialRecordTitle: schema.achievements.officialRecordTitle,
+          approvedDescription: schema.achievements.approvedDescription,
+          recognitionType: schema.achievements.recognitionType,
         })
         .from(schema.records)
         .leftJoin(schema.achievements, eq(schema.achievements.recordId, schema.records.id))

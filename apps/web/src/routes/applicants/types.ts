@@ -32,12 +32,18 @@ export interface ApplicantRecord {
   evidenceCount: number;
   lockedAt: string | null;
   updatedAt: string;
+  /** The applicant's own words, straight from the form. Never edited. */
   recordTitle: string | null;
+  description: string | null;
   categoryId: string | null;
   recordType: string | null;
   achievementDate: string | null;
   location: string | null;
   participantCount: number | null;
+  /** NBR's wording and decision. Null until someone writes them. */
+  officialRecordTitle: string | null;
+  approvedDescription: string | null;
+  recognitionType: string | null;
 }
 
 export interface ApplicantProfile {
@@ -166,6 +172,8 @@ export interface AttachmentItem {
   sizeBytes: number;
   description: string | null;
   recordId: string | null;
+  /** Which record it belongs to, where it belongs to one rather than the profile. */
+  recordCode: string | null;
   uploadedByName: string | null;
   createdAt: string;
 }

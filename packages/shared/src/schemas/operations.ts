@@ -87,6 +87,17 @@ export const confirmAttachmentSchema = confirmEvidenceSchema
     message: 'Attach to either a record or an applicant',
   });
 
+/**
+ * §16 — withdrawing a general attachment.
+ *
+ * The reason is required and has no default. Removing a document from a file
+ * that may be looked at years later is a decision, and "why is it gone?" is the
+ * only question anyone will have about it — a blank field there is a dead end.
+ */
+export const deleteAttachmentSchema = z.object({
+  reason: trimmedString(500),
+});
+
 // ── Payments (§9, M-03) ──────────────────────────────────────────────────────
 
 export const createPaymentPlanSchema = z.object({

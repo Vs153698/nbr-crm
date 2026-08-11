@@ -4,6 +4,7 @@ import {
   MODULES,
   confirmAttachmentSchema,
   confirmEvidenceSchema,
+  deleteAttachmentSchema,
   presignUploadSchema,
   uuidSchema,
 } from '@nbr/shared';
@@ -118,6 +119,25 @@ class AttachmentsController {
       uuidSchema.parse(id),
       mode === 'inline' ? 'inline' : 'attachment',
     );
+  }
+
+  /**
+   * Withdraw an attachment (§16).
+   *
+   * Only general attachments. Evidence files are permanent by database trigger
+   * and there is deliberately no endpoint that reaches them.
+   *
+   * A POST rather than a DELETE because it carries a required reason, and
+   * because it withdraws rather than destroys — the same shape as lifting a
+   * blacklist or retrying a send.
+   */
+  @Post(':id/remove')
+  @Can(MODULES.EVIDENCE, ACTIONS.DELETE)
+  async remove(
+    @Param('id') id: string,
+    @Body(zodBody(deleteAttachmentSchema)) body: { reason: string },
+  ): Promise<{ ok: true }> {
+    return this.vault.deleteAttachment(uuidSchema.parse(id), body.reason);
   }
 }
 

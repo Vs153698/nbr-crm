@@ -161,6 +161,8 @@ export const AUDIT = {
 
   EVIDENCE_UPLOADED: 'evidence.uploaded',
   ATTACHMENT_UPLOADED: 'attachment.uploaded',
+  /** A general attachment withdrawn. Evidence files cannot be removed at all. */
+  FILE_DELETED: 'attachment.deleted',
   FILE_DOWNLOADED: 'file.downloaded',
 
   PAYMENT_PLAN_CREATED: 'payment.plan_created',

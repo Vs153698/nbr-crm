@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn';
 import { formatDate, formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { RowActions } from '@/components/ui/RowActions';
+import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
 import { queryKeys } from '@/lib/query-client';
 import type { Lookups, PaymentSummary } from '../types';
 import { useAutoOpen } from '@/hooks/useAutoOpen';
@@ -39,6 +40,8 @@ export function PaymentTab({
   const { can } = useAuth();
 
   const [planOpen, setPlanOpen] = useState(false);
+  /** Invoice number being previewed in the side sheet, or null. */
+  const [previewInvoice, setPreviewInvoice] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [reverseTarget, setReverseTarget] = useState<string | null>(null);
 
@@ -64,6 +67,25 @@ export function PaymentTab({
     void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+  }
+
+  /**
+   * Open the invoice PDF, in the browser or as a download.
+   *
+   * The signed URL is fetched and opened in the same gesture rather than
+   * rendered into a link: the signature is short-lived, and a link sitting on
+   * the page for ten minutes is a broken one by the time anybody clicks it.
+   */
+  async function openInvoice(disposition: 'inline' | 'attachment') {
+    try {
+      const doc = await api.get<{ url: string }>(
+        `/records/${recordId}/documents/invoice`,
+        disposition === 'inline' ? { mode: 'inline' } : undefined,
+      );
+      window.open(doc.url, '_blank', 'noopener,noreferrer');
+    } catch (error: unknown) {
+      toast.error(error instanceof ApiError ? error.message : 'Could not open the invoice');
+    }
   }
 
   const invoiceMutation = useMutation({
@@ -307,10 +329,61 @@ export function PaymentTab({
                   </p>
                 </div>
                 {invoice.cancelledAt ? <Chip tone="red">Cancelled</Chip> : null}
+
+                {/*
+                  Preview, View and Download.
+
+                  Preview opens the PDF in the side sheet — the point being that
+                  an employee checks the layout, the applicant's details, the
+                  amount and the GST *before* this goes to a customer, and
+                  downloading a file to check it is a poor substitute for
+                  looking at it. View is the same document in a full browser
+                  tab, for reading a long one properly.
+                */}
+                {can('payments:export') ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={Icons.Eye}
+                      onClick={() => setPreviewInvoice(invoice.invoiceNumber)}
+                    >
+                      Preview
+                    </Button>
+                    <RowActions
+                      label={`Invoice ${invoice.invoiceNumber}`}
+                      actions={[
+                        {
+                          id: 'view',
+                          label: 'View in new tab',
+                          icon: Icons.ExternalLink,
+                          onSelect: () => void openInvoice('inline'),
+                        },
+                        {
+                          id: 'download',
+                          label: 'Download PDF',
+                          icon: Icons.Download,
+                          onSelect: () => void openInvoice('attachment'),
+                        },
+                      ]}
+                    />
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {/* The invoice, in place. Same sheet that previews evidence and
+          attachments, so it behaves identically to every other document. */}
+      {previewInvoice ? (
+        <FilePreviewSheet
+          downloadPath={`/records/${recordId}/documents/invoice`}
+          fileName={`${previewInvoice}.pdf`}
+          subtitle="Check the layout, applicant details, amount and GST before sharing this."
+          onClose={() => setPreviewInvoice(null)}
+        />
       ) : null}
 
       {planOpen ? (

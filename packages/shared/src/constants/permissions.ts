@@ -81,7 +81,15 @@ export const MODULE_ACTIONS: Readonly<Record<ModuleName, readonly ActionName[]>>
     ACTIONS.EXPORT,
     ACTIONS.OVERRIDE,
   ],
-  [MODULES.EVIDENCE]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT],
+  /**
+   * `delete` covers general attachments only.
+   *
+   * Evidence files are permanent by database trigger and no permission can
+   * reach them — this grants the removal of a miscellaneous attachment
+   * (a superseded correction letter, a file uploaded to the wrong profile),
+   * which is withdrawn rather than destroyed.
+   */
+  [MODULES.EVIDENCE]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT, ACTIONS.DELETE],
   [MODULES.VERIFICATION]: [ACTIONS.VIEW, ACTIONS.EDIT, ACTIONS.CHANGE_STATUS],
   [MODULES.PAYMENTS]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT, ACTIONS.EXPORT],
   [MODULES.CERTIFICATES]: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.EDIT, ACTIONS.EXPORT],

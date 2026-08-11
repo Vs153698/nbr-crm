@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { EmailComposerDialog } from './EmailComposerDialog';
+import { MessageDetailSheet } from './MessageDetailSheet';
 import { SelectionLetterDialog } from './SelectionLetterDialog';
 import { CardHeader, EmptyState } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
@@ -60,6 +61,8 @@ export function CommunicationTab({
   const [selectionOpen, setSelectionOpen] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
+  /** Message opened from the log, or null. */
+  const [openMessageId, setOpenMessageId] = useState<string | null>(null);
   /**
    * Template the Smart Action panel asked for, e.g. `email:selection`.
    * Carried separately so the dialog opens on the right message rather than on
@@ -218,11 +221,30 @@ export function CommunicationTab({
               <li
                 key={message.id}
                 className={cn(
-                  'rounded-lg border p-3',
-                  failed ? 'border-danger-ring bg-danger-tint/40' : 'border-line',
+                  'rounded-lg border p-3 transition-colors',
+                  failed
+                    ? 'border-danger-ring bg-danger-tint/40 hover:bg-danger-tint/60'
+                    : 'border-line hover:bg-canvas',
                 )}
               >
-                <div className="flex items-start gap-2.5">
+                {/*
+                  The whole row opens the message.
+
+                  A button wrapping the content rather than an "Open" affordance
+                  in the corner: the list is an index, and the natural gesture
+                  on an index entry is to click the entry. `text-left` because a
+                  button centres its content by default and this is a paragraph.
+
+                  The Retry control below lives inside this row and stops its
+                  own click from bubbling, so retrying does not also open the
+                  message.
+                */}
+                <button
+                  type="button"
+                  onClick={() => setOpenMessageId(message.id)}
+                  className="flex w-full items-start gap-2.5 text-left"
+                  title="Open this message"
+                >
                   <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-md', style.tone)}>
                     <Icon size={14} strokeWidth={2} />
                   </span>
@@ -258,31 +280,46 @@ export function CommunicationTab({
                     <p className="mt-1.5 whitespace-pre-wrap text-[11px] leading-relaxed text-ink-2 line-clamp-3">
                       {message.body}
                     </p>
+                  </div>
 
-                    {failed ? (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                        <p className="text-[10px] text-danger">
-                          Failed after {message.attemptCount} attempt
-                          {message.attemptCount === 1 ? '' : 's'}: {message.failureReason}
-                        </p>
-                        {canSend ? (
-                          <button
-                            type="button"
-                            onClick={() => retryMutation.mutate(message.id)}
-                            className="text-[10px] font-semibold text-brand hover:underline"
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                      </div>
+                  <Icons.ChevronRight
+                    size={14}
+                    strokeWidth={ICON_STROKE}
+                    className="mt-0.5 shrink-0 text-ink-4"
+                  />
+                </button>
+
+                {/* Outside the row button — a button inside a button is invalid
+                    markup, and the browser resolves it by dropping one of them. */}
+                {failed ? (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-[2.375rem]">
+                    <p className="text-[10px] text-danger">
+                      Failed after {message.attemptCount} attempt
+                      {message.attemptCount === 1 ? '' : 's'}: {message.failureReason}
+                    </p>
+                    {canSend ? (
+                      <button
+                        type="button"
+                        onClick={() => retryMutation.mutate(message.id)}
+                        className="text-[10px] font-semibold text-brand hover:underline"
+                      >
+                        Retry
+                      </button>
                     ) : null}
                   </div>
-                </div>
+                ) : null}
               </li>
             );
           })}
         </ul>
       )}
+
+      {openMessageId ? (
+        <MessageDetailSheet
+          communicationId={openMessageId}
+          onClose={() => setOpenMessageId(null)}
+        />
+      ) : null}
 
       {emailOpen ? (
         <EmailComposerDialog

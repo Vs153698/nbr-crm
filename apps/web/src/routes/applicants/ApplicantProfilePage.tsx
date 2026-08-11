@@ -17,6 +17,8 @@ import { ICON_SIZE, ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AssignRecordDialog } from './components/AssignRecordDialog';
 import { BlacklistDialog, LiftBlacklistDialog } from './components/BlacklistDialog';
+import { AttachmentsTab } from './components/AttachmentsTab';
+import { RecordDetailsTab, RecognitionTypeBadge } from './components/RecordDetailsTab';
 import { ClientProgressBadge } from './components/ClientProgressBadge';
 import { EmailComposerDialog } from './components/EmailComposerDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
@@ -56,7 +58,7 @@ const TAB_GROUPS: ReadonlyArray<{
     tabs: [
       { value: 'overview', label: 'Overview', icon: Icons.LayoutDashboard },
       { value: 'application', label: 'Application', icon: Icons.FileText },
-      { value: 'achievement', label: 'Achievement', icon: Icons.Award },
+      { value: 'achievement', label: 'Record Details', icon: Icons.Award },
       { value: 'evidence', label: 'Evidence', icon: Icons.Upload },
     ],
   },
@@ -409,6 +411,26 @@ export default function ApplicantProfilePage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold tracking-tight text-ink">{applicant.fullName}</h2>
                   {activeRecord ? <StatusBadge status={activeRecord.status} /> : null}
+                  {/*
+                    Title Type — what NBR has actually recognised.
+
+                    At the very top because it changes how everything below is
+                    read: a National Record and an Achiever award print
+                    differently, verify differently and mean different things,
+                    and an operator needs to know which before anything else.
+                    Shows as "not set" rather than hiding, so an undecided
+                    record is visibly undecided instead of just blank.
+                  */}
+                  {activeRecord ? (
+                    <RecognitionTypeBadge
+                      recognitionType={activeRecord.recognitionType}
+                      onEdit={
+                        can('records:edit')
+                          ? () => setSearchParams({ tab: 'achievement' })
+                          : undefined
+                      }
+                    />
+                  ) : null}
                   {/* The client's eleven-stage view, beside the internal status
                       rather than instead of it. The workflow rail further down
                       is untouched. */}
@@ -542,13 +564,7 @@ export default function ApplicantProfilePage() {
 
                 <Tabs.Content value="achievement">
                   {activeRecord ? (
-                    <dl className="grid gap-x-8 sm:grid-cols-2">
-                      <DetailRow label="Record title" value={activeRecord.recordTitle} />
-                      <DetailRow label="Type" value={humanise(activeRecord.recordType ?? '')} />
-                      <DetailRow label="Date of achievement" value={formatDate(activeRecord.achievementDate)} />
-                      <DetailRow label="Location" value={activeRecord.location} />
-                      <DetailRow label="Participants" value={activeRecord.participantCount} />
-                    </dl>
+                    <RecordDetailsTab record={activeRecord} applicantId={applicant.id} />
                   ) : null}
                 </Tabs.Content>
 
@@ -577,7 +593,7 @@ export default function ApplicantProfilePage() {
                 </Tabs.Content>
 
                 <Tabs.Content value="attachments">
-                  <AttachmentsTab applicantId={applicant.id} />
+                  <AttachmentsTab applicantId={applicant.id} recordId={activeRecord?.id} />
                 </Tabs.Content>
 
                 <Tabs.Content value="payment">
@@ -1033,59 +1049,3 @@ function SectionHeading({ icon: Icon, title }: { icon: LucideIcon; title: string
   );
 }
 
-function AttachmentsTab({ applicantId }: { applicantId: string }) {
-  const [previewing, setPreviewing] = useState<AttachmentItem | null>(null);
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.attachments(applicantId),
-    queryFn: ({ signal }) => api.get<AttachmentItem[]>('/attachments', { applicantId }, signal),
-  });
-
-  if (isLoading) return <div className="skeleton h-24" />;
-
-  if ((data?.length ?? 0) === 0) {
-    return (
-      <EmptyState
-        icon={Icons.FileText}
-        title="No attachments"
-        description="OCR copies, legal notices, correction letters and other miscellaneous files live here."
-      />
-    );
-  }
-
-  return (
-    <>
-      {previewing ? (
-        <FilePreviewSheet
-          downloadPath={`/attachments/${previewing.id}/download`}
-          fileName={previewing.fileName}
-          subtitle={humanise(previewing.kind)}
-          onClose={() => setPreviewing(null)}
-        />
-      ) : null}
-
-      <ul className="space-y-2">
-        {data?.map((file) => (
-          <li
-            key={file.id}
-            className="flex items-center gap-3 rounded-lg border border-line p-3 transition-colors hover:border-brand-ring"
-          >
-            <Icons.FileText size={ICON_SIZE.md} strokeWidth={ICON_STROKE} className="shrink-0 text-ink-3" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-ink">{file.fileName}</p>
-              <p className="text-[10px] text-ink-3">
-                {humanise(file.kind)} · {file.uploadedByName} ·{' '}
-                {formatRelative(file.createdAt)}
-              </p>
-            </div>
-
-            {/* This list previously showed files with no way to open them at
-                all — the name was the whole affordance. */}
-            <Button size="sm" variant="ghost" icon={Icons.Eye} onClick={() => setPreviewing(file)}>
-              Preview
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}

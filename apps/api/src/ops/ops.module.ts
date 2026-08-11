@@ -179,6 +179,20 @@ class CommunicationsController {
     return this.comms.sendEmail(body);
   }
 
+  /**
+   * One message in full — the Email History detail (§22).
+   *
+   * Kept off the list so the history stays cheap to render: 200 rows each
+   * carrying a full body, a CC list and a signed URL per attachment is a lot of
+   * bytes and a burst of storage signing for a screen where only the subject
+   * line is read.
+   */
+  @Get(':id')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.VIEW)
+  async detail(@Param('id') id: string) {
+    return this.comms.detail(uuidSchema.parse(id));
+  }
+
   @Post(':id/retry')
   @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
   async retry(@Param('id') id: string) {

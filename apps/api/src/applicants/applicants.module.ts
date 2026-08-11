@@ -3,6 +3,7 @@ import { GovernanceModule } from '../governance/governance.module';
 import { PrivacyModule } from '../privacy/privacy.module';
 import { ClientProgressService } from '../records/client-progress.service';
 import { QueuesController } from '../records/queues.controller';
+import { RecordDetailsService } from '../records/record-details.service';
 import { QueuesService } from '../records/queues.service';
 import { RecordsController } from '../records/records.controller';
 import { WorkflowService } from '../records/workflow.service';
@@ -39,6 +40,7 @@ import { DuplicateService } from './duplicate.service';
     DuplicateService,
     WorkflowService,
     ClientProgressService,
+    RecordDetailsService,
     QueuesService,
   ],
   exports: [ApplicantsService, ApplicantListService, AddRecordService, DuplicateService, WorkflowService],

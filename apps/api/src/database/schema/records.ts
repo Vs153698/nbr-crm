@@ -159,13 +159,42 @@ export const achievements = pgTable(
      * achievement. Postgres stores text and varchar identically, so the limit
      * bought nothing.
      */
+    /**
+     * ── The applicant's own words ───────────────────────────────────────────
+     *
+     * `recordTitle` and `description` are what was typed into the application
+     * form. They are never edited by staff: the moment they are, the record
+     * loses its evidence of what the applicant actually claimed, which is the
+     * thing a challenge years later turns on.
+     */
     recordTitle: text('record_title').notNull(),
     categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'restrict' }),
     recordType: varchar('record_type', { length: 20 }).notNull().default('individual'),
     description: text('description'),
+
+    /**
+     * ── NBR's official wording ──────────────────────────────────────────────
+     *
+     * What goes on the certificate, the public entry and the magazine. Kept
+     * beside the applicant's version rather than overwriting it, because the
+     * two answer different questions — "what did they claim?" and "what did we
+     * recognise?" — and only having the second makes the first unanswerable.
+     *
+     * Null until someone writes it, and the UI falls back to the applicant's
+     * wording for display so a record with no official title is still readable.
+     */
+    officialRecordTitle: text('official_record_title'),
     /** What the verification team approved for print — may differ from the
      *  applicant's own wording (§6 "Final Approved Description"). */
     approvedDescription: text('approved_description'),
+    /**
+     * `national_record | achiever` — what NBR actually awarded.
+     *
+     * Null until decided. Not defaulted: an application arrives with no
+     * recognition attached, and pre-filling one would state a decision nobody
+     * has taken yet.
+     */
+    recognitionType: varchar('recognition_type', { length: 30 }),
     achievementDate: date('achievement_date', { mode: 'string' }),
     location: varchar('location', { length: 250 }),
     participantCount: integer('participant_count').notNull().default(1),

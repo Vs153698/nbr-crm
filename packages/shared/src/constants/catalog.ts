@@ -42,6 +42,31 @@ export const RECORD_TYPE = {
 
 export type RecordType = (typeof RECORD_TYPE)[keyof typeof RECORD_TYPE];
 
+/**
+ * ── Recognition type (§Title Type) ───────────────────────────────────────────
+ *
+ * What NBR has actually awarded. Two quite different things share the pipeline:
+ * a **National Record**, which is the record itself being recognised, and an
+ * **Achiever** award, which recognises the person. They print differently, they
+ * verify differently, and an operator needs to know which one they are looking
+ * at before they read anything else — hence the badge at the top of the profile.
+ *
+ * Null until NBR decides. Deliberately not defaulted: an application arrives
+ * with no recognition attached to it, and pre-filling one would state a decision
+ * nobody has taken.
+ */
+export const RECOGNITION_TYPE = {
+  NATIONAL_RECORD: 'national_record',
+  ACHIEVER: 'achiever',
+} as const;
+
+export type RecognitionType = (typeof RECOGNITION_TYPE)[keyof typeof RECOGNITION_TYPE];
+
+export const RECOGNITION_TYPE_LABELS: Readonly<Record<RecognitionType, string>> = {
+  [RECOGNITION_TYPE.NATIONAL_RECORD]: 'National Record',
+  [RECOGNITION_TYPE.ACHIEVER]: 'Achiever',
+};
+
 /** §7 Evidence Vault file kinds. */
 export const EVIDENCE_KIND = {
   PHOTO: 'photo',

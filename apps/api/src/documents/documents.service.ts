@@ -27,7 +27,25 @@ import { StorageService } from '../storage/storage.service';
 export interface GeneratedDocument {
   readonly url: string;
   readonly fileName: string;
+  /**
+   * Always `application/pdf`, and returned so a generated document answers the
+   * same shape as a stored one.
+   *
+   * That sameness is the point: `FilePreviewSheet` renders evidence, applicant
+   * attachments and onboarding files from `{ url, fileName, contentType }`, and
+   * matching it means an invoice previews through the component that already
+   * works rather than through a second one built to look like it.
+   */
+  readonly contentType: string;
 }
+
+/**
+ * How the signed URL should behave in a browser.
+ *
+ * `inline` renders the PDF in place — which is what "preview the invoice before
+ * sharing it" means — and `attachment` saves it.
+ */
+export type DocumentDisposition = 'attachment' | 'inline';
 
 
 /**
@@ -52,7 +70,10 @@ export class DocumentsService {
 
   // ── Applicant file (§4 Quick Actions, §11.9) ──────────────────────────────
 
-  async applicantFile(applicantId: string): Promise<GeneratedDocument> {
+  async applicantFile(
+    applicantId: string,
+    disposition: DocumentDisposition = 'attachment',
+  ): Promise<GeneratedDocument> {
     const [applicant] = await this.db
       .select()
       .from(schema.applicants)
@@ -138,12 +159,15 @@ export class DocumentsService {
       },
     );
 
-    return this.publish(pdf, 'applicant', applicantId, `${applicant.applicantCode}-file.pdf`);
+    return this.publish(pdf, 'applicant', applicantId, `${applicant.applicantCode}-file.pdf`, disposition);
   }
 
   // ── Selection letter (§11.4) ──────────────────────────────────────────────
 
-  async selectionLetter(recordId: string): Promise<GeneratedDocument> {
+  async selectionLetter(
+    recordId: string,
+    disposition: DocumentDisposition = 'attachment',
+  ): Promise<GeneratedDocument> {
     const record = await this.loadRecord(recordId);
 
     // A letter announcing selection for a record that was not selected would be
@@ -215,12 +239,15 @@ export class DocumentsService {
       },
     );
 
-    return this.publish(pdf, 'record', recordId, `${record.recordCode}-selection-letter.pdf`);
+    return this.publish(pdf, 'record', recordId, `${record.recordCode}-selection-letter.pdf`, disposition);
   }
 
   // ── Invoice (§9, §11.6) ───────────────────────────────────────────────────
 
-  async invoice(recordId: string): Promise<GeneratedDocument> {
+  async invoice(
+    recordId: string,
+    disposition: DocumentDisposition = 'attachment',
+  ): Promise<GeneratedDocument> {
     const record = await this.loadRecord(recordId);
 
     const [payment] = await this.db
@@ -355,7 +382,13 @@ export class DocumentsService {
       },
     );
 
-    return this.publish(pdf, 'invoice', recordId, `${invoice.invoiceNumber.replace(/\//g, '-')}.pdf`);
+    return this.publish(
+      pdf,
+      'invoice',
+      recordId,
+      `${invoice.invoiceNumber.replace(/\//g, '-')}.pdf`,
+      disposition,
+    );
   }
 
   // ── Shared plumbing ───────────────────────────────────────────────────────
@@ -387,6 +420,7 @@ export class DocumentsService {
     scope: 'applicant' | 'record' | 'invoice',
     ownerId: string,
     fileName: string,
+    disposition: DocumentDisposition = 'attachment',
   ): Promise<GeneratedDocument> {
     const storageKey = this.storage.buildKey(
       scope === 'invoice' ? 'invoice' : 'attachment',
@@ -395,8 +429,8 @@ export class DocumentsService {
     );
 
     await this.storage.putObject(storageKey, pdf, 'application/pdf');
-    const url = await this.storage.presignDownload(storageKey, fileName);
+    const url = await this.storage.presignDownload(storageKey, fileName, disposition);
 
-    return { url, fileName };
+    return { url, fileName, contentType: 'application/pdf' };
   }
 }

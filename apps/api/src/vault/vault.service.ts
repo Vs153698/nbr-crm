@@ -352,6 +352,14 @@ export class VaultService {
     return { id: inserted!.id };
   }
 
+  /**
+   * Everything attached to this applicant, across all their records.
+   *
+   * Keyed on the applicant — the master profile — rather than on one record, so
+   * a correction letter filed against last year's application is still in front
+   * of whoever opens the profile today. `recordCode` travels with each row so a
+   * file that does belong to a specific record says which.
+   */
   async listAttachments(applicantId: string) {
     const rows = await this.db
       .select({
@@ -362,15 +370,76 @@ export class VaultService {
         sizeBytes: schema.attachments.sizeBytes,
         description: schema.attachments.description,
         recordId: schema.attachments.recordId,
+        recordCode: schema.records.recordCode,
         uploadedByName: schema.users.fullName,
         createdAt: schema.attachments.createdAt,
       })
       .from(schema.attachments)
       .leftJoin(schema.users, eq(schema.attachments.uploadedByUserId, schema.users.id))
-      .where(eq(schema.attachments.applicantId, applicantId))
+      .leftJoin(schema.records, eq(schema.attachments.recordId, schema.records.id))
+      .where(
+        and(
+          eq(schema.attachments.applicantId, applicantId),
+          isNull(schema.attachments.deletedAt),
+        ),
+      )
       .orderBy(desc(schema.attachments.createdAt));
 
     return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
+  /**
+   * Withdraw an attachment (§16).
+   *
+   * Deliberately a soft delete. "Remove according to permission" is a real
+   * need — a file lands on the wrong profile, a correction letter is
+   * superseded — but a hard delete would take with it the answer to "was there
+   * ever a document about this?", which is the question that actually gets
+   * asked. The row and the stored object stay; the file leaves the list and
+   * stops being downloadable.
+   *
+   * Evidence files are not reachable from here at all: they are permanent by
+   * database trigger, and this method only ever touches `attachments`.
+   */
+  async deleteAttachment(attachmentId: string, reason: string): Promise<{ ok: true }> {
+    const actor = requireActor();
+
+    const [file] = await this.db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, attachmentId))
+      .limit(1);
+
+    if (!file) throw new NotFoundError('Attachment');
+
+    // Already gone. Reported as success so a double-click is not an error, and
+    // so the second remover's name does not overwrite the first's.
+    if (file.deletedAt) return { ok: true };
+
+    await this.db
+      .update(schema.attachments)
+      .set({ deletedAt: new Date(), deletedByUserId: actor.userId, deleteReason: reason })
+      .where(eq(schema.attachments.id, attachmentId));
+
+    await this.timeline.write({
+      applicantId: file.applicantId,
+      recordId: file.recordId,
+      eventType: TIMELINE_EVENT.ATTACHMENT_UPLOADED,
+      summary: `Attachment removed — ${file.fileName}: ${reason}`,
+      meta: { attachmentId, fileName: file.fileName, reason, removed: true },
+    });
+
+    await this.audit.record({
+      action: AUDIT.FILE_DELETED,
+      entityType: 'attachment',
+      entityId: attachmentId,
+      entityLabel: file.fileName,
+      meta: { reason },
+    });
+
+    await this.cache.invalidateTags(CacheTag.applicant(file.applicantId));
+
+    return { ok: true };
   }
 
   async getAttachmentDownloadUrl(
@@ -384,6 +453,10 @@ export class VaultService {
       .limit(1);
 
     if (!file) throw new NotFoundError('File');
+
+    // Withdrawn. The row survives so the audit trail can answer what was here,
+    // but handing out a link would make the removal cosmetic.
+    if (file.deletedAt) throw new NotFoundError('File');
 
     /**
      * Attachments get the same treatment as evidence.

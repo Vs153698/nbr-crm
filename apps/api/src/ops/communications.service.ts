@@ -38,6 +38,7 @@ import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { MailService } from '../mail/mail.service';
+import { StorageService } from '../storage/storage.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 import { TasksService } from './tasks.service';
@@ -87,6 +88,8 @@ export class CommunicationsService {
     private readonly audit: AuditService,
     private readonly cache: CacheService,
     private readonly tasks: TasksService,
+    // Signs the per-attachment links on the message detail view.
+    private readonly storage: StorageService,
   ) {}
 
   /**
@@ -690,6 +693,87 @@ export class CommunicationsService {
       failedAt: row.failedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * One message, in full (§22 Email History).
+   *
+   * Its own endpoint rather than fatter rows on the list. The history is capped
+   * at 200 entries and every one of them would otherwise carry a full body, its
+   * CC list and a signed URL per attachment — a few hundred kilobytes and a
+   * burst of storage signing to render a list where only the subject line is
+   * read. Clicking one message is the moment to pay for it.
+   *
+   * `from` is resolved live from the mail configuration rather than stored on
+   * the row. It is a property of the installation, not of the message, and a
+   * copy frozen at send time would quietly disagree with reality the first time
+   * the address is changed.
+   */
+  async detail(communicationId: string) {
+    const [row] = await this.db
+      .select()
+      .from(schema.communications)
+      .where(eq(schema.communications.id, communicationId))
+      .limit(1);
+
+    if (!row) throw new NotFoundError('Message');
+
+    const [template] = row.templateCode
+      ? await this.db
+          .select({ name: schema.templates.name })
+          .from(schema.templates)
+          .where(
+            and(
+              eq(schema.templates.code, row.templateCode),
+              eq(schema.templates.channel, row.channel),
+            ),
+          )
+          .limit(1)
+      : [];
+
+    const mail = await this.mail.resolveConfig();
+
+    /**
+     * Attachments, with a link each.
+     *
+     * Signed on open, never stored — the URL outlives neither the sheet nor the
+     * permission that produced it. The stored value is a storage key, so the
+     * displayed name is its last path segment.
+     */
+    const attachments = await Promise.all(
+      (row.attachmentKeys ?? []).map(async (key) => ({
+        key,
+        fileName: key.split('/').pop() ?? key,
+        url: await this.storage.presignDownload(key, key.split('/').pop() ?? 'attachment'),
+      })),
+    );
+
+    return {
+      id: row.id,
+      channel: row.channel,
+      direction: row.direction,
+      templateCode: row.templateCode,
+      templateName: template?.name ?? null,
+      to: row.toAddress,
+      // Outbound mail leaves from the configured address; an inbound message
+      // came from the applicant, and claiming otherwise would be wrong.
+      from: row.direction === 'outbound' ? `${mail.fromName} <${mail.fromAddress}>` : row.toAddress,
+      cc: row.ccAddresses ?? [],
+      subject: row.subject,
+      body: row.body,
+      status: row.status,
+      attemptCount: row.attemptCount,
+      failureReason: row.failureReason,
+      providerMessageId: row.providerMessageId,
+      queuedAt: row.queuedAt?.toISOString() ?? null,
+      sentAt: row.sentAt?.toISOString() ?? null,
+      failedAt: row.failedAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+      sentByName: row.sentByName,
+      callDurationMinutes: row.callDurationMinutes,
+      callOutcome: row.callOutcome,
+      attachments,
+    };
   }
 
   // ── Template manager (W-26) ───────────────────────────────────────────────

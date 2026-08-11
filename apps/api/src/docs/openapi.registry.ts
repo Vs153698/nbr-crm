@@ -3,6 +3,8 @@ import {
   categorySchema,
   changePasswordSchema,
   changeStatusSchema,
+  deleteAttachmentSchema,
+  officialRecordDetailsSchema,
   confirmAttachmentSchema,
   confirmEvidenceSchema,
   createApplicantSchema,
@@ -521,6 +523,23 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   },
 
   // ── Queues ────────────────────────────────────────────────────────────────
+  'RecordsController.updateOfficialDetails': {
+    tag: 'Records',
+    summary: "Update NBR's official record details",
+    description:
+      "NBR's own title and description for the record, and the recognition awarded — " +
+      'National Record or Achiever.',
+    body: zodSchema(officialRecordDetailsSchema, 'OfficialRecordDetails'),
+    response: OK,
+    audited: 'record.updated',
+    notes:
+      "Cannot reach the applicant's own title or description: the schema carries only the " +
+      'three official fields, so the separation between what was claimed and what NBR ' +
+      'recognised is enforced by the contract rather than by convention. An omitted field is ' +
+      'left alone; an explicit `null` clears it, so a title written in error is removable ' +
+      'rather than merely overwritable. Every change is written to the timeline with the ' +
+      'previous value beside the new one.',
+  },
   'RecordsController.clientProgress': {
     tag: 'Records',
     summary: 'Client progress badge',
@@ -558,6 +577,48 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'before any reminder was sent, say — which is reported honestly rather than ticked to ' +
       'make the run look unbroken. Nothing here drives the workflow, and the record\'s own ' +
       'status rail is unaffected.',
+  },
+  'AttachmentsController.remove': {
+    tag: 'Evidence & files',
+    summary: 'Withdraw an attachment',
+    description:
+      'Removes a general attachment from the applicant profile. Requires a written reason.',
+    body: zodSchema(deleteAttachmentSchema, 'DeleteAttachment'),
+    response: OK,
+    audited: 'attachment.deleted',
+    notes:
+      'A withdrawal, not a destruction: the row and the stored object survive, the file stops ' +
+      'being listed and stops being downloadable, and who removed it and why goes on the ' +
+      'timeline. Evidence files are not reachable from here — they are permanent by database ' +
+      'trigger, and no permission and no endpoint can remove one. A POST rather than a DELETE ' +
+      'because it carries a required reason and reverses rather than erases.',
+  },
+  'CommunicationsController.detail': {
+    tag: 'Communication',
+    summary: 'One message in full',
+    description:
+      'The complete Email History entry: to, from, CC, subject, the body as sent, date and ' +
+      'time, delivery status, the template used, and a signed link per attachment.',
+    response: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', nullable: true },
+        from: { type: 'string', nullable: true },
+        cc: { type: 'array', items: { type: 'string' } },
+        subject: { type: 'string', nullable: true },
+        body: { type: 'string' },
+        status: { type: 'string' },
+        templateCode: { type: 'string', nullable: true },
+        sentAt: { ...ISO, nullable: true },
+        attachments: { type: 'array', items: { type: 'object' } },
+      },
+    },
+    notes:
+      'Kept off the history list, which is capped at 200 rows: a full body, a CC list and a ' +
+      'signed URL per attachment on every one of them is a lot of bytes and a burst of storage ' +
+      'signing for a screen where only the subject is read. `from` is resolved live from the ' +
+      'mail configuration rather than stored — it is a property of the installation, and a ' +
+      'copy frozen at send time would disagree with reality the first time the address changed.',
   },
   'QueuesController.verification': {
     tag: 'Queues',
