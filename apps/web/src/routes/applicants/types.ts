@@ -111,6 +111,15 @@ export interface SmartActionPanel {
     reminderCount: number;
     overdue: boolean;
   };
+  /** Selection Sent — whether the applicant has actually been written to. */
+  selectionContext?: {
+    sent: boolean;
+    channel?: string;
+    status?: string;
+    at?: string | null;
+    by?: string | null;
+    failureReason?: string | null;
+  };
 }
 
 export interface TimelineEntry {

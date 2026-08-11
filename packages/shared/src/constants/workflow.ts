@@ -69,27 +69,49 @@ export const STATUS_TRANSITIONS: Readonly<Record<RecordStatus, readonly StatusTr
     { to: RECORD_STATUS.CLOSED, label: 'Close application', permission: CHANGE_STATUS, requiresRemark: true },
   ],
 
+  /**
+   * §Pipeline 2 — Verification.
+   *
+   * Finishing verification hands the record to an approver; it does not decide
+   * anything. Approving straight from here was the shortcut that made Approval
+   * Pending an empty queue — the same person verified and approved in one
+   * click, and nobody could see what was waiting on a decision.
+   *
+   * Asking the applicant for more evidence is deliberately *not* a transition.
+   * The record has not moved on; it is still being verified, and the request
+   * belongs on the timeline and in a task, where it can be chased.
+   */
   [RECORD_STATUS.UNDER_REVIEW]: [
     {
       to: RECORD_STATUS.VERIFICATION_PENDING,
-      label: 'Request more evidence',
+      label: 'Verification complete — send for approval',
       permission: VERIFY,
-      requiresRemark: true,
-    },
-    {
-      to: RECORD_STATUS.SELECTED,
-      label: 'Approve — select record',
-      permission: VERIFY,
-      guards: ['has_evidence', 'not_blacklisted'],
+      guards: ['has_evidence'],
       requiresRemark: true,
     },
     { to: RECORD_STATUS.REJECTED, label: 'Reject', permission: VERIFY, requiresRemark: true },
     { to: RECORD_STATUS.ON_HOLD, label: 'Put on hold', permission: CHANGE_STATUS, requiresRemark: true },
   ],
 
+  /**
+   * §Pipeline 3 — Approval Pending.
+   *
+   * The approver's queue. Approving sends the selection letter and moves the
+   * record to Selection Sent; the two are one act, so the transition carries
+   * the guard that the letter needs a live applicant to go to.
+   */
   [RECORD_STATUS.VERIFICATION_PENDING]: [
-    { to: RECORD_STATUS.UNDER_REVIEW, label: 'Resume review', permission: VERIFY },
+    {
+      to: RECORD_STATUS.SELECTED,
+      label: 'Approve — send selection',
+      permission: VERIFY,
+      guards: ['has_evidence', 'not_blacklisted'],
+      requiresRemark: true,
+    },
     { to: RECORD_STATUS.REJECTED, label: 'Reject', permission: VERIFY, requiresRemark: true },
+    // Something in the verification did not hold up. Back to Verification
+    // rather than on to a decision nobody can defend.
+    { to: RECORD_STATUS.UNDER_REVIEW, label: 'Send back to verification', permission: VERIFY, requiresRemark: true },
     { to: RECORD_STATUS.ON_HOLD, label: 'Put on hold', permission: CHANGE_STATUS, requiresRemark: true },
   ],
 
@@ -157,17 +179,26 @@ export const STATUS_TRANSITIONS: Readonly<Record<RecordStatus, readonly StatusTr
     },
   ],
 
+  /**
+   * §Pipeline 6 → 7. A completed certificate goes to Dispatch, and only there.
+   *
+   * Publication used to be an alternative exit from here, which had the
+   * magazine entry written while the certificate was still in the office. It
+   * now comes after delivery — see `DELIVERED` below.
+   */
   [RECORD_STATUS.CERTIFICATE_UPLOADED]: [
-    {
-      to: RECORD_STATUS.PUBLICATION,
-      label: 'Move to publication',
-      permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE),
-    },
     { to: RECORD_STATUS.DISPATCH_PENDING, label: 'Ready for dispatch', permission: CHANGE_STATUS },
   ],
 
+  /**
+   * §Pipeline 8 — Publication, the last working stage.
+   *
+   * Reached only from Delivered. Completing from here is the normal end for a
+   * record that was published; the record can also be completed straight from
+   * Delivered without ever coming here.
+   */
   [RECORD_STATUS.PUBLICATION]: [
-    { to: RECORD_STATUS.DISPATCH_PENDING, label: 'Ready for dispatch', permission: CHANGE_STATUS },
+    { to: RECORD_STATUS.COMPLETED, label: 'Complete & lock', permission: CHANGE_STATUS },
   ],
 
   [RECORD_STATUS.DISPATCH_PENDING]: [
@@ -187,7 +218,20 @@ export const STATUS_TRANSITIONS: Readonly<Record<RecordStatus, readonly StatusTr
     },
   ],
 
+  /**
+   * §Pipeline 7 → 8. Delivered offers Publication, and also the exit past it.
+   *
+   * Most records are never published, and a mandatory Publication stage would
+   * park every one of them in a queue nobody will action — which is how a
+   * queue stops being read. So Publication is offered first, and completing
+   * directly is the honest path for a record that has no publication to make.
+   */
   [RECORD_STATUS.DELIVERED]: [
+    {
+      to: RECORD_STATUS.PUBLICATION,
+      label: 'Send to publication',
+      permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE),
+    },
     { to: RECORD_STATUS.COMPLETED, label: 'Complete & lock', permission: CHANGE_STATUS },
   ],
 
@@ -264,25 +308,36 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'call-note', label: 'Log call', icon: 'Phone', kind: 'modal', target: 'call-note', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
   ],
 
-  // §11.2 Application Submitted
+  // §Pipeline 1 — New Application
   [RECORD_STATUS.APPLICATION_SUBMITTED]: [
-    { id: 'review-application', label: 'Review application', icon: 'ClipboardCheck', kind: 'transition', target: RECORD_STATUS.UNDER_REVIEW, permission: CHANGE_STATUS, variant: 'primary' },
+    { id: 'review-application', label: 'Start verification', icon: 'ClipboardCheck', kind: 'transition', target: RECORD_STATUS.UNDER_REVIEW, permission: CHANGE_STATUS, variant: 'primary' },
     { id: 'upload-evidence', label: 'Upload missing documents', icon: 'Upload', kind: 'modal', target: 'evidence', permission: p(MODULES.EVIDENCE, ACTIONS.CREATE) },
     { id: 'assign-verification', label: 'Assign verification team', icon: 'Users', kind: 'modal', target: 'assign', permission: p(MODULES.RECORDS, ACTIONS.EDIT) },
   ],
 
-  // §11.3 Under Review
+  /**
+   * §Pipeline 2 — Verification.
+   *
+   * Checking the documents, and then handing over. Approve is gone from here
+   * on purpose: it let one person verify and approve in a single click, which
+   * is how Approval Pending stayed empty and nobody could see what was waiting
+   * on a decision. Rejecting outright is still available — a forged document
+   * needs no second opinion.
+   */
   [RECORD_STATUS.UNDER_REVIEW]: [
     { id: 'verify-documents', label: 'Verify documents', icon: 'ShieldCheck', kind: 'navigate', target: 'tab:evidence', permission: p(MODULES.EVIDENCE, ACTIONS.VIEW), variant: 'primary' },
+    { id: 'request-evidence', label: 'Request more evidence', icon: 'MailQuestion', kind: 'modal', target: 'email', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
     { id: 'verification-remarks', label: 'Add verification remarks', icon: 'PenLine', kind: 'modal', target: 'note', permission: p(MODULES.NOTES, ACTIONS.CREATE) },
-    { id: 'approve', label: 'Approve', icon: 'CheckCircle2', kind: 'transition', target: RECORD_STATUS.SELECTED, permission: VERIFY, variant: 'success' },
+    { id: 'send-for-approval', label: 'Verification complete', icon: 'CheckCircle2', kind: 'transition', target: RECORD_STATUS.VERIFICATION_PENDING, permission: VERIFY, variant: 'success' },
     { id: 'reject', label: 'Reject', icon: 'XCircle', kind: 'transition', target: RECORD_STATUS.REJECTED, permission: VERIFY, variant: 'danger' },
   ],
 
+  // §Pipeline 3 — Approval Pending. The approver's decision, and nothing else.
   [RECORD_STATUS.VERIFICATION_PENDING]: [
-    { id: 'request-evidence', label: 'Request evidence', icon: 'MailQuestion', kind: 'modal', target: 'email', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'primary', suppressedByDoNotContact: true },
-    { id: 'upload-evidence', label: 'Upload on behalf', icon: 'Upload', kind: 'modal', target: 'evidence', permission: p(MODULES.EVIDENCE, ACTIONS.CREATE) },
-    { id: 'resume-review', label: 'Resume review', icon: 'RotateCcw', kind: 'transition', target: RECORD_STATUS.UNDER_REVIEW, permission: VERIFY },
+    { id: 'review-evidence', label: 'Review evidence', icon: 'ShieldCheck', kind: 'navigate', target: 'tab:evidence', permission: p(MODULES.EVIDENCE, ACTIONS.VIEW) },
+    { id: 'approve', label: 'Approve & send selection', icon: 'CheckCircle2', kind: 'transition', target: RECORD_STATUS.SELECTED, permission: VERIFY, variant: 'success' },
+    { id: 'reject', label: 'Reject', icon: 'XCircle', kind: 'transition', target: RECORD_STATUS.REJECTED, permission: VERIFY, variant: 'danger' },
+    { id: 'back-to-verification', label: 'Send back to verification', icon: 'RotateCcw', kind: 'transition', target: RECORD_STATUS.UNDER_REVIEW, permission: VERIFY },
   ],
 
   [RECORD_STATUS.ON_HOLD]: [
@@ -290,9 +345,17 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'add-note', label: 'Add note', icon: 'StickyNote', kind: 'modal', target: 'note', permission: p(MODULES.NOTES, ACTIONS.CREATE) },
   ],
 
-  // §11.4 Selected
+  /**
+   * §Pipeline 4 — Selection Sent.
+   *
+   * The letter is the work of this stage, so it leads. The Selection Sent panel
+   * on the record reads the communication history and says whether it has
+   * actually gone — an approved applicant nobody wrote to is the failure this
+   * stage exists to catch.
+   */
   [RECORD_STATUS.SELECTED]: [
-    { id: 'send-selection-email', label: 'Send selection email', icon: 'Mail', kind: 'modal', target: 'email:selection', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'primary', suppressedByDoNotContact: true },
+    { id: 'selection-letter', label: 'Send selection letter', icon: 'FileDown', kind: 'modal', target: 'selection-letter', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'primary', suppressedByDoNotContact: true },
+    { id: 'send-selection-email', label: 'Send selection email', icon: 'Mail', kind: 'modal', target: 'email:selection', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
     { id: 'send-selection-whatsapp', label: 'Send selection WhatsApp', icon: 'MessageCircle', kind: 'modal', target: 'whatsapp:selection', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'whatsapp', suppressedByDoNotContact: true },
     { id: 'download-selection-letter', label: 'Download selection letter', icon: 'FileDown', kind: 'download', target: 'selection-letter', permission: p(MODULES.RECORDS, ACTIONS.EXPORT) },
     { id: 'set-payment-deadline', label: 'Set payment deadline', icon: 'CalendarClock', kind: 'modal', target: 'payment-plan', permission: p(MODULES.PAYMENTS, ACTIONS.CREATE) },
@@ -311,12 +374,17 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'record-payment', label: 'Record payment', icon: 'IndianRupee', kind: 'modal', target: 'payment', permission: p(MODULES.PAYMENTS, ACTIONS.CREATE), variant: 'success' },
   ],
 
-  // §11.6 Payment Received
+  /**
+   * §Pipeline 5 — Fees Received.
+   *
+   * A staging post rather than a stage with work in it: the record advances to
+   * Certificate Verification by itself the moment the fee settles. What is left
+   * here is the paperwork that belongs to the money.
+   */
   [RECORD_STATUS.PAYMENT_RECEIVED]: [
     { id: 'upload-certificate', label: 'Upload certificate', icon: 'Award', kind: 'modal', target: 'certificate', permission: p(MODULES.CERTIFICATES, ACTIONS.CREATE), variant: 'primary' },
     { id: 'assign-operations', label: 'Assign operations team', icon: 'Users', kind: 'modal', target: 'assign', permission: p(MODULES.RECORDS, ACTIONS.EDIT) },
     { id: 'create-dispatch-task', label: 'Create dispatch task', icon: 'ListChecks', kind: 'modal', target: 'task', permission: p(MODULES.TASKS, ACTIONS.CREATE) },
-    { id: 'add-publication', label: 'Add publication', icon: 'Newspaper', kind: 'modal', target: 'publication', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE) },
     { id: 'generate-invoice', label: 'Generate invoice', icon: 'ReceiptIndianRupee', kind: 'download', target: 'invoice', permission: p(MODULES.PAYMENTS, ACTIONS.EXPORT) },
     { id: 'payment-confirmation', label: 'Send payment confirmation', icon: 'Mail', kind: 'modal', target: 'email:payment_confirmation', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
   ],
@@ -335,18 +403,22 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'assign-operations', label: 'Assign operations team', icon: 'Users', kind: 'modal', target: 'assign', permission: p(MODULES.RECORDS, ACTIONS.EDIT) },
   ],
 
-  // §11.7 Certificate Uploaded
+  /**
+   * §Pipeline 6 — Certificate Completed. The next stop is Dispatch, and only
+   * Dispatch; publication now happens after the parcel has been delivered.
+   */
   [RECORD_STATUS.CERTIFICATE_UPLOADED]: [
     { id: 'send-certificate-email', label: 'Send certificate email', icon: 'Mail', kind: 'modal', target: 'email:certificate_ready', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'primary', suppressedByDoNotContact: true },
     { id: 'send-certificate-whatsapp', label: 'Send certificate WhatsApp', icon: 'MessageCircle', kind: 'modal', target: 'whatsapp:certificate', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'whatsapp', suppressedByDoNotContact: true },
-    { id: 'upload-magazine', label: 'Upload magazine', icon: 'BookOpen', kind: 'modal', target: 'publication:magazine', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE) },
-    { id: 'upload-enews', label: 'Upload e-news', icon: 'Newspaper', kind: 'modal', target: 'publication:enews', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE) },
     { id: 'ready-for-dispatch', label: 'Mark ready for dispatch', icon: 'PackageCheck', kind: 'transition', target: RECORD_STATUS.DISPATCH_PENDING, permission: CHANGE_STATUS, variant: 'success' },
   ],
 
+  // §Pipeline 8 — Publication. The magazine and website entries, then done.
   [RECORD_STATUS.PUBLICATION]: [
     { id: 'add-publication', label: 'Add publication', icon: 'Newspaper', kind: 'modal', target: 'publication', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE), variant: 'primary' },
-    { id: 'ready-for-dispatch', label: 'Mark ready for dispatch', icon: 'PackageCheck', kind: 'transition', target: RECORD_STATUS.DISPATCH_PENDING, permission: CHANGE_STATUS, variant: 'success' },
+    { id: 'upload-magazine', label: 'Upload magazine', icon: 'BookOpen', kind: 'modal', target: 'publication:magazine', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE) },
+    { id: 'upload-enews', label: 'Upload e-news', icon: 'Newspaper', kind: 'modal', target: 'publication:enews', permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE) },
+    { id: 'complete', label: 'Complete & lock', icon: 'Lock', kind: 'transition', target: RECORD_STATUS.COMPLETED, permission: CHANGE_STATUS, variant: 'success' },
   ],
 
   // §11.8 Dispatch
@@ -361,8 +433,17 @@ export const STAGE_ACTIONS: Readonly<Record<RecordStatus, readonly StageAction[]
     { id: 'upload-pod', label: 'Upload proof of delivery', icon: 'FileCheck2', kind: 'modal', target: 'dispatch:pod', permission: p(MODULES.DISPATCH, ACTIONS.EDIT) },
   ],
 
+  /**
+   * §Pipeline 7 → 8. Delivered, and the fork: publish, or finish.
+   *
+   * Publication leads because it is the stage that follows in the pipeline, but
+   * completing directly sits beside it — most records are never published, and
+   * routing all of them through a publication queue would fill it with rows
+   * nobody intends to action.
+   */
   [RECORD_STATUS.DELIVERED]: [
-    { id: 'send-congratulations', label: 'Send congratulations', icon: 'PartyPopper', kind: 'modal', target: 'email:congratulations', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), variant: 'primary', suppressedByDoNotContact: true },
+    { id: 'send-congratulations', label: 'Send congratulations', icon: 'PartyPopper', kind: 'modal', target: 'email:congratulations', permission: p(MODULES.COMMUNICATIONS, ACTIONS.SEND), suppressedByDoNotContact: true },
+    { id: 'send-to-publication', label: 'Send to publication', icon: 'Newspaper', kind: 'transition', target: RECORD_STATUS.PUBLICATION, permission: p(MODULES.PUBLICATIONS, ACTIONS.CREATE), variant: 'primary' },
     { id: 'complete', label: 'Complete & lock', icon: 'Lock', kind: 'transition', target: RECORD_STATUS.COMPLETED, permission: CHANGE_STATUS, variant: 'success' },
   ],
 

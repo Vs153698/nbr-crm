@@ -287,7 +287,9 @@ export class ReportsService {
       JOIN applicants a ON a.id = r.applicant_id
       LEFT JOIN dispatches d ON d.record_id = r.id AND d.is_current = true
       WHERE r.deleted_at IS NULL
-        AND r.status IN ('dispatch_pending','certificate_uploaded','publication','dispatched')
+        -- Publication follows delivery now, so a record there has shipped and
+        -- is not outstanding dispatch work.
+        AND r.status IN ('dispatch_pending','certificate_uploaded','dispatched')
         AND r.delivery_status <> 'delivered'
       ORDER BY r.updated_at
       LIMIT 1000

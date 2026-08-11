@@ -72,27 +72,40 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     terminal: false,
     slaWatched: true,
   },
+  /** Pipeline stage 1 — every newly submitted application lands here. */
   [RECORD_STATUS.APPLICATION_SUBMITTED]: {
     code: RECORD_STATUS.APPLICATION_SUBMITTED,
-    label: 'Application Submitted',
+    label: 'New Application',
     tone: 'blue',
     order: 20,
     stage: 'intake',
     terminal: false,
     slaWatched: true,
   },
+  /** Pipeline stage 2 — documents and evidence are checked here. */
   [RECORD_STATUS.UNDER_REVIEW]: {
     code: RECORD_STATUS.UNDER_REVIEW,
-    label: 'Under Review',
+    label: 'Verification',
     tone: 'orange',
     order: 30,
     stage: 'verification',
     terminal: false,
     slaWatched: true,
   },
+  /**
+   * Pipeline stage 3 — verified, waiting on the approve/reject decision.
+   *
+   * The code still reads `verification_pending` because it is written on every
+   * record ever created and changing it would mean rewriting history for a
+   * word. What it *means* has been made precise: it used to be "we have asked
+   * the applicant for more evidence", which is not a stage at all — that is
+   * still Verification, with a task against it — and it now marks the queue an
+   * approver works from. The website's own `validated` stage has always meant
+   * exactly this and has always mapped here, so the two systems agree.
+   */
   [RECORD_STATUS.VERIFICATION_PENDING]: {
     code: RECORD_STATUS.VERIFICATION_PENDING,
-    label: 'Verification Pending',
+    label: 'Approval Pending',
     tone: 'orange',
     order: 40,
     stage: 'verification',
@@ -108,9 +121,19 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     terminal: false,
     slaWatched: false,
   },
+  /**
+   * Pipeline stage 4 — approved, and the selection letter has gone out.
+   *
+   * The decision and the letter are one stage rather than two because they are
+   * one act: approving an applicant nobody tells is not a state worth having,
+   * and a record that reached here with no letter sent is a mistake the stage
+   * should surface rather than accommodate. Whether the letter actually landed
+   * is answered by the communication history, which the Selection Sent panel
+   * reads and shows on the record.
+   */
   [RECORD_STATUS.SELECTED]: {
     code: RECORD_STATUS.SELECTED,
-    label: 'Selected',
+    label: 'Selection Sent',
     tone: 'green',
     order: 60,
     stage: 'decision',
@@ -135,9 +158,10 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     terminal: false,
     slaWatched: false,
   },
+  /** Pipeline stage 5 — the fee has settled in full. */
   [RECORD_STATUS.PAYMENT_RECEIVED]: {
     code: RECORD_STATUS.PAYMENT_RECEIVED,
-    label: 'Payment Received',
+    label: 'Fees Received',
     tone: 'green',
     order: 90,
     stage: 'payment',
@@ -168,20 +192,12 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     terminal: false,
     slaWatched: true,
   },
-  [RECORD_STATUS.PUBLICATION]: {
-    code: RECORD_STATUS.PUBLICATION,
-    label: 'Publication',
-    tone: 'purple',
-    order: 120,
-    stage: 'fulfilment',
-    terminal: false,
-    slaWatched: true,
-  },
+  /** Pipeline stage 7 — the parcel. Three steps: pending, sent, delivered. */
   [RECORD_STATUS.DISPATCH_PENDING]: {
     code: RECORD_STATUS.DISPATCH_PENDING,
     label: 'Dispatch Pending',
     tone: 'orange',
-    order: 130,
+    order: 120,
     stage: 'fulfilment',
     terminal: false,
     slaWatched: true,
@@ -190,7 +206,7 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     code: RECORD_STATUS.DISPATCHED,
     label: 'Dispatched',
     tone: 'blue',
-    order: 140,
+    order: 130,
     stage: 'fulfilment',
     terminal: false,
     slaWatched: false,
@@ -199,10 +215,33 @@ export const STATUS_META: Readonly<Record<RecordStatus, StatusMeta>> = {
     code: RECORD_STATUS.DELIVERED,
     label: 'Delivered',
     tone: 'green',
-    order: 150,
+    order: 140,
     stage: 'fulfilment',
     terminal: false,
     slaWatched: false,
+  },
+  /**
+   * Pipeline stage 8 — the last working stage, and deliberately optional.
+   *
+   * It used to sit *before* dispatch, which had the magazine and the website
+   * entry produced while the certificate was still in the office and the
+   * applicant had nothing in their hands. It now follows delivery, which is
+   * both the order asked for and the order that makes sense: the record is
+   * published once it has actually been awarded.
+   *
+   * Optional because most records are never published. A mandatory Publication
+   * stage would leave every unpublished record parked in a queue nobody will
+   * ever action, which is how a queue stops being read at all — so Delivered
+   * also leads straight to Completed.
+   */
+  [RECORD_STATUS.PUBLICATION]: {
+    code: RECORD_STATUS.PUBLICATION,
+    label: 'Publication',
+    tone: 'purple',
+    order: 150,
+    stage: 'fulfilment',
+    terminal: false,
+    slaWatched: true,
   },
   [RECORD_STATUS.COMPLETED]: {
     code: RECORD_STATUS.COMPLETED,

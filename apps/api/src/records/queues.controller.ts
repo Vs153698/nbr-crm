@@ -20,6 +20,20 @@ export class QueuesController {
     return this.queues.verification();
   }
 
+  /**
+   * Verified records waiting on an approve/reject decision.
+   *
+   * Its own queue rather than a filter on the verification one, because it has
+   * a different owner: a verifier works through documents, an approver works
+   * through decisions, and merging them meant neither could see what was
+   * actually theirs.
+   */
+  @Get('approvals')
+  @Can(MODULES.VERIFICATION, ACTIONS.VIEW)
+  async approvals() {
+    return this.queues.approvals();
+  }
+
   @Get('payments')
   @Can(MODULES.PAYMENTS, ACTIONS.VIEW)
   async payments() {

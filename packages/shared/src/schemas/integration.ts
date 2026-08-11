@@ -205,7 +205,6 @@ export const LEGACY_PIPELINE: ReadonlyArray<{
       RECORD_STATUS.PAYMENT_RECEIVED,
       RECORD_STATUS.CERTIFICATE_PENDING,
       RECORD_STATUS.CERTIFICATE_UPLOADED,
-      RECORD_STATUS.PUBLICATION,
       RECORD_STATUS.DISPATCH_PENDING,
     ],
   },
@@ -215,6 +214,11 @@ export const LEGACY_PIPELINE: ReadonlyArray<{
     statuses: [
       RECORD_STATUS.DISPATCHED,
       RECORD_STATUS.DELIVERED,
+      // Publication follows delivery in the CRM's own pipeline. The website
+      // has no stage past "dispatched", so on its rail a record being written
+      // up for the magazine still reads as dispatched — which is true, and is
+      // the furthest its five steps can express.
+      RECORD_STATUS.PUBLICATION,
       RECORD_STATUS.COMPLETED,
     ],
   },

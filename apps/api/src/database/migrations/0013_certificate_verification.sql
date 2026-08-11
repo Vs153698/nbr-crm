@@ -61,4 +61,43 @@ UPDATE "certificates" c
    SET "current_version" = 0
  WHERE NOT EXISTS (
          SELECT 1 FROM "certificate_versions" v WHERE v."certificate_id" = c."id"
+       );--> statement-breakpoint
+
+--
+-- Return records the old behaviour marked complete on a certificate that does
+-- not exist.
+--
+-- Until now the website's automatic certificate push carried a record straight
+-- to Certificate Uploaded on the strength of a number it had minted itself, with
+-- no file behind it anywhere. Those records claim a finished certificate stage
+-- that nobody performed, and leaving them there would hide from the certificate
+-- team exactly the work this change exists to make visible.
+--
+-- Deliberately narrow. Only records sitting *at* Certificate Uploaded are moved:
+-- nothing downstream has happened to them, so nothing is invalidated by asking
+-- for the certificate now. A record that reached Publication, Dispatch or
+-- Delivered is left alone — something real was posted to the applicant, and
+-- rewinding it to ask for a certificate would be the false statement.
+UPDATE "records" r
+   SET "status"     = 'certificate_pending',
+       "updated_at" = now()
+ WHERE r."status" = 'certificate_uploaded'
+   AND r."deleted_at" IS NULL
+   AND NOT EXISTS (
+         SELECT 1
+           FROM "certificates" c
+           JOIN "certificate_versions" v ON v."certificate_id" = c."id"
+          WHERE c."record_id" = r."id"
+       );--> statement-breakpoint
+
+-- The same rows carry a `has_certificate` flag that was set by that push and
+-- means "a file is on record". No file was ever on record.
+UPDATE "records" r
+   SET "has_certificate" = false
+ WHERE r."has_certificate" = true
+   AND NOT EXISTS (
+         SELECT 1
+           FROM "certificates" c
+           JOIN "certificate_versions" v ON v."certificate_id" = c."id"
+          WHERE c."record_id" = r."id"
        );

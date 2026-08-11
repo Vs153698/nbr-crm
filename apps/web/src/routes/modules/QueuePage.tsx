@@ -159,12 +159,34 @@ export function VerificationQueuePage() {
   return (
     <QueuePage
       title="Verification queue"
-      subtitle="Applications awaiting document review, oldest first."
+      subtitle="Applications whose documents are still being checked, oldest first."
       icon={Icons.ShieldCheck}
       endpoint="/queues/verification"
       tab="evidence"
       emptyTitle="Nothing to verify"
-      emptyDescription="Every submitted application has been reviewed."
+      emptyDescription="Every new application has been through verification."
+    />
+  );
+}
+
+/**
+ * §Pipeline 3 — the approver's queue.
+ *
+ * Its own screen rather than a filter on Verification. They are different jobs
+ * done by different people: one works through documents, the other through
+ * decisions, and a single list meant neither could see what was actually
+ * waiting on them.
+ */
+export function ApprovalsQueuePage() {
+  return (
+    <QueuePage
+      title="Approval pending"
+      subtitle="Verified applications waiting on an approve or reject decision."
+      icon={Icons.ClipboardCheck}
+      endpoint="/queues/approvals"
+      tab="evidence"
+      emptyTitle="No decisions waiting"
+      emptyDescription="Every verified application has been decided."
     />
   );
 }

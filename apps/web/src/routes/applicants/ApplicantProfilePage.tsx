@@ -1,5 +1,5 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ import { ICON_SIZE, ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { AssignRecordDialog } from './components/AssignRecordDialog';
 import { BlacklistDialog, LiftBlacklistDialog } from './components/BlacklistDialog';
+import { EmailComposerDialog } from './components/EmailComposerDialog';
 import { AddRecordDialog } from './components/AddRecordDialog';
 import { EditApplicantDialog } from './components/EditApplicantDialog';
 import { CommunicationTab } from './components/CommunicationTab';
@@ -111,6 +112,8 @@ export default function ApplicantProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [blacklistOpen, setBlacklistOpen] = useState(false);
   const [liftOpen, setLiftOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const queryClient = useQueryClient();
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -255,6 +258,9 @@ export default function ApplicantProfilePage() {
 
   const { applicant, records, flags, blacklists } = data;
   const activeBlacklist = blacklists[0];
+  // §20 — this flag hides every outreach action, so it is read once here rather
+  // than recomputed at each place that has to respect it.
+  const doNotContact = flags.some((flag) => flag.flag === 'do_not_contact');
 
   return (
     <div className="p-4 sm:p-5">
@@ -282,6 +288,35 @@ export default function ApplicantProfilePage() {
                 onClick={() => void runDownload('applicant-pdf')}
               >
                 Export PDF
+              </Button>
+            ) : null}
+            {/*
+              Writing to an applicant is the single most common thing an
+              operator does on this page, and it used to be four clicks away
+              behind the Communication tab. It belongs where Edit and Export
+              are, because that is where the hand already is.
+
+              Two states rather than a hidden button: a record is needed to send
+              (the message is filed against one), and Do Not Contact means no
+              outreach at all — the server refuses either way, and a button that
+              simply vanishes leaves the operator wondering whether they lack the
+              permission.
+            */}
+            {can('communications:send') ? (
+              <Button
+                variant="secondary"
+                icon={Icons.Mail}
+                disabled={!activeRecord || doNotContact}
+                title={
+                  doNotContact
+                    ? 'This applicant is flagged Do Not Contact.'
+                    : !activeRecord
+                      ? 'Open a record first — emails are filed against one.'
+                      : undefined
+                }
+                onClick={() => setEmailOpen(true)}
+              >
+                Email
               </Button>
             ) : null}
             {/* §19 — sits beside Edit rather than buried in the register,
@@ -598,8 +633,9 @@ export default function ApplicantProfilePage() {
                     <CommunicationTab
                       recordId={activeRecord.id}
                       applicantId={applicant.id}
+                      applicantEmail={applicant.email}
                       // Enforced server-side too; this only hides the buttons.
-                      doNotContact={flags.some((flag) => flag.flag === 'do_not_contact')}
+                      doNotContact={doNotContact}
                       autoOpen={pendingDialog}
                       onAutoOpened={clearPendingDialog}
                     />
@@ -750,6 +786,28 @@ export default function ApplicantProfilePage() {
       </div>
 
       <EditApplicantDialog profile={applicant} open={editOpen} onOpenChange={setEditOpen} />
+
+      {/* The same composer the Communication tab opens — one dialog, so a
+          message written from the header is filed, previewed and recorded
+          identically to one written from the tab. */}
+      {emailOpen && activeRecord ? (
+        <EmailComposerDialog
+          recordId={activeRecord.id}
+          defaultTo={applicant.email}
+          onClose={() => setEmailOpen(false)}
+          onSent={() => {
+            // The history lives on the Communication tab, which may not be
+            // open — invalidate it anyway so it is right when they get there.
+            void queryClient.invalidateQueries({ queryKey: ['communications', applicant.id] });
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.recordTimeline(activeRecord.id),
+            });
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.applicantTimeline(applicant.id),
+            });
+          }}
+        />
+      ) : null}
 
       <BlacklistDialog
         open={blacklistOpen}

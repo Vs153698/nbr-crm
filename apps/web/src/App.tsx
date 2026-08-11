@@ -29,6 +29,7 @@ const EmployeesPage = lazy(() => import('@/routes/sales/employees/EmployeesPage'
 // different props, so splitting them further would only add round-trips.
 const queues = () => import('@/routes/modules/QueuePage');
 const VerificationQueuePage = lazy(async () => ({ default: (await queues()).VerificationQueuePage }));
+const ApprovalsQueuePage = lazy(async () => ({ default: (await queues()).ApprovalsQueuePage }));
 const PaymentsQueuePage = lazy(async () => ({ default: (await queues()).PaymentsQueuePage }));
 const CertificatesQueuePage = lazy(async () => ({ default: (await queues()).CertificatesQueuePage }));
 const PublicationsQueuePage = lazy(async () => ({ default: (await queues()).PublicationsQueuePage }));
@@ -179,6 +180,7 @@ export function App() {
 
           {/* Operational queues (§7, §12, §16, §17, §18) */}
           <Route path="/verification" element={guarded('verification:view', VerificationQueuePage)} />
+          <Route path="/approvals" element={guarded('verification:view', ApprovalsQueuePage)} />
           <Route path="/payments" element={guarded('payments:view', PaymentsQueuePage)} />
           <Route path="/certificates" element={guarded('certificates:view', CertificatesQueuePage)} />
           <Route path="/publications" element={guarded('publications:view', PublicationsQueuePage)} />

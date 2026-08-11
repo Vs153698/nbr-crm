@@ -524,7 +524,17 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   'QueuesController.verification': {
     tag: 'Queues',
     summary: 'Verification queue',
-    description: `Applications awaiting document review. ${QUEUE_NOTE}`,
+    description: `Applications whose documents are still being checked. ${QUEUE_NOTE}`,
+    response: QUEUE_ROW,
+    notes:
+      'Verified records are *not* here — they are in the approvals queue below. The two used ' +
+      'to be one list, which meant a verifier and an approver read the same rows and neither ' +
+      'could tell which were theirs.',
+  },
+  'QueuesController.approvals': {
+    tag: 'Queues',
+    summary: 'Approval pending queue',
+    description: `Verified applications waiting on an approve or reject decision. ${QUEUE_NOTE}`,
     response: QUEUE_ROW,
   },
   'QueuesController.payments': {
@@ -539,8 +549,13 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
   'QueuesController.publications': {
     tag: 'Queues',
     summary: 'Pending publications queue',
-    description: `Records with a certificate issued but nothing published yet. ${QUEUE_NOTE}`,
+    description: `Delivered records with nothing published yet. ${QUEUE_NOTE}`,
     response: QUEUE_ROW,
+    notes:
+      'Publication follows delivery in the pipeline, so this queue is the Publication stage ' +
+      'and nothing earlier. It used to include Certificate Completed, which put a record here ' +
+      'while its certificate was still in the office — the magazine entry could be written ' +
+      'before the applicant had been awarded anything.',
   },
 
   // ── Files ─────────────────────────────────────────────────────────────────

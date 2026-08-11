@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { EmailComposerDialog } from './EmailComposerDialog';
 import { SelectionLetterDialog } from './SelectionLetterDialog';
 import { CardHeader, EmptyState } from '@/components/ui/Card';
 import { Dialog } from '@/components/ui/Dialog';
@@ -38,12 +39,15 @@ const CHANNEL_STYLE: Record<string, { icon: keyof typeof Icons; tone: string }> 
 export function CommunicationTab({
   recordId,
   applicantId,
+  applicantEmail,
   doNotContact,
   autoOpen,
   onAutoOpened,
 }: {
   recordId: string;
   applicantId: string;
+  /** Prefills the composer's To field without waiting on a template preview. */
+  applicantEmail?: string | null;
   doNotContact: boolean;
   autoOpen?: string | null;
   onAutoOpened?: () => void;
@@ -281,8 +285,9 @@ export function CommunicationTab({
       )}
 
       {emailOpen ? (
-        <SendEmailDialog
+        <EmailComposerDialog
           recordId={recordId}
+          defaultTo={applicantEmail}
           initialTemplateCode={presetTemplate}
           onClose={() => setEmailOpen(false)}
           onSent={invalidate}
@@ -305,164 +310,6 @@ export function CommunicationTab({
         />
       ) : null}
     </div>
-  );
-}
-
-/** M-07 Send Email with live preview. */
-function SendEmailDialog({
-  recordId,
-  initialTemplateCode,
-  onClose,
-  onSent,
-}: {
-  recordId: string;
-  /** Preselected by the Smart Action panel; null when opened from the tab. */
-  initialTemplateCode?: string | null;
-  onClose: () => void;
-  onSent: () => void;
-}) {
-  const [templateCode, setTemplateCode] = useState<string>(
-    initialTemplateCode ?? EMAIL_TEMPLATE_CODES[0] ?? 'congratulations',
-  );
-  const [edited, setEdited] = useState(false);
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-
-  const { data: preview, isFetching } = useQuery({
-    queryKey: ['comm-preview', recordId, templateCode, 'email'],
-    queryFn: async ({ signal }) => {
-      const result = await api.get<RenderedMessage>(
-        '/communications/preview',
-        { recordId, templateCode, channel: TEMPLATE_CHANNEL.EMAIL },
-        signal,
-      );
-      // Only overwrite the editor while the user hasn't taken it over.
-      if (!edited) {
-        setSubject(result.subject ?? '');
-        setBody(result.body);
-      }
-      return result;
-    },
-  });
-
-  const sendMutation = useMutation({
-    mutationFn: () =>
-      api.post('/communications/email', {
-        recordId,
-        templateCode,
-        to: preview?.to ?? '',
-        subject,
-        body,
-        // Untouched, the server re-renders the template's own areas. Rewritten,
-        // these words are what goes out.
-        bodyEdited: edited,
-      }),
-    onSuccess: () => {
-      toast.success('Email queued', { description: 'It sends in the background.' });
-      onClose();
-      onSent();
-    },
-    onError: (error: unknown) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not queue the email'),
-  });
-
-  return (
-    <Dialog
-      open
-      onOpenChange={onClose}
-      title="Send email"
-      description={preview?.to ? `To ${preview.to}` : undefined}
-      size="lg"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            icon={Icons.Mail}
-            loading={sendMutation.isPending}
-            disabled={!subject.trim() || !body.trim()}
-            onClick={() => sendMutation.mutate()}
-          >
-            Send email
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Select
-          label="Template"
-          value={templateCode}
-          onChange={(event) => {
-            setTemplateCode(event.target.value);
-            setEdited(false);
-          }}
-          options={EMAIL_TEMPLATE_CODES.map((code) => ({ value: code, label: humanise(code) }))}
-        />
-
-        {/* Warn before sending, not after — a blank certificate number in a
-            live email is embarrassing and hard to retract. */}
-        {preview && preview.missing.length > 0 ? (
-          <div className="flex gap-2 rounded-lg border border-warn-ring bg-warn-tint p-2.5">
-            <Icons.ShieldAlert size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-warn" />
-            <p className="text-[11px] leading-relaxed text-warn">
-              These fields have no value yet and will appear blank:{' '}
-              <b>{preview.missing.join(', ')}</b>
-            </p>
-          </div>
-        ) : null}
-
-        <Input
-          label="Subject"
-          value={subject}
-          onChange={(event) => {
-            setSubject(event.target.value);
-            setEdited(true);
-          }}
-          suffix={isFetching ? <Icons.Loader2 size={14} className="animate-spin" /> : undefined}
-        />
-
-        <Textarea
-          label="Message"
-          value={body}
-          onChange={(event) => {
-            setBody(event.target.value);
-            setEdited(true);
-          }}
-          rows={edited ? 12 : 6}
-          hint="Placeholders are already filled with this applicant's data. Edit freely before sending."
-        />
-
-        {/* The message as the applicant will see it. Shown for the template's
-            own layout only: once the text is rewritten, what goes out is those
-            words in the standard shell, and the ornate preview would be a
-            picture of something else. */}
-        {preview?.html && !edited ? (
-          <div>
-            <p className="mb-1.5 text-xs font-semibold text-ink-2">
-              What {preview.to ?? 'the applicant'} receives
-            </p>
-            <div className="h-[420px] overflow-hidden rounded-lg border border-line">
-              <iframe
-                title="Email preview"
-                srcDoc={preview.html}
-                sandbox=""
-                className="h-full w-full border-0 bg-[#f1f5f9]"
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {edited ? (
-          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-ink-3">
-            <Icons.Info size={13} strokeWidth={2} className="mt-px shrink-0" />
-            You've rewritten this message, so your words are sent in the standard layout rather
-            than the template's. Reselect the template above to go back.
-          </p>
-        ) : null}
-      </div>
-    </Dialog>
   );
 }
 

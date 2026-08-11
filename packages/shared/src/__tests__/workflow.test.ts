@@ -55,10 +55,15 @@ describe('status state machine', () => {
   });
 
   it('allows the documented happy path end to end', () => {
+    // The pipeline, end to end: New Application → Verification → Approval
+    // Pending → Selection Sent → Fees Received → Certificate → Dispatch →
+    // Publication. Asserted as one walk so a transition removed anywhere along
+    // it fails here rather than in production.
     const path: RecordStatus[] = [
       RECORD_STATUS.NEW_LEAD,
       RECORD_STATUS.APPLICATION_SUBMITTED,
       RECORD_STATUS.UNDER_REVIEW,
+      RECORD_STATUS.VERIFICATION_PENDING,
       RECORD_STATUS.SELECTED,
       RECORD_STATUS.PAYMENT_PENDING,
       RECORD_STATUS.PAYMENT_RECEIVED,
@@ -67,6 +72,7 @@ describe('status state machine', () => {
       RECORD_STATUS.DISPATCH_PENDING,
       RECORD_STATUS.DISPATCHED,
       RECORD_STATUS.DELIVERED,
+      RECORD_STATUS.PUBLICATION,
       RECORD_STATUS.COMPLETED,
     ];
 
@@ -78,7 +84,11 @@ describe('status state machine', () => {
   });
 
   it('guards approval behind evidence', () => {
-    const approve = findTransition(RECORD_STATUS.UNDER_REVIEW, RECORD_STATUS.SELECTED);
+    // Approval is taken from Approval Pending, not from Verification — that
+    // separation is the point of the stage, so assert where it lives too.
+    expect(findTransition(RECORD_STATUS.UNDER_REVIEW, RECORD_STATUS.SELECTED)).toBeUndefined();
+
+    const approve = findTransition(RECORD_STATUS.VERIFICATION_PENDING, RECORD_STATUS.SELECTED);
     expect(approve?.guards).toContain('has_evidence');
     expect(approve?.guards).toContain('not_blacklisted');
     expect(approve?.requiresRemark).toBe(true);
@@ -124,6 +134,69 @@ describe('status state machine', () => {
   it('orders statuses without duplicate sort positions', () => {
     const orders = ORDERED_STATUSES.map((status) => status.order);
     expect(new Set(orders).size).toBe(orders.length);
+  });
+});
+
+/**
+ * The eight-stage pipeline, asserted as shape rather than as one happy path.
+ *
+ * Each of these encodes a rule that was wrong before and would be easy to undo
+ * by accident — an approval shortcut, a publication step in the wrong place —
+ * so they are worth more than a walk from end to end.
+ */
+describe('application pipeline', () => {
+  it('lands every new application in New Application and nowhere else', () => {
+    expect(STATUS_META[RECORD_STATUS.APPLICATION_SUBMITTED].label).toBe('New Application');
+
+    // The only way further in is through Verification. A record cannot arrive
+    // at Approval Pending, Selection Sent or anything past it without being
+    // verified first.
+    const onward = allowedTransitions(RECORD_STATUS.APPLICATION_SUBMITTED).map((t) => t.to);
+    expect(onward).toContain(RECORD_STATUS.UNDER_REVIEW);
+    expect(onward).not.toContain(RECORD_STATUS.VERIFICATION_PENDING);
+    expect(onward).not.toContain(RECORD_STATUS.SELECTED);
+  });
+
+  it('separates verification from approval', () => {
+    // Verification hands over; it does not decide. One person doing both in a
+    // single click is what left Approval Pending empty.
+    const fromVerification = allowedTransitions(RECORD_STATUS.UNDER_REVIEW).map((t) => t.to);
+    expect(fromVerification).toContain(RECORD_STATUS.VERIFICATION_PENDING);
+    expect(fromVerification).not.toContain(RECORD_STATUS.SELECTED);
+
+    const fromApproval = allowedTransitions(RECORD_STATUS.VERIFICATION_PENDING).map((t) => t.to);
+    expect(fromApproval).toContain(RECORD_STATUS.SELECTED);
+  });
+
+  it('names the stages the way the pipeline does', () => {
+    expect(STATUS_META[RECORD_STATUS.UNDER_REVIEW].label).toBe('Verification');
+    expect(STATUS_META[RECORD_STATUS.VERIFICATION_PENDING].label).toBe('Approval Pending');
+    expect(STATUS_META[RECORD_STATUS.SELECTED].label).toBe('Selection Sent');
+    expect(STATUS_META[RECORD_STATUS.PAYMENT_RECEIVED].label).toBe('Fees Received');
+  });
+
+  it('puts publication after dispatch, not before it', () => {
+    // The old order produced the magazine entry while the certificate was
+    // still in the office.
+    expect(
+      findTransition(RECORD_STATUS.CERTIFICATE_UPLOADED, RECORD_STATUS.PUBLICATION),
+    ).toBeUndefined();
+    expect(
+      findTransition(RECORD_STATUS.PUBLICATION, RECORD_STATUS.DISPATCH_PENDING),
+    ).toBeUndefined();
+
+    expect(findTransition(RECORD_STATUS.DELIVERED, RECORD_STATUS.PUBLICATION)).toBeDefined();
+
+    const order = STATUS_META[RECORD_STATUS.PUBLICATION].order;
+    expect(order).toBeGreaterThan(STATUS_META[RECORD_STATUS.DISPATCHED].order);
+    expect(order).toBeGreaterThan(STATUS_META[RECORD_STATUS.DELIVERED].order);
+  });
+
+  it('leaves publication optional', () => {
+    // A record nobody publishes must still be able to finish, or the
+    // publication queue fills with rows no one will ever action.
+    expect(findTransition(RECORD_STATUS.DELIVERED, RECORD_STATUS.COMPLETED)).toBeDefined();
+    expect(findTransition(RECORD_STATUS.PUBLICATION, RECORD_STATUS.COMPLETED)).toBeDefined();
   });
 });
 

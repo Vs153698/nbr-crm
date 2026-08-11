@@ -28,6 +28,8 @@ interface DashboardPayload {
     totalRecords: number;
     applicationsToday: number;
     pendingReviews: number;
+    pendingVerification: number;
+    pendingApproval: number;
     selected: number;
     rejected: number;
     paymentPending: number;
@@ -141,17 +143,29 @@ export default function DashboardPage() {
           tone="indigo"
           loading={isLoading}
         />
+        {/* Two tiles, not one. A verifier and an approver work different
+            queues, and a combined "pending reviews" number told neither of
+            them how much of it was theirs. */}
         <StatCard
-          label="Pending Reviews"
-          value={stats?.pendingReviews ?? 0}
-          hint="Under review or awaiting evidence"
+          label="Verification"
+          value={stats?.pendingVerification ?? 0}
+          hint="Documents being checked"
           icon={Icons.Clock}
           tone="orange"
-          to="/applicants?status=under_review&status=verification_pending"
+          to="/applicants?status=under_review"
           loading={isLoading}
         />
         <StatCard
-          label="Selected"
+          label="Approval Pending"
+          value={stats?.pendingApproval ?? 0}
+          hint="Verified — awaiting a decision"
+          icon={Icons.ClipboardCheck}
+          tone="orange"
+          to="/applicants?status=verification_pending"
+          loading={isLoading}
+        />
+        <StatCard
+          label="Selection Sent"
           value={stats?.selected ?? 0}
           icon={Icons.CheckCircle2}
           tone="green"

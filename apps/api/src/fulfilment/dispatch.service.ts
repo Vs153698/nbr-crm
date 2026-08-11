@@ -357,7 +357,10 @@ export class DispatchService {
       .where(
         and(
           isNull(schema.records.deletedAt),
-          sql`${schema.records.status} IN ('dispatch_pending', 'certificate_uploaded', 'publication')`,
+          // Publication is no longer a pre-dispatch stage — it follows
+          // delivery — so a record there has already shipped and does not
+          // belong in the queue of parcels waiting to go out.
+          sql`${schema.records.status} IN ('dispatch_pending', 'certificate_uploaded')`,
         ),
       )
       .orderBy(schema.records.updatedAt)

@@ -13,6 +13,10 @@ export interface DashboardStats {
   readonly totalRecords: number;
   readonly applicationsToday: number;
   readonly pendingReviews: number;
+  /** Pipeline stage 2 — documents still being checked. */
+  readonly pendingVerification: number;
+  /** Pipeline stage 3 — verified, waiting on an approve/reject decision. */
+  readonly pendingApproval: number;
   readonly selected: number;
   readonly rejected: number;
   readonly paymentPending: number;
@@ -117,7 +121,13 @@ export class DashboardService {
       .select({
         totalRecords: sql<number>`count(*)::int`,
         applicationsToday: sql<number>`count(*) FILTER (WHERE ${schema.records.applicationDate} >= ${todayParam})::int`,
+        // Kept as the sum of both, for anything still reading it.
         pendingReviews: sql<number>`count(*) FILTER (WHERE ${schema.records.status} IN (${S.UNDER_REVIEW}, ${S.VERIFICATION_PENDING}))::int`,
+        // Split, because they are two queues with two owners now: a verifier
+        // working through documents, and an approver working through decisions.
+        // One combined number told neither of them how much was theirs.
+        pendingVerification: sql<number>`count(*) FILTER (WHERE ${schema.records.status} = ${S.UNDER_REVIEW})::int`,
+        pendingApproval: sql<number>`count(*) FILTER (WHERE ${schema.records.status} = ${S.VERIFICATION_PENDING})::int`,
         selected: sql<number>`count(*) FILTER (WHERE ${schema.records.status} = ${S.SELECTED})::int`,
         rejected: sql<number>`count(*) FILTER (WHERE ${schema.records.status} = ${S.REJECTED})::int`,
         paymentPending: sql<number>`count(*) FILTER (WHERE ${schema.records.status} = ${S.PAYMENT_PENDING})::int`,
@@ -159,6 +169,8 @@ export class DashboardService {
       totalRecords: recordStats?.totalRecords ?? 0,
       applicationsToday: recordStats?.applicationsToday ?? 0,
       pendingReviews: recordStats?.pendingReviews ?? 0,
+      pendingVerification: recordStats?.pendingVerification ?? 0,
+      pendingApproval: recordStats?.pendingApproval ?? 0,
       selected: recordStats?.selected ?? 0,
       rejected: recordStats?.rejected ?? 0,
       paymentPending: recordStats?.paymentPending ?? 0,

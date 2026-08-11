@@ -25,12 +25,21 @@ const PRIMARY_NAV: NavItem[] = [
   },
 ];
 
+/**
+ * The queues, in pipeline order.
+ *
+ * Deliberately ordered to match the stages a record passes through —
+ * Verification → Approval → Payments → Certificates → Dispatch → Publications —
+ * so the nav reads as the process rather than as an alphabetised list of
+ * screens. Publications moved to the end with the stage itself.
+ */
 const PIPELINE_NAV: NavItem[] = [
   { to: '/verification', label: 'Verification', icon: Icons.ShieldCheck, permission: 'verification:view' },
+  { to: '/approvals', label: 'Approval Pending', icon: Icons.ClipboardCheck, permission: 'verification:view' },
   { to: '/payments', label: 'Payments', icon: Icons.IndianRupee, permission: 'payments:view' },
   { to: '/certificates', label: 'Certificates', icon: Icons.Award, permission: 'certificates:view' },
-  { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view' },
   { to: '/dispatch', label: 'Dispatch', icon: Icons.Truck, permission: 'dispatch:view' },
+  { to: '/publications', label: 'Publications', icon: Icons.Newspaper, permission: 'publications:view' },
 ];
 
 const SALES_NAV: NavItem[] = [

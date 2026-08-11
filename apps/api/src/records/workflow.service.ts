@@ -5,6 +5,7 @@ import {
   isTerminalStatus,
   RECORD_STATUS,
   stageActions,
+  TEMPLATE_CODE,
   STATUS_META,
   TIMELINE_EVENT,
   USER_STATUS,
@@ -13,7 +14,7 @@ import {
   type StageAction,
   type TransitionGuard,
 } from '@nbr/shared';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import {
   ForbiddenError,
@@ -64,6 +65,22 @@ export interface SmartActionPanel {
     readonly balanceDue: string;
     readonly reminderCount: number;
     readonly overdue: boolean;
+  };
+  /**
+   * §Pipeline 4 context: whether the selection has actually been communicated.
+   *
+   * `sent: false` is the important case — an approved applicant nobody has
+   * written to, which is exactly what the Selection Sent stage exists to make
+   * impossible to miss.
+   */
+  readonly selectionContext?: {
+    readonly sent: boolean;
+    readonly channel?: string;
+    /** `queued | sent | delivered | failed` — the delivery attempt's outcome. */
+    readonly status?: string;
+    readonly at?: string | null;
+    readonly by?: string | null;
+    readonly failureReason?: string | null;
   };
 }
 
@@ -397,12 +414,71 @@ export class WorkflowService {
     };
 
     // §11 stage 5 shows due date, days remaining and the reminder counter.
-    if (status === 'payment_pending' || status === 'selected') {
-      const context = await this.paymentContext(recordId);
-      if (context) return { ...panel, paymentContext: context };
-    }
+    const paymentContext =
+      status === 'payment_pending' || status === 'selected'
+        ? await this.paymentContext(recordId)
+        : undefined;
 
-    return panel;
+    /**
+     * §Pipeline 4 — has the selection actually gone out?
+     *
+     * The stage is called Selection Sent, and until now nothing checked that
+     * anything had been. A record could sit here for weeks having been approved
+     * and never written to, and the only way to find out was to open the
+     * Communication tab and read it.
+     */
+    const selectionContext =
+      status === 'selected' ? await this.selectionContext(record.applicantId, recordId) : undefined;
+
+    return {
+      ...panel,
+      ...(paymentContext ? { paymentContext } : {}),
+      ...(selectionContext ? { selectionContext } : {}),
+    };
+  }
+
+  /**
+   * What the applicant has actually been told about their selection.
+   *
+   * Reads the communication history rather than a flag on the record, because
+   * the history is where the truth already is — it holds the message as sent,
+   * whether SMTP accepted it, and who sent it. A separate boolean would be a
+   * second copy of that, and the two would disagree the first time a send
+   * failed.
+   */
+  private async selectionContext(
+    applicantId: string,
+    recordId: string,
+  ): Promise<SmartActionPanel['selectionContext']> {
+    const [sent] = await this.db
+      .select({
+        channel: schema.communications.channel,
+        status: schema.communications.status,
+        sentAt: schema.communications.sentAt,
+        queuedAt: schema.communications.queuedAt,
+        sentByName: schema.communications.sentByName,
+        failureReason: schema.communications.failureReason,
+      })
+      .from(schema.communications)
+      .where(
+        and(
+          eq(schema.communications.recordId, recordId),
+          eq(schema.communications.templateCode, TEMPLATE_CODE.SELECTION),
+        ),
+      )
+      .orderBy(desc(schema.communications.createdAt))
+      .limit(1);
+
+    if (!sent) return { sent: false };
+
+    return {
+      sent: true,
+      channel: sent.channel,
+      status: sent.status,
+      at: (sent.sentAt ?? sent.queuedAt)?.toISOString() ?? null,
+      by: sent.sentByName,
+      failureReason: sent.failureReason,
+    };
   }
 
   private async paymentContext(recordId: string): Promise<SmartActionPanel['paymentContext']> {

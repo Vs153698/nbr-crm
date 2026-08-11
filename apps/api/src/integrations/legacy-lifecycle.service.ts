@@ -58,6 +58,31 @@ const IMPORTED_PACKAGE_PREFIX = 'Website';
  */
 const CERTIFICATE_VERIFICATION_RANK = LEGACY_STAGE_RANK[LEGACY_STAGE.PAYMENT_RECEIVED] + 0.5;
 
+/**
+ * Where the CRM's own stages sit on the website's ladder.
+ *
+ * The website has five steps; the CRM's pipeline has eight, and the extra ones
+ * are real places a record can be sitting when a snapshot lands. Ranking them
+ * as `null` — "off the ladder, nothing to compare" — made the forward-only
+ * guard skip entirely, so a late or replayed snapshot describing an *earlier*
+ * stage was written straight over them. A record in Certificate Verification
+ * could be dragged back to Selection Sent by a stale `approved` snapshot, and
+ * one in Publication back to Delivered.
+ *
+ * Half-steps because these sit *between* two website stages rather than
+ * replacing either.
+ */
+const CRM_ONLY_STAGE_RANK: Readonly<Partial<Record<RecordStatus, number>>> = {
+  // Invoice raised, money not in: past the approval, short of the receipt.
+  [RECORD_STATUS.PAYMENT_PENDING]: LEGACY_STAGE_RANK[LEGACY_STAGE.APPROVED] + 0.5,
+  // Fees in, certificate not yet signed off here.
+  [RECORD_STATUS.CERTIFICATE_PENDING]: CERTIFICATE_VERIFICATION_RANK,
+  // Past delivery — the website has no stage that goes this far.
+  [RECORD_STATUS.PUBLICATION]: LEGACY_STAGE_RANK[LEGACY_STAGE.DELIVERED] + 0.5,
+  // The end of the CRM's pipeline. Outranks every legacy stage.
+  [RECORD_STATUS.COMPLETED]: Number.MAX_SAFE_INTEGER,
+};
+
 export interface ApplyResult {
   readonly statusChanged: boolean;
   readonly paymentApplied: boolean;
@@ -658,9 +683,8 @@ export class LegacyLifecycleService {
       if (mapped === status) return LEGACY_STAGE_RANK[stage as LegacyStage];
     }
 
-    // Past the end of the mirrored path — Completed outranks every legacy stage.
-    if (status === 'completed') return Number.MAX_SAFE_INTEGER;
-    return null;
+    const crmOnly = CRM_ONLY_STAGE_RANK[status];
+    return crmOnly ?? null;
   }
 
   /** Upsert the mirror row that links this record back to the legacy system. */

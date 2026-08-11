@@ -20,13 +20,23 @@ import * as schema from '../database/schema';
 export class QueuesService {
   constructor(@Inject(DB) private readonly db: Database) {}
 
-  /** §7 — applications waiting on document review. */
+  /**
+   * §7 — applications whose documents are still being checked.
+   *
+   * Approval Pending used to be counted here, which merged two queues with two
+   * different owners: a verifier looking for work to do, and an approver
+   * looking for decisions to take. A record already verified would still appear
+   * on the verification list, so nobody could tell what was actually
+   * outstanding on either side.
+   */
   async verification(limit = 100) {
+    return this.project(inArray(schema.records.status, [RECORD_STATUS.UNDER_REVIEW]), limit);
+  }
+
+  /** §Pipeline 3 — verified, waiting on an approve/reject decision. */
+  async approvals(limit = 100) {
     return this.project(
-      inArray(schema.records.status, [
-        RECORD_STATUS.UNDER_REVIEW,
-        RECORD_STATUS.VERIFICATION_PENDING,
-      ]),
+      inArray(schema.records.status, [RECORD_STATUS.VERIFICATION_PENDING]),
       limit,
     );
   }
@@ -45,15 +55,20 @@ export class QueuesService {
     );
   }
 
-  /** §17 — records with a certificate issued but nothing published yet. */
+  /**
+   * §17 — delivered records waiting to be written up.
+   *
+   * Publication follows delivery now, so the queue is the Publication stage and
+   * nothing earlier. It used to include Certificate Completed, which put a
+   * record in the publication queue while its certificate was still in the
+   * office — the magazine entry could be written before the applicant had been
+   * awarded anything.
+   */
   async publications(limit = 100) {
     return this.project(
       and(
         eq(schema.records.hasPublication, false),
-        inArray(schema.records.status, [
-          RECORD_STATUS.CERTIFICATE_UPLOADED,
-          RECORD_STATUS.PUBLICATION,
-        ]),
+        inArray(schema.records.status, [RECORD_STATUS.PUBLICATION]),
       ) as SQL,
       limit,
     );

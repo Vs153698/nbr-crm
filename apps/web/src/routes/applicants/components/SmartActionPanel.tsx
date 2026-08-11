@@ -6,7 +6,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Select, Textarea } from '@/components/ui/Field';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
-import { formatDate } from '@/lib/format';
+import { formatDate, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, iconByName, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import type { SmartActionPanel as PanelData } from '../types';
@@ -131,6 +131,75 @@ export function SmartActionPanel({
             <Metric label="Balance" value={`₹${panel.paymentContext.balanceDue}`} />
             <Metric label="Reminders sent" value={String(panel.paymentContext.reminderCount)} />
           </div>
+        ) : null}
+
+        {/*
+          §Pipeline 4 — has the selection actually gone out?
+
+          The unsent case is the one worth a banner. A record can sit in
+          Selection Sent for weeks having been approved and never written to,
+          and before this the only way to find out was to open the
+          Communication tab and read the history.
+        */}
+        {panel.selectionContext ? (
+          panel.selectionContext.sent ? (
+            <div
+              className={cn(
+                'mb-3 flex gap-2 rounded-lg border px-3 py-2 text-[11px]',
+                panel.selectionContext.status === 'failed'
+                  ? 'border-danger-ring bg-danger-tint text-ink-2'
+                  : 'border-line bg-white text-ink-2',
+              )}
+            >
+              {panel.selectionContext.status === 'failed' ? (
+                <Icons.XCircle
+                  size={ICON_SIZE.sm}
+                  strokeWidth={ICON_STROKE}
+                  className="mt-px shrink-0 text-danger"
+                />
+              ) : (
+                <Icons.Mail
+                  size={ICON_SIZE.sm}
+                  strokeWidth={ICON_STROKE}
+                  className="mt-px shrink-0 text-ok"
+                />
+              )}
+              <span>
+                {panel.selectionContext.status === 'failed' ? (
+                  <>
+                    <span className="font-semibold text-danger">
+                      The selection letter did not send.
+                    </span>{' '}
+                    {panel.selectionContext.failureReason ?? 'No reason was recorded.'} Send it
+                    again from the Communication tab.
+                  </>
+                ) : (
+                  <>
+                    Selection {panel.selectionContext.channel ?? 'letter'}{' '}
+                    <span className="font-semibold text-ok">
+                      {humanise(panel.selectionContext.status ?? 'sent')}
+                    </span>
+                    {panel.selectionContext.at ? ` on ${formatDate(panel.selectionContext.at)}` : ''}
+                    {panel.selectionContext.by ? ` by ${panel.selectionContext.by}` : ''}.
+                  </>
+                )}
+              </span>
+            </div>
+          ) : (
+            <div className="mb-3 flex gap-2 rounded-lg border border-warn-ring bg-warn-tint px-3 py-2 text-[11px] text-ink-2">
+              <Icons.MailWarning
+                size={ICON_SIZE.sm}
+                strokeWidth={ICON_STROKE}
+                className="mt-px shrink-0 text-warn"
+              />
+              <span>
+                <span className="font-semibold text-warn">
+                  The applicant has not been told they were selected.
+                </span>{' '}
+                Send the selection letter below — this stage is not finished until they know.
+              </span>
+            </div>
+          )
         ) : null}
 
         {panel.actions.length > 0 ? (
