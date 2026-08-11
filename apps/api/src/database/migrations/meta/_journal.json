@@ -127,6 +127,13 @@
       "when": 1786442989258,
       "tag": "0017_hr_attendance_leave_payroll",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786448032183,
+      "tag": "0018_paid_leave_not_lop",
+      "breakpoints": true
     }
   ]
 }

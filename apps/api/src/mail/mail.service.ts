@@ -273,6 +273,61 @@ export class MailService {
     }
   }
 
+  /**
+   * The joining email: how a new employee learns they have a login.
+   *
+   * The password inside is a bootstrap credential, not a real one — the account
+   * carries `mustChangePassword`, so it buys exactly one sign-in and is then
+   * replaced by something this system never saw. That is what makes putting it
+   * in an email tolerable; a durable password in an inbox would not be.
+   *
+   * Returns whether it went out rather than throwing. The account has already
+   * been created by the time this runs, and rolling that back because SMTP was
+   * briefly down would be a worse answer than telling the operator to pass the
+   * password on themselves.
+   */
+  async sendAccountCredentials(input: {
+    to: string;
+    fullName: string;
+    temporaryPassword: string;
+    roleName?: string;
+  }): Promise<boolean> {
+    const link = `${this.env.WEB_URL}/login`;
+
+    try {
+      await this.send({
+        to: input.to,
+        subject: `Your ${this.env.APP_NAME} account`,
+        text: [
+          `Hello ${input.fullName},`,
+          '',
+          `An account has been created for you on ${this.env.APP_NAME}${
+            input.roleName ? ` with the role "${input.roleName}"` : ''
+          }.`,
+          '',
+          `Sign in at: ${link}`,
+          `Email:      ${input.to}`,
+          `Password:   ${input.temporaryPassword}`,
+          '',
+          'This password works once. You will be asked to choose your own as soon as you sign in.',
+          'Do not share it, and delete this email after your first sign-in.',
+          '',
+          'If you were not expecting this, tell your administrator — do not sign in.',
+          '',
+          this.env.DPDP_DATA_FIDUCIARY_NAME,
+        ].join('\n'),
+      });
+      return true;
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to send account credentials to ${input.to}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    }
+  }
+
   async verifyConnection(): Promise<boolean> {
     try {
       const transporter = await this.getTransporter();

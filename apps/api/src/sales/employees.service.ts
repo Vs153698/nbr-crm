@@ -1,15 +1,33 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { EMPLOYEE_STATUS, formatEmployeeId, type EmployeeInput } from '@nbr/shared';
+import {
+  EMPLOYEE_STATUS,
+  formatEmployeeId,
+  type CreateEmployeeInput,
+  type EmployeeInput,
+} from '@nbr/shared';
 import { and, asc, eq, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AUDIT, AuditService } from '../audit/audit.service';
-import { ConflictError, NotFoundError, ValidationError } from '../common/errors';
+import { UsersService } from '../admin/users.service';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
 import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 
 const DEFAULT_PAGE_SIZE = 50;
+
+export interface CreateEmployeeResult {
+  readonly id: string;
+  readonly employeeCode: string;
+  readonly account?: {
+    readonly userId: string;
+    readonly email: string;
+    readonly credentialsEmailed: boolean;
+    /** Shown once when the mail was suppressed or failed. Never stored. */
+    readonly temporaryPassword: string | null;
+  };
+}
 
 /** Columns safe to return in a list. Excludes the personal block. */
 const LIST_COLUMNS = {
@@ -44,6 +62,7 @@ export class EmployeesService {
   constructor(
     @Inject(DB) private readonly db: Database,
     private readonly audit: AuditService,
+    private readonly users: UsersService,
   ) {}
 
   async list(filters: {
@@ -148,12 +167,35 @@ export class EmployeesService {
     return { ...employee, reportsToName, reports, documentCount: documents?.count ?? 0 };
   }
 
-  async create(input: EmployeeInput): Promise<{ id: string; employeeCode: string }> {
+  async create(input: CreateEmployeeInput): Promise<CreateEmployeeResult> {
     const actor = requireActor();
+    const { account, ...employee } = input;
 
-    const employeeCode = input.employeeCode?.trim().toUpperCase();
+    const employeeCode = employee.employeeCode?.trim().toUpperCase();
     if (employeeCode) await this.assertCodeFree(employeeCode);
-    if (input.userId) await this.assertAccountFree(input.userId);
+    if (employee.userId) await this.assertAccountFree(employee.userId);
+
+    /**
+     * Creating a login is a different permission from creating a directory
+     * record, and the route only checks the latter.
+     *
+     * Without this, `employees:create` alone would be enough to mint an account
+     * with any role — including one more powerful than the creator's. The role
+     * itself is checked again inside `createUser`, which refuses to let a
+     * non-Super-Admin create a Super Admin.
+     */
+    if (account && !actor.isSuperAdmin && !actor.permissions.has('users:create')) {
+      throw new ForbiddenError(
+        'Creating a login account needs the Users → Create permission. Add the employee without one, or ask an administrator.',
+      );
+    }
+
+    const accountEmail = account?.email ?? employee.workEmail;
+    if (account && !accountEmail) {
+      throw new ValidationError({
+        'account.email': ['A login needs an email address. Set the work email, or give one here.'],
+      });
+    }
 
     const created = await this.db.transaction(async (tx) => {
       let code = employeeCode;
@@ -167,7 +209,7 @@ export class EmployeesService {
       const [row] = await tx
         .insert(schema.employees)
         .values({
-          ...this.toRow(input),
+          ...this.toRow(employee),
           employeeCode: code,
           createdByUserId: actor.userId,
           // toRow widens to Record<string, unknown> while mapping the date
@@ -182,10 +224,51 @@ export class EmployeesService {
       action: AUDIT.EMPLOYEE_CREATED,
       entityType: 'employee',
       entityId: created.id,
-      entityLabel: `${created.employeeCode} — ${input.fullName}`,
+      entityLabel: `${created.employeeCode} — ${employee.fullName}`,
     });
 
-    return created;
+    if (!account) return created;
+
+    /**
+     * The login, after the employee row is committed.
+     *
+     * Outside the transaction on purpose. Creating a user hashes a password and
+     * sends an email — slow work that would hold a write transaction open, and
+     * an email that cannot be rolled back once sent. If it fails, the directory
+     * record still exists and the account can be added from Users & Roles; the
+     * reverse ordering would leave an account pointing at no employee.
+     */
+    const login = await this.users.createUser({
+      fullName: employee.fullName,
+      email: accountEmail!,
+      employeeCode: created.employeeCode,
+      phone: employee.mobile,
+      designation: employee.designation,
+      roleId: account.roleId,
+      suppressEmail: !account.sendCredentials,
+    });
+
+    await this.db
+      .update(schema.employees)
+      .set({ userId: login.id })
+      .where(eq(schema.employees.id, created.id));
+
+    return {
+      ...created,
+      account: {
+        userId: login.id,
+        email: accountEmail!,
+        credentialsEmailed: login.credentialsEmailed,
+        /**
+         * Returned once, and only when it was not emailed.
+         *
+         * Somebody has to be able to pass it on when the mail was suppressed or
+         * the send failed. It is never stored, never logged, and never returned
+         * again — the hash is all that survives this call.
+         */
+        temporaryPassword: login.credentialsEmailed ? null : login.temporaryPassword,
+      },
+    };
   }
 
   async update(employeeId: string, input: Partial<EmployeeInput>): Promise<{ ok: true }> {
@@ -320,10 +403,17 @@ export class EmployeesService {
     }
   }
 
-  /** Dates arrive as Date and are stored as DATE strings. */
+  /**
+   * Dates arrive as Date and are stored as DATE strings.
+   *
+   * Every date column belongs in this list. `probationEndsOn` was missing, so a
+   * probation date went to a `date` column as a Date object and was written as
+   * whatever the driver made of it — the one field on the form nobody could set
+   * correctly.
+   */
   private toRow(input: Partial<EmployeeInput>): Record<string, unknown> {
     const row: Record<string, unknown> = { ...input };
-    for (const key of ['dateOfBirth', 'joinedOn', 'exitedOn'] as const) {
+    for (const key of ['dateOfBirth', 'joinedOn', 'exitedOn', 'probationEndsOn'] as const) {
       const value = input[key];
       if (value instanceof Date) row[key] = value.toISOString().slice(0, 10);
     }

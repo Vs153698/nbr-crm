@@ -36,7 +36,7 @@ import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
 import { DetailGrid, EMPTY, orEmpty } from './components/DetailGrid';
 import { PipelineRail } from './components/PipelineRail';
 import { TimelineFeed } from './components/TimelineFeed';
-import type { RecordStatus } from '@nbr/shared';
+import { applicantRecordRank, type RecordStatus } from '@nbr/shared';
 import type { ApplicantProfile, AttachmentItem, SmartActionPanel as PanelData } from './types';
 
 /**
@@ -125,11 +125,27 @@ export default function ApplicantProfilePage() {
     enabled: Boolean(id),
   });
 
-  // The newest record drives the header, status cards and action panel — but a
-  // returning applicant has several, so the Records list can switch between them.
+  /**
+   * The applicant's records, in the order the profile lists them.
+   *
+   * By stage rather than by date: the record waiting on a payment is the one
+   * an operator can act on today, and a rejected record is the one nobody will
+   * act on again, so recency is the wrong axis here. Ties inside a stage fall
+   * back to most recently touched, which is what the API already returns.
+   */
+  const records = useMemo(() => {
+    if (!data) return [];
+    return [...data.records].sort(
+      (a, b) => applicantRecordRank(a.status) - applicantRecordRank(b.status),
+    );
+  }, [data]);
+
+  // The first record in that order drives the header, status cards and action
+  // panel — a returning applicant has several, and the Records list switches
+  // between them.
   const activeRecord = useMemo(
-    () => data?.records.find((record) => record.id === activeRecordId) ?? data?.records[0],
-    [data, activeRecordId],
+    () => records.find((record) => record.id === activeRecordId) ?? records[0],
+    [records, activeRecordId],
   );
 
   const { data: panel, isLoading: panelLoading } = useQuery({
@@ -284,7 +300,7 @@ export default function ApplicantProfilePage() {
     );
   }
 
-  const { applicant, records, flags, blacklists } = data;
+  const { applicant, flags, blacklists } = data;
   const activeBlacklist = blacklists[0];
   // §20 — this flag hides every outreach action, so it is read once here rather
   // than recomputed at each place that has to respect it.

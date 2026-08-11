@@ -86,11 +86,17 @@ export function AttendanceTab({ employeeId }: { employeeId: string }) {
         <div className="skeleton h-64" />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-7">
             <Metric label="Working days" value={summary.workingDays} icon={Icons.CalendarDays} tone="blue" />
             <Metric label="Payable days" value={summary.payableDays} icon={Icons.CalendarCheck2} tone="green" />
             <Metric label="Present" value={summary.present + summary.workFromHome} icon={Icons.Check} tone="green" />
-            <Metric label="On leave" value={summary.onLeave} icon={Icons.CalendarPlus} tone="orange" />
+            <Metric label="Paid leave" value={summary.onLeave} icon={Icons.CalendarPlus} tone="blue" />
+            <Metric
+              label="Unpaid leave"
+              value={summary.leaveWithoutPay}
+              icon={Icons.CalendarDays}
+              tone={summary.leaveWithoutPay > 0 ? 'orange' : 'slate'}
+            />
             <Metric label="Absent" value={summary.absent} icon={Icons.XCircle} tone="red" />
             <Metric label="Loss of pay" value={summary.lopDays} icon={Icons.AlertCircle} tone={summary.lopDays > 0 ? 'red' : 'slate'} />
           </div>

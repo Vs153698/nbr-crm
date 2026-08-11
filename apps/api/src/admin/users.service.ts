@@ -12,6 +12,7 @@ import { randomToken } from '../common/crypto';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../common/errors';
 import { requireActor } from '../common/request-context';
 import { AuthService } from '../auth/auth.service';
+import { MailService } from '../mail/mail.service';
 import { PermissionsService } from '../auth/permissions.service';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
@@ -57,6 +58,7 @@ export class UsersService {
     private readonly auth: AuthService,
     private readonly permissions: PermissionsService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   async listUsers(): Promise<UserRow[]> {
@@ -102,9 +104,15 @@ export class UsersService {
     roleId: string;
     designation?: string;
     password?: string;
-  }): Promise<{ id: string; temporaryPassword: string | null }> {
+    /** Skip the joining email — the caller is sending its own. */
+    suppressEmail?: boolean;
+  }): Promise<{ id: string; temporaryPassword: string | null; credentialsEmailed: boolean }> {
     const [role] = await this.db
-      .select({ id: schema.roles.id, isSuperAdmin: schema.roles.isSuperAdmin })
+      .select({
+        id: schema.roles.id,
+        name: schema.roles.name,
+        isSuperAdmin: schema.roles.isSuperAdmin,
+      })
       .from(schema.roles)
       .where(eq(schema.roles.id, input.roleId))
       .limit(1);
@@ -146,9 +154,29 @@ export class UsersService {
       meta: { roleId: input.roleId },
     });
 
+    /**
+     * Send the credentials, when this system generated them.
+     *
+     * A caller-supplied password is theirs to communicate; a generated one
+     * exists nowhere else, so an account created without this mail going out is
+     * an account nobody can reach. Whether it was sent is returned so the
+     * screen can show the password once and say to pass it on by hand.
+     */
+    const generated = !input.password;
+    const credentialsEmailed =
+      generated && !input.suppressEmail
+        ? await this.mail.sendAccountCredentials({
+            to: input.email,
+            fullName: input.fullName,
+            temporaryPassword,
+            roleName: role.name,
+          })
+        : false;
+
     return {
       id: user!.id,
-      temporaryPassword: input.password ? null : temporaryPassword,
+      temporaryPassword: generated ? temporaryPassword : null,
+      credentialsEmailed,
     };
   }
 

@@ -7,7 +7,7 @@ import {
   LEAVE_TYPE_LABELS,
   NON_WORKING_ATTENDANCE,
   PAYSLIP_STATUS,
-  UNPAID_LEAVE_TYPES,
+  attendanceStatusForLeave,
   isOnProbation,
   payslipPeriodLabel,
   type ApplyLeaveInput,
@@ -230,6 +230,9 @@ export class EmployeeHrService {
       halfDays: counts[ATTENDANCE_STATUS.HALF_DAY] ?? 0,
       absent: counts[ATTENDANCE_STATUS.ABSENT] ?? 0,
       onLeave: counts[ATTENDANCE_STATUS.ON_LEAVE] ?? 0,
+      // Reported separately from paid leave: this is the figure that explains
+      // the loss-of-pay line on the payslip.
+      leaveWithoutPay: counts[ATTENDANCE_STATUS.LEAVE_WITHOUT_PAY] ?? 0,
       weekOff: counts[ATTENDANCE_STATUS.WEEK_OFF] ?? 0,
       holiday: counts[ATTENDANCE_STATUS.HOLIDAY] ?? 0,
       unmarked,
@@ -362,7 +365,10 @@ export class EmployeeHrService {
           .values({
             employeeId: leave.employeeId,
             onDate: isoDate(cursor),
-            status: ATTENDANCE_STATUS.ON_LEAVE,
+            // Paid or unpaid is decided here, once, from the request's type —
+            // the register holds days, not requests, and payroll reads only
+            // the day.
+            status: attendanceStatusForLeave(leave.leaveType),
             remarks: `${LEAVE_TYPE_LABELS[leave.leaveType as LeaveType]} — approved`,
             markedByUserId: actor.userId,
             markedByName: actor.fullName,

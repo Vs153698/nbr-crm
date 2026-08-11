@@ -78,6 +78,7 @@ export interface AttendanceSummary {
   halfDays: number;
   absent: number;
   onLeave: number;
+  leaveWithoutPay: number;
   weekOff: number;
   holiday: number;
   unmarked: number;

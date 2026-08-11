@@ -179,6 +179,37 @@ export const employeeSchema = z.object({
 
 export type EmployeeInput = z.infer<typeof employeeSchema>;
 
+/**
+ * The login account created alongside a new employee.
+ *
+ * Optional, because the directory holds plenty of people who never sign in —
+ * field staff, contractors, anyone whose work never touches the CRM. Asking for
+ * a role is what makes this safe to offer at all: an account with no role is
+ * either useless or dangerous depending on the default, so the role is required
+ * the moment an account is asked for.
+ */
+export const employeeAccountSchema = z.object({
+  roleId: uuidSchema,
+  /** Defaults to the employee's work email. */
+  email: emailSchema.optional(),
+  /**
+   * Email the generated password to the employee.
+   *
+   * Off means the operator will hand it over themselves — the API shows it once
+   * in the response and never again.
+   */
+  sendCredentials: z.boolean().default(true),
+});
+
+export type EmployeeAccountInput = z.infer<typeof employeeAccountSchema>;
+
+/** Employee creation, with the optional login account. */
+export const createEmployeeSchema = employeeSchema.extend({
+  account: employeeAccountSchema.optional(),
+});
+
+export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
+
 export const updateEmployeeSchema = employeeSchema.partial();
 
 export const employeeListQuerySchema = cursorQuerySchema.extend({

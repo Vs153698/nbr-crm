@@ -270,3 +270,59 @@ export const ORDERED_STATUSES: readonly StatusMeta[] = RECORD_STATUS_VALUES.map(
 export function isTerminalStatus(status: RecordStatus): boolean {
   return STATUS_META[status].terminal;
 }
+
+/**
+ * The order records are listed on an applicant's profile.
+ *
+ * Deliberately not `STATUS_META.order`, which is pipeline order — first stage
+ * to last. A profile is read to answer "what needs doing about this person?",
+ * and that is a different question: the record waiting on a payment is the one
+ * to act on, so it leads, and a rejected record is the one nobody will act on
+ * again, so it sinks to the bottom no matter how recent it is.
+ *
+ * The sequence is the client's: payment pending → approved → new or under
+ * review → certificate → dispatch → publication → rejected. Statuses they did
+ * not name sit with the group whose work they belong to — Fees Received leads
+ * the certificate group because certificate verification is what happens next.
+ */
+const APPLICANT_RECORD_RANK: Readonly<Record<RecordStatus, number>> = {
+  // 1 — waiting on money. The only group where an operator can act today.
+  [RECORD_STATUS.PAYMENT_PENDING]: 10,
+
+  // 2 — approved, told, and not yet paid.
+  [RECORD_STATUS.SELECTED]: 20,
+
+  // 3 — still being decided.
+  [RECORD_STATUS.APPLICATION_SUBMITTED]: 30,
+  [RECORD_STATUS.UNDER_REVIEW]: 31,
+  [RECORD_STATUS.VERIFICATION_PENDING]: 32,
+  [RECORD_STATUS.NEW_LEAD]: 33,
+  [RECORD_STATUS.ON_HOLD]: 34,
+
+  // 4 — paid, and now in the certificate stage.
+  [RECORD_STATUS.PAYMENT_RECEIVED]: 40,
+  [RECORD_STATUS.CERTIFICATE_PENDING]: 41,
+  [RECORD_STATUS.CERTIFICATE_UPLOADED]: 42,
+
+  // 5 — on its way.
+  [RECORD_STATUS.DISPATCH_PENDING]: 50,
+  [RECORD_STATUS.DISPATCHED]: 51,
+  [RECORD_STATUS.DELIVERED]: 52,
+
+  // 6 — published, then finished with.
+  [RECORD_STATUS.PUBLICATION]: 60,
+  [RECORD_STATUS.COMPLETED]: 61,
+  [RECORD_STATUS.CLOSED]: 62,
+
+  // 7 — last, always.
+  [RECORD_STATUS.REJECTED]: 90,
+};
+
+/**
+ * Where a record sits in the profile listing. Unknown statuses sort just above
+ * rejected rather than first, so a status this build has never heard of cannot
+ * push a payment-pending record down the list.
+ */
+export function applicantRecordRank(status: string): number {
+  return APPLICANT_RECORD_RANK[status as RecordStatus] ?? 80;
+}

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, EmptyState } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
+import { useNavigate } from 'react-router-dom';
 import { RowActions, RowActionsCell } from '@/components/ui/RowActions';
 import { Input, Select } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
@@ -56,6 +57,7 @@ interface PermissionModule {
  * Admin sees here *is* the enforcement — not a parallel description of it.
  */
 export default function UsersRolesPage() {
+  const navigate = useNavigate();
   const { can, user: currentUser } = useAuth();
   const queryClient = useQueryClient();
 
@@ -140,24 +142,47 @@ export default function UsersRolesPage() {
       header: '',
       align: 'right',
       width: '110px',
-      render: (row) =>
-        // Signing yourself out from here would be indistinguishable from a bug.
-        can('users:edit') && row.id !== currentUser?.id ? (
-          <RowActionsCell>
-            <RowActions
-              label={`Actions for ${row.fullName}`}
-              actions={[
-                {
-                  id: 'revoke',
-                  label: 'Sign out everywhere',
-                  icon: Icons.LogOut,
-                  danger: true,
-                  onSelect: () => setRevokeTarget(row),
-                },
-              ]}
-            />
-          </RowActionsCell>
-        ) : null,
+      render: (row) => (
+        <RowActionsCell>
+          <RowActions
+            label={`Actions for ${row.fullName}`}
+            actions={[
+              /*
+                Give an existing login a directory record.
+                
+                The two are separate tables on purpose, and people arrive in
+                either order — an account created first for someone who joined
+                in a hurry still needs a joining date, a salary and a manager.
+                This carries what the account already knows into the employee
+                form rather than making somebody retype it.
+              */
+              ...(can('employees:create')
+                ? [
+                    {
+                      id: 'to-employee',
+                      label: 'Create employee record',
+                      icon: Icons.UserPlus,
+                      onSelect: () => navigate(`/employees/new?fromUser=${row.id}`),
+                    },
+                  ]
+                : []),
+              // Signing yourself out from here would be indistinguishable from
+              // a bug.
+              ...(can('users:edit') && row.id !== currentUser?.id
+                ? [
+                    {
+                      id: 'revoke',
+                      label: 'Sign out everywhere',
+                      icon: Icons.LogOut,
+                      danger: true,
+                      onSelect: () => setRevokeTarget(row),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </RowActionsCell>
+      ),
     },
   ];
 

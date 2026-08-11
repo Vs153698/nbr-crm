@@ -22,7 +22,6 @@ import { cn } from '@/lib/cn';
 import { formatDate, initials } from '@/lib/format';
 import { ICON_STROKE, Icons } from '@/lib/icons';
 import { DeleteEmployeeDialog } from './DeleteEmployeeDialog';
-import { EmployeeDialog } from './EmployeeDialog';
 import { employeeKeys, type EmployeeRow, type EmployeeStats } from './types';
 
 /** Page sizes offered under the table. */
@@ -51,8 +50,6 @@ export default function EmployeesPage() {
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<number>(25);
-  const [editing, setEditing] = useState<EmployeeRow | null>(null);
-  const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<EmployeeRow | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -212,7 +209,7 @@ export default function EmployeesPage() {
                       id: 'edit',
                       label: 'Edit employee',
                       icon: Icons.PenLine,
-                      onSelect: () => setEditing(employee),
+                      onSelect: () => navigate(`/employees/${employee.id}/edit`),
                     },
                   ]
                 : []),
@@ -241,7 +238,7 @@ export default function EmployeesPage() {
         subtitle="Everyone who works here, whether or not they have a login."
         actions={
           can('employees:create') ? (
-            <Button variant="primary" icon={Icons.Plus} onClick={() => setCreating(true)}>
+            <Button variant="primary" icon={Icons.Plus} onClick={() => navigate('/employees/new')}>
               Add employee
             </Button>
           ) : undefined
@@ -460,17 +457,6 @@ export default function EmployeesPage() {
             </div>
           </div>
         </div>
-      ) : null}
-
-      {creating || editing ? (
-        <EmployeeDialog
-          employeeId={editing?.id ?? null}
-          onClose={() => {
-            setCreating(false);
-            setEditing(null);
-          }}
-          onSaved={invalidate}
-        />
       ) : null}
 
       {deleting ? (

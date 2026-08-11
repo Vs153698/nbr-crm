@@ -20,7 +20,7 @@ import {
   createLeadSchema,
   decideLeaveSchema,
   employeeListQuerySchema,
-  employeeSchema,
+  createEmployeeSchema,
   generatePayslipSchema,
   leadListQuerySchema,
   logLeadCallSchema,
@@ -34,11 +34,13 @@ import {
   type ApplyLeaveInput,
   type CallOutcome,
   type EmployeeDocumentKind,
+  type CreateEmployeeInput,
   type EmployeeInput,
   type GeneratePayslipInput,
   type LeadStatus,
   type MarkAttendanceInput,
 } from '@nbr/shared';
+import { AdminModule } from '../admin/admin.module';
 import { ApplicantsModule } from '../applicants/applicants.module';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
@@ -184,7 +186,7 @@ class EmployeesController {
 
   @Post()
   @Can(MODULES.EMPLOYEES, ACTIONS.CREATE)
-  async create(@Body(zodBody(employeeSchema)) body: EmployeeInput) {
+  async create(@Body(zodBody(createEmployeeSchema)) body: CreateEmployeeInput) {
     return this.employees.create(body);
   }
 
@@ -411,7 +413,10 @@ class EmployeeHrController {
   // Converting a lead goes through the ordinary intake path, so a converted
   // lead gets the same duplicate detection, consent ledger and timeline as a
   // walk-in rather than a second, divergent code path.
-  imports: [ApplicantsModule],
+  // AdminModule for UsersService: adding an employee can mint their login, and
+  // that must go through the same path Users & Roles uses — same role checks,
+  // same password policy, same audit entry.
+  imports: [ApplicantsModule, AdminModule],
   controllers: [
     LeadsController,
     SalesDashboardController,

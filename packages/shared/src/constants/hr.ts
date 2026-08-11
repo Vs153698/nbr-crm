@@ -141,7 +141,19 @@ export const ATTENDANCE_STATUS = {
   PRESENT: 'present',
   ABSENT: 'absent',
   HALF_DAY: 'half_day',
+  /** Approved leave of a paid type — the day is owed. */
   ON_LEAVE: 'on_leave',
+  /**
+   * Approved leave of an unpaid type, kept apart from `on_leave` because the
+   * two settle differently.
+   *
+   * The register records a day, not a leave request, so a single "on leave"
+   * status cannot say whether payroll owes for it. Treating them as one made
+   * every approved absence a deduction: somebody taking two days of casual
+   * leave — leave they have earned and are owed — had two days docked. Splitting
+   * the status is what lets `dayValue` answer the only question payroll asks.
+   */
+  LEAVE_WITHOUT_PAY: 'leave_without_pay',
   WEEK_OFF: 'week_off',
   HOLIDAY: 'holiday',
   WORK_FROM_HOME: 'work_from_home',
@@ -163,7 +175,14 @@ export const ATTENDANCE_STATUS_META: Readonly<
   [ATTENDANCE_STATUS.PRESENT]: { label: 'Present', tone: 'green', dayValue: 1 },
   [ATTENDANCE_STATUS.WORK_FROM_HOME]: { label: 'Work from home', tone: 'blue', dayValue: 1 },
   [ATTENDANCE_STATUS.HALF_DAY]: { label: 'Half day', tone: 'orange', dayValue: 0.5 },
-  [ATTENDANCE_STATUS.ON_LEAVE]: { label: 'On leave', tone: 'orange', dayValue: 0 },
+  // Paid leave is a day the employee is owed — it is not worked, and it is not
+  // docked either.
+  [ATTENDANCE_STATUS.ON_LEAVE]: { label: 'On leave (paid)', tone: 'blue', dayValue: 1 },
+  [ATTENDANCE_STATUS.LEAVE_WITHOUT_PAY]: {
+    label: 'Leave without pay',
+    tone: 'orange',
+    dayValue: 0,
+  },
   [ATTENDANCE_STATUS.ABSENT]: { label: 'Absent', tone: 'red', dayValue: 0 },
   // Not worked and not owed — these are days nobody was expected in, so they
   // count as neither attendance nor absence.
@@ -204,6 +223,19 @@ export const LEAVE_TYPE_LABELS: Readonly<Record<LeaveType, string>> = {
 
 /** Leave that is not paid, so payroll deducts it. */
 export const UNPAID_LEAVE_TYPES: readonly LeaveType[] = [LEAVE_TYPE.UNPAID];
+
+/**
+ * The attendance status an approved request of this type writes into the
+ * register.
+ *
+ * The single place the paid/unpaid decision is made, so approving leave and
+ * totalling a month can never disagree about what a day was worth.
+ */
+export function attendanceStatusForLeave(leaveType: string): AttendanceStatus {
+  return UNPAID_LEAVE_TYPES.includes(leaveType as LeaveType)
+    ? ATTENDANCE_STATUS.LEAVE_WITHOUT_PAY
+    : ATTENDANCE_STATUS.ON_LEAVE;
+}
 
 export const LEAVE_STATUS = {
   PENDING: 'pending',

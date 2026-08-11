@@ -1,7 +1,7 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   EMPLOYEE_STATUS_META,
   EMPLOYMENT_TYPE_LABELS,
@@ -20,7 +20,6 @@ import { cn } from '@/lib/cn';
 import { formatDate, initials } from '@/lib/format';
 import { ICON_STROKE, Icons, type LucideIcon } from '@/lib/icons';
 import { DeleteEmployeeDialog } from './DeleteEmployeeDialog';
-import { EmployeeDialog } from './EmployeeDialog';
 import { OnboardingDocuments } from './OnboardingDocuments';
 import { ActivityTab } from './profile/ActivityTab';
 import { AttendanceTab } from './profile/AttendanceTab';
@@ -60,9 +59,9 @@ export default function EmployeeProfilePage() {
   const { id = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { can } = useAuth();
 
-  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const activeTab = searchParams.get('tab') ?? 'overview';
@@ -233,7 +232,11 @@ export default function EmployeeProfilePage() {
 
           <div className="flex shrink-0 items-center gap-2">
             {can('employees:edit') ? (
-              <Button variant="secondary" icon={Icons.PenLine} onClick={() => setEditOpen(true)}>
+              <Button
+                variant="secondary"
+                icon={Icons.PenLine}
+                onClick={() => navigate(`/employees/${employee.id}/edit`)}
+              >
                 Edit employee
               </Button>
             ) : null}
@@ -337,14 +340,6 @@ export default function EmployeeProfilePage() {
           <TimelineTab employee={employee} />
         </Tabs.Content>
       </Tabs.Root>
-
-      {editOpen ? (
-        <EmployeeDialog
-          employeeId={employee.id}
-          onClose={() => setEditOpen(false)}
-          onSaved={invalidate}
-        />
-      ) : null}
 
       {deleteOpen ? (
         <DeleteEmployeeDialog

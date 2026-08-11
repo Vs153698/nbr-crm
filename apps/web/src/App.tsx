@@ -25,6 +25,7 @@ const SalesDashboardPage = lazy(() => import('@/routes/sales/SalesDashboardPage'
 const LeadsPage = lazy(() => import('@/routes/sales/LeadsPage'));
 const EmployeesPage = lazy(() => import('@/routes/sales/employees/EmployeesPage'));
 const EmployeeProfilePage = lazy(() => import('@/routes/sales/employees/EmployeeProfilePage'));
+const EmployeeFormPage = lazy(() => import('@/routes/sales/employees/EmployeeFormPage'));
 
 // The queues share one module chunk — they are the same component with
 // different props, so splitting them further would only add round-trips.
@@ -209,6 +210,9 @@ export function App() {
           <Route path="/sales" element={guarded('leads:view', SalesDashboardPage)} />
           <Route path="/leads" element={guarded('leads:view', LeadsPage)} />
           <Route path="/employees" element={guarded('employees:view', EmployeesPage)} />
+          {/* Declared before `:id` so "new" is never read as an employee id. */}
+          <Route path="/employees/new" element={guarded('employees:create', EmployeeFormPage)} />
+          <Route path="/employees/:id/edit" element={guarded('employees:edit', EmployeeFormPage)} />
           <Route
             path="/employees/:id"
             element={guarded('employees:view', EmployeeProfilePage)}

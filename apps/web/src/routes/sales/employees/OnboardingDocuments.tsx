@@ -155,6 +155,16 @@ export function OnboardingDocuments({ employeeId }: { employeeId: string }) {
     <section className="space-y-3">
       {canEdit ? (
         <div className="space-y-3">
+          {/*
+            The hint sits under the row rather than under the Select.
+
+            `items-end` aligns the bottom of each *field*, and a field with a
+            hint is two lines taller than one without — so the button lined up
+            with the bottom of the hint text and floated well below the control
+            it belongs beside. Moving the hint out makes both children the same
+            height, which is what the alignment was assuming all along. It reads
+            better there too: it describes the whole batch, not the dropdown.
+          */}
           <div className="flex flex-wrap items-end gap-3">
             <Select
               label="Document type"
@@ -165,7 +175,6 @@ export function OnboardingDocuments({ employeeId }: { employeeId: string }) {
                 label: EMPLOYEE_DOCUMENT_KIND_LABELS[value],
               }))}
               containerClassName="w-56"
-              hint="Applies to every file in this batch."
             />
             <Button
               variant="secondary"
@@ -175,6 +184,7 @@ export function OnboardingDocuments({ employeeId }: { employeeId: string }) {
               Browse files
             </Button>
           </div>
+          <p className="-mt-1 text-xs text-ink-3">Applies to every file in this batch.</p>
 
           <div
             onDragOver={(event) => {
