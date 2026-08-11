@@ -2,8 +2,13 @@ import {
   addRecordSchema,
   categorySchema,
   changePasswordSchema,
+  applyLeaveSchema,
+  cancelPayslipSchema,
   changeStatusSchema,
+  decideLeaveSchema,
   deleteAttachmentSchema,
+  generatePayslipSchema,
+  markAttendanceSchema,
   officialRecordDetailsSchema,
   confirmAttachmentSchema,
   confirmEvidenceSchema,
@@ -619,6 +624,154 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'signing for a screen where only the subject is read. `from` is resolved live from the ' +
       'mail configuration rather than stored — it is a property of the installation, and a ' +
       'copy frozen at send time would disagree with reality the first time the address changed.',
+  },
+  // ── HR: attendance, leave, payroll (§HR) ──────────────────────────────────
+  'EmployeesController.stats': {
+    tag: 'Administration',
+    summary: 'Directory statistics',
+    description:
+      'Head count, active, on leave, joiners this month and department count — the five ' +
+      'figures across the top of the Employees list.',
+    response: {
+      type: 'object',
+      properties: {
+        total: { type: 'integer' },
+        active: { type: 'integer' },
+        activePercent: { type: 'number' },
+        onLeave: { type: 'integer' },
+        newJoiners: { type: 'integer' },
+        departments: { type: 'integer' },
+      },
+    },
+    notes:
+      'One query with FILTER clauses rather than five round trips: the numbers are all over ' +
+      'the same rows, and five separate counts could each be taken at a slightly different ' +
+      'moment and fail to add up on screen.',
+  },
+  'EmployeeHrController.overview': {
+    tag: 'Administration',
+    summary: 'Profile overview',
+    description:
+      "Everything the profile's Overview tab needs — this month's attendance summary, leave " +
+      'taken, the latest payslip and recent activity — in one call.',
+    response: { type: 'object' },
+    notes:
+      'Attendance, leave and payslip *detail* stay on their own endpoints. Those tabs are ' +
+      'opened deliberately, and loading a year of registers to paint a summary card would be ' +
+      'the wrong trade.',
+  },
+  'EmployeeHrController.activity': {
+    tag: 'Administration',
+    summary: 'Employee activity feed',
+    description: 'What has happened to this employee, newest first.',
+    query: [{ name: 'limit', description: 'Max entries (capped at 100).', schema: { type: 'integer' } }],
+    response: arrayOf({ action: { type: 'string' }, label: { type: 'string', nullable: true }, actorName: { type: 'string', nullable: true }, at: ISO }),
+    notes:
+      'Read from the audit log rather than a second feed table. Every action that matters here ' +
+      'already writes one, and a parallel table would drift the first time somebody added an ' +
+      'action to one and not the other.',
+  },
+  'EmployeeHrController.attendance': {
+    tag: 'Administration',
+    summary: "One month's attendance",
+    description: 'The register for a month, plus the totals payroll reads.',
+    query: [
+      { name: 'month', description: '1–12. Defaults to the current month.', schema: { type: 'integer' } },
+      { name: 'year', description: 'Four-digit year. Defaults to the current year.', schema: { type: 'integer' } },
+    ],
+    response: { type: 'object' },
+    notes:
+      'The summary is computed server-side so the payslip and the screen can never disagree ' +
+      'about how many days somebody worked. Week-offs and holidays are excluded from working ' +
+      'days — nobody was expected in — and unmarked days count as present, because a register ' +
+      'nobody filled in is a gap in the record and not evidence of absence.',
+  },
+  'EmployeeHrController.markAttendance': {
+    tag: 'Administration',
+    summary: 'Mark or correct a day',
+    body: zodSchema(markAttendanceSchema, 'MarkAttendance'),
+    description: "Records one person's status for one day.",
+    response: { type: 'object', properties: { id: UUID, corrected: { type: 'boolean' } } },
+    audited: 'employee.attendance_marked',
+    notes:
+      'Idempotent on (employee, date): re-marking corrects rather than adding a second row, ' +
+      'enforced by a unique index so a concurrent double-submit cannot slip past.',
+  },
+  'EmployeeHrController.leave': {
+    tag: 'Administration',
+    summary: 'Leave history',
+    description: 'Every request, with days taken this year by type.',
+    response: { type: 'object' },
+  },
+  'EmployeeHrController.applyLeave': {
+    tag: 'Administration',
+    summary: 'Apply for leave',
+    description: 'Files a leave request for this employee, pending a decision.',
+    body: zodSchema(applyLeaveSchema, 'ApplyLeave'),
+    response: ID_ONLY,
+    audited: 'employee.leave_applied',
+    notes:
+      'Refused when it overlaps a request already pending or approved — two live requests over ' +
+      'one day is how somebody gets approved twice for one absence and payroll double-counts ' +
+      'it. `days` is stated rather than derived from the dates, because half-days exist and a ' +
+      'holiday inside a range should not be charged to the balance.',
+  },
+  'EmployeeHrController.decideLeave': {
+    tag: 'Administration',
+    summary: 'Approve, reject or cancel leave',
+    description: 'Records the decision on a pending leave request.',
+    body: zodSchema(decideLeaveSchema, 'DecideLeave'),
+    response: OK,
+    audited: 'employee.leave_approved',
+    notes:
+      'Approving writes the days into the attendance register as `on_leave`, which is what ' +
+      'makes leave and attendance agree and lets payroll read one number. An already-marked ' +
+      'day is left alone — somebody who recorded a half-day worked knows more than this does. ' +
+      'A rejection requires a note.',
+  },
+  'EmployeeHrController.payslips': {
+    tag: 'Administration',
+    summary: 'Payslip history',
+    description: 'Every payslip issued to this employee, newest period first.',
+    response: arrayOf({ payslipNumber: { type: 'string' }, periodLabel: { type: 'string' }, netPay: { type: 'string' }, status: { type: 'string' } }),
+  },
+  'EmployeeHrController.generatePayslip': {
+    tag: 'Administration',
+    summary: 'Generate a payslip',
+    description: 'Builds the slip for one month from the salary on record and the attendance register.',
+    body: zodSchema(generatePayslipSchema, 'GeneratePayslip'),
+    response: { type: 'object', properties: { id: UUID, payslipNumber: { type: 'string' } } },
+    audited: 'employee.payslip_generated',
+    notes:
+      'Every figure is frozen onto the row and never recomputed on read. A pay revision in ' +
+      'September must not rewrite what March says — the slip an employee keeps for a loan ' +
+      'application has to keep matching the one the system prints. Pay is pro-rated on days ' +
+      'actually payable; a month with no register marked comes out at full salary, which is ' +
+      'the correct and safe default. One live payslip per person per month.',
+  },
+  'EmployeeHrController.cancelPayslip': {
+    tag: 'Administration',
+    summary: 'Cancel a payslip',
+    description: 'Withdraws an issued payslip so a corrected one can replace it.',
+    body: zodSchema(cancelPayslipSchema, 'CancelPayslip'),
+    response: OK,
+    audited: 'employee.payslip_cancelled',
+    notes:
+      'Cancelled, never deleted. The partial unique index excludes cancelled rows, so a ' +
+      'corrected slip can be issued for the same month while the original stays on record ' +
+      'with the reason it was withdrawn.',
+  },
+  'PayslipDocumentsController.payslip': {
+    tag: 'Administration',
+    summary: 'Payslip PDF',
+    description: 'The payslip as a PDF. `?mode=inline` previews it instead of downloading.',
+    response: { type: 'object', properties: { url: { type: 'string' }, fileName: { type: 'string' }, contentType: { type: 'string' } } },
+    notes:
+      'Rendered through the same document kit as the invoice and the selection letter, so it ' +
+      'carries the identical masthead, tables and totals block. Reprints the frozen figures, ' +
+      'so a slip issued last year still says exactly what it said then. The bank account is ' +
+      'shown as its last four digits only — a payslip is forwarded far more often than anyone ' +
+      'intends.',
   },
   'QueuesController.newApplications': {
     tag: 'Queues',

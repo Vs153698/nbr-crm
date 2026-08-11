@@ -1,10 +1,18 @@
 import { z } from 'zod';
 import { CALL_OUTCOME, LEAD_SOURCE, LEAD_STATUS } from '../constants/sales';
-import { EMPLOYEE_DOCUMENT_KIND, EMPLOYEE_STATUS, EMPLOYMENT_TYPE } from '../constants/hr';
+import {
+  ATTENDANCE_STATUS,
+  EMPLOYEE_DOCUMENT_KIND,
+  EMPLOYEE_STATUS,
+  EMPLOYMENT_TYPE,
+  LEAVE_STATUS,
+  LEAVE_TYPE,
+} from '../constants/hr';
 import {
   cursorQuerySchema,
   emailSchema,
   indianMobileSchema,
+  moneySchema,
   optionalTrimmedString,
   phoneSchema,
   pincodeSchema,
@@ -149,6 +157,21 @@ export const employeeSchema = z.object({
   emergencyContactName: optionalTrimmedString(150),
   emergencyContactPhone: phoneSchema.optional(),
   emergencyContactRelation: optionalTrimmedString(60),
+  emergencyContactAddress: optionalTrimmedString(300),
+
+  /**
+   * Pay. Optional throughout — the directory holds contractors and volunteers
+   * with no salary, and a zero would read as "paid nothing" rather than "not
+   * applicable".
+   */
+  monthlySalary: moneySchema.optional(),
+  ctc: moneySchema.optional(),
+  /** A date, not a status — see `isOnProbation`. */
+  probationEndsOn: z.coerce.date().optional(),
+
+  panNumber: optionalTrimmedString(20),
+  bankName: optionalTrimmedString(150),
+  bankAccountNumber: optionalTrimmedString(40),
 
   notes: optionalTrimmedString(4000),
   isDirectoryVisible: z.boolean().default(true),
@@ -193,4 +216,89 @@ export const confirmEmployeeDocumentSchema = z.object({
   originalSizeBytes: z.coerce.number().int().positive().optional(),
   checksumSha256: z.string().length(64).optional(),
   description: optionalTrimmedString(500),
+});
+
+// ── Attendance (§HR) ─────────────────────────────────────────────────────────
+
+/**
+ * Mark one person's day.
+ *
+ * Idempotent by design: the unique index on (employee, date) means re-marking
+ * a day corrects it rather than adding a second contradictory row.
+ */
+export const markAttendanceSchema = z.object({
+  onDate: z.coerce.date(),
+  status: z.nativeEnum(ATTENDANCE_STATUS),
+  /** Wall-clock times, optional — a status alone is a legitimate entry. */
+  checkInAt: z.coerce.date().optional(),
+  checkOutAt: z.coerce.date().optional(),
+  remarks: optionalTrimmedString(500),
+});
+
+export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
+
+export const attendanceQuerySchema = z.object({
+  /** Defaults to the current month on the server when omitted. */
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
+
+// ── Leave (§HR) ──────────────────────────────────────────────────────────────
+
+export const applyLeaveSchema = z
+  .object({
+    leaveType: z.nativeEnum(LEAVE_TYPE),
+    fromDate: z.coerce.date(),
+    toDate: z.coerce.date(),
+    /**
+     * Working days claimed, stated rather than derived.
+     *
+     * Half-days are real, and a public holiday inside a range should not be
+     * charged to somebody's balance — neither of which the two dates can
+     * express on their own.
+     */
+    days: z.coerce.number().min(0.5).max(365),
+    reason: trimmedString(1000),
+  })
+  .refine((v) => v.toDate.getTime() >= v.fromDate.getTime(), {
+    message: 'The end date cannot be before the start date.',
+    path: ['toDate'],
+  });
+
+export type ApplyLeaveInput = z.infer<typeof applyLeaveSchema>;
+
+export const decideLeaveSchema = z.object({
+  status: z.enum([LEAVE_STATUS.APPROVED, LEAVE_STATUS.REJECTED, LEAVE_STATUS.CANCELLED]),
+  /** Required to refuse — "why not?" is the only question a rejection raises. */
+  decisionNote: optionalTrimmedString(1000),
+});
+
+// ── Payroll (§HR) ────────────────────────────────────────────────────────────
+
+/**
+ * Generate a payslip for one month.
+ *
+ * The salary and the attendance are read from the record at generation and
+ * frozen onto the slip; only the extra lines are supplied here, because
+ * allowances and one-off deductions are the part no system can infer.
+ */
+export const generatePayslipSchema = z.object({
+  periodMonth: z.coerce.number().int().min(1).max(12),
+  periodYear: z.coerce.number().int().min(2000).max(2100),
+  earnings: z
+    .array(z.object({ label: trimmedString(60), amount: moneySchema }))
+    .max(15)
+    .default([]),
+  deductions: z
+    .array(z.object({ label: trimmedString(60), amount: moneySchema }))
+    .max(15)
+    .default([]),
+  remarks: optionalTrimmedString(500),
+});
+
+export type GeneratePayslipInput = z.infer<typeof generatePayslipSchema>;
+
+/** Withdrawing a payslip. The reason is printed on the cancelled slip. */
+export const cancelPayslipSchema = z.object({
+  reason: trimmedString(300),
 });

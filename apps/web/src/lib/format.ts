@@ -72,6 +72,27 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/**
+ * Rupees, grouped the Indian way — ₹1,25,000 rather than ₹125,000.
+ *
+ * Amounts arrive from the API as decimal *strings* (numeric columns), never as
+ * JavaScript numbers, because 45000.10 has no exact float. They are parsed here
+ * only to group the digits; nothing downstream does arithmetic on the result.
+ * Paise are dropped unless there are any, since a salary of ₹45,000.00 reads as
+ * noise while a deduction of ₹6,666.67 does not.
+ */
+export function formatMoney(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const amount = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(amount)) return '—';
+
+  const hasPaise = Math.round(amount * 100) % 100 !== 0;
+  return `₹${amount.toLocaleString('en-IN', {
+    minimumFractionDigits: hasPaise ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 /** Initials for an avatar placeholder. */
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

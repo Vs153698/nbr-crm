@@ -12,28 +12,38 @@ import {
 } from '@nestjs/common';
 import {
   ACTIONS,
+  applyLeaveSchema,
+  attendanceQuerySchema,
+  cancelPayslipSchema,
   confirmEmployeeDocumentSchema,
   convertLeadSchema,
   createLeadSchema,
+  decideLeaveSchema,
   employeeListQuerySchema,
   employeeSchema,
+  generatePayslipSchema,
   leadListQuerySchema,
   logLeadCallSchema,
+  markAttendanceSchema,
   MODULES,
   presignEmployeeDocumentSchema,
   salesDashboardQuerySchema,
   updateEmployeeSchema,
   updateLeadSchema,
   uuidSchema,
+  type ApplyLeaveInput,
   type CallOutcome,
   type EmployeeDocumentKind,
   type EmployeeInput,
+  type GeneratePayslipInput,
   type LeadStatus,
+  type MarkAttendanceInput,
 } from '@nbr/shared';
 import { ApplicantsModule } from '../applicants/applicants.module';
 import { Can } from '../auth/auth.decorators';
 import { zodBody } from '../common/zod-validation.pipe';
 import { EmployeeDocumentsService, type EmployeeDocumentItem } from './employee-documents.service';
+import { EmployeeHrService } from './employee-hr.service';
 import { EmployeesService } from './employees.service';
 import { LeadsService } from './leads.service';
 import { SalesReportService } from './sales-report.service';
@@ -136,7 +146,10 @@ class SalesDashboardController {
 
 @Controller('employees')
 class EmployeesController {
-  constructor(private readonly employees: EmployeesService) {}
+  constructor(
+    private readonly employees: EmployeesService,
+    private readonly hr: EmployeeHrService,
+  ) {}
 
   @Get()
   @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
@@ -148,6 +161,19 @@ class EmployeesController {
   @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
   async departments() {
     return this.employees.departments();
+  }
+
+  /**
+   * The five figures across the top of the Employees list.
+   *
+   * Static path, declared before `:id` — Fastify prefers a literal segment over
+   * a parametric one, but keeping them in reading order saves the next person
+   * having to know that.
+   */
+  @Get('stats')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async stats() {
+    return this.hr.stats();
   }
 
   @Get(':id')
@@ -259,6 +285,122 @@ class EmployeeDocumentsController {
 }
 
 /**
+ * Attendance, leave and payroll for one employee (§HR).
+ *
+ * Its own controller on the same `employees/:id` base path rather than more
+ * methods on `EmployeesController`: that one is the directory — who works here
+ * and what their details are — and this is what happens to them month by month.
+ * The URLs read the same either way.
+ */
+@Controller('employees/:employeeId')
+class EmployeeHrController {
+  constructor(private readonly hr: EmployeeHrService) {}
+
+  /** Everything the profile's Overview tab needs, in one call. */
+  @Get('overview')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async overview(@Param('employeeId') employeeId: string) {
+    return this.hr.overview(uuidSchema.parse(employeeId));
+  }
+
+  @Get('activity')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async activity(@Param('employeeId') employeeId: string, @Query('limit') limit?: string) {
+    return this.hr.activity(uuidSchema.parse(employeeId), limit ? Number(limit) : undefined);
+  }
+
+  // ── Attendance ────────────────────────────────────────────────────────────
+
+  @Get('attendance')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async attendance(
+    @Param('employeeId') employeeId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    const { month, year } = attendanceQuerySchema.parse(query);
+    const now = new Date();
+    return this.hr.attendanceForMonth(
+      uuidSchema.parse(employeeId),
+      month ?? now.getMonth() + 1,
+      year ?? now.getFullYear(),
+    );
+  }
+
+  /**
+   * Mark or correct one day.
+   *
+   * Idempotent on (employee, date): re-marking corrects rather than adding a
+   * second row, so the register can never hold two answers for one day.
+   */
+  @Post('attendance')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async markAttendance(
+    @Param('employeeId') employeeId: string,
+    @Body(zodBody(markAttendanceSchema)) body: MarkAttendanceInput,
+  ) {
+    return this.hr.markAttendance(uuidSchema.parse(employeeId), body);
+  }
+
+  // ── Leave ─────────────────────────────────────────────────────────────────
+
+  @Get('leave')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async leave(@Param('employeeId') employeeId: string) {
+    return this.hr.listLeave(uuidSchema.parse(employeeId));
+  }
+
+  @Post('leave')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async applyLeave(
+    @Param('employeeId') employeeId: string,
+    @Body(zodBody(applyLeaveSchema)) body: ApplyLeaveInput,
+  ) {
+    return this.hr.applyLeave(uuidSchema.parse(employeeId), body);
+  }
+
+  /**
+   * Approve, reject or cancel a request.
+   *
+   * Approving writes the days into the attendance register, which is what makes
+   * leave and attendance agree — and what lets payroll read one number.
+   */
+  @Post('leave/:leaveId/decide')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async decideLeave(
+    @Param('leaveId') leaveId: string,
+    @Body(zodBody(decideLeaveSchema)) body: { status: string; decisionNote?: string },
+  ) {
+    return this.hr.decideLeave(uuidSchema.parse(leaveId), body);
+  }
+
+  // ── Payroll ───────────────────────────────────────────────────────────────
+
+  @Get('payslips')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async payslips(@Param('employeeId') employeeId: string) {
+    return this.hr.listPayslips(uuidSchema.parse(employeeId));
+  }
+
+  @Post('payslips')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async generatePayslip(
+    @Param('employeeId') employeeId: string,
+    @Body(zodBody(generatePayslipSchema)) body: GeneratePayslipInput,
+  ) {
+    return this.hr.generatePayslip(uuidSchema.parse(employeeId), body);
+  }
+
+  @Post('payslips/:payslipId/cancel')
+  @Can(MODULES.EMPLOYEES, ACTIONS.EDIT)
+  async cancelPayslip(
+    @Param('payslipId') payslipId: string,
+    @Body(zodBody(cancelPayslipSchema)) body: { reason: string },
+  ) {
+    return this.hr.cancelPayslip(uuidSchema.parse(payslipId), body.reason);
+  }
+}
+
+/**
  * Outbound sales and the staff directory.
  *
  * One module because both are administrative surfaces that hang off `users`
@@ -274,9 +416,16 @@ class EmployeeDocumentsController {
     LeadsController,
     SalesDashboardController,
     EmployeesController,
+    EmployeeHrController,
     EmployeeDocumentsController,
   ],
-  providers: [LeadsService, EmployeesService, EmployeeDocumentsService, SalesReportService],
+  providers: [
+    LeadsService,
+    EmployeesService,
+    EmployeeHrService,
+    EmployeeDocumentsService,
+    SalesReportService,
+  ],
   exports: [LeadsService, EmployeesService, SalesReportService],
 })
 export class SalesModule {}

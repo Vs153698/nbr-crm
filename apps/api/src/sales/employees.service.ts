@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EMPLOYEE_STATUS, formatEmployeeId, type EmployeeInput } from '@nbr/shared';
 import { and, asc, eq, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { ConflictError, NotFoundError, ValidationError } from '../common/errors';
 import { requireActor } from '../common/request-context';
@@ -26,6 +27,7 @@ const LIST_COLUMNS = {
   photoKey: schema.employees.photoKey,
   userId: schema.employees.userId,
   reportsToEmployeeId: schema.employees.reportsToEmployeeId,
+  probationEndsOn: schema.employees.probationEndsOn,
 };
 
 /**
@@ -71,9 +73,24 @@ export class EmployeesService {
       conditions.push(or(...search)!);
     }
 
+    /**
+     * The reporting manager by name, via a self-join.
+     *
+     * The directory table shows a manager on every row, and resolving the id
+     * per row in the browser would be one request per employee — forty on a
+     * first page. An alias join costs nothing here and returns the whole list
+     * in one query.
+     */
+    const manager = alias(schema.employees, 'manager');
+
     const rows = await this.db
-      .select(LIST_COLUMNS)
+      .select({
+        ...LIST_COLUMNS,
+        reportsToName: manager.fullName,
+        reportsToDesignation: manager.designation,
+      })
       .from(schema.employees)
+      .leftJoin(manager, eq(schema.employees.reportsToEmployeeId, manager.id))
       .where(and(...conditions))
       .orderBy(asc(schema.employees.fullName))
       .limit(Math.min(filters.limit ?? DEFAULT_PAGE_SIZE, 200));

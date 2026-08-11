@@ -68,6 +68,29 @@ class RecordDocumentsController {
 }
 
 /**
+ * The payslip PDF (§HR).
+ *
+ * Keyed on the payslip rather than the employee: a payslip is a statement about
+ * one month, and an employee has many. Its own controller because the base path
+ * differs; the rendering is the same `DocumentsService`, so it comes out on the
+ * same NBR paper as the invoice and the selection letter.
+ */
+@Controller('payslips')
+class PayslipDocumentsController {
+  constructor(private readonly documents: DocumentsService) {}
+
+  /** `?mode=inline` previews it in the browser; anything else downloads. */
+  @Get(':id/pdf')
+  @Can(MODULES.EMPLOYEES, ACTIONS.VIEW)
+  async payslip(
+    @Param('id') id: string,
+    @Query('mode') mode?: string,
+  ): Promise<GeneratedDocument> {
+    return this.documents.payslip(uuidSchema.parse(id), asDisposition(mode));
+  }
+}
+
+/**
  * Generated documents (§4, §11.4, §11.6).
  *
  * Separate from the modules that own the underlying data because all three
@@ -76,7 +99,7 @@ class RecordDocumentsController {
  */
 @Module({
   imports: [StorageModule],
-  controllers: [ApplicantDocumentsController, RecordDocumentsController],
+  controllers: [ApplicantDocumentsController, RecordDocumentsController, PayslipDocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],
 })

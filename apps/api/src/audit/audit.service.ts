@@ -193,6 +193,16 @@ export const AUDIT = {
   EMPLOYEE_DOCUMENT_OPENED: 'employee.document_opened',
   EMPLOYEE_DOCUMENT_DELETED: 'employee.document_deleted',
 
+  // §HR — attendance, leave and payroll. All entity-typed `employee`, so the
+  // profile's activity feed reads them straight out of the audit log rather
+  // than needing a second feed table that would drift from it.
+  ATTENDANCE_MARKED: 'employee.attendance_marked',
+  LEAVE_APPLIED: 'employee.leave_applied',
+  LEAVE_APPROVED: 'employee.leave_approved',
+  LEAVE_DECIDED: 'employee.leave_decided',
+  PAYSLIP_GENERATED: 'employee.payslip_generated',
+  PAYSLIP_CANCELLED: 'employee.payslip_cancelled',
+
   BLACKLIST_ADDED: 'blacklist.added',
   BLACKLIST_LIFTED: 'blacklist.lifted',
   BLACKLIST_OVERRIDDEN: 'blacklist.overridden',

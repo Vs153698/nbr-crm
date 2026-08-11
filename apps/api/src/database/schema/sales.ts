@@ -6,6 +6,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -211,6 +212,36 @@ export const employees = pgTable(
     emergencyContactName: varchar('emergency_contact_name', { length: 150 }),
     emergencyContactPhone: varchar('emergency_contact_phone', { length: 20 }),
     emergencyContactRelation: varchar('emergency_contact_relation', { length: 60 }),
+    emergencyContactAddress: varchar('emergency_contact_address', { length: 300 }),
+
+    /**
+     * ── Pay ─────────────────────────────────────────────────────────────────
+     *
+     * `monthlySalary` is what goes out each month; `ctc` is the annual figure
+     * quoted in the offer. Both stored because the profile shows one and the
+     * offer conversation uses the other, and deriving either from the other
+     * assumes a fixed multiple that no real package respects.
+     *
+     * Nullable throughout: the directory holds contractors and volunteers with
+     * no salary at all, and a zero would read as "paid nothing" rather than
+     * "not applicable".
+     */
+    monthlySalary: numeric('monthly_salary', { precision: 12, scale: 2 }),
+    ctc: numeric('ctc', { precision: 14, scale: 2 }),
+
+    /**
+     * When probation ends. A date, not a status — see `isOnProbation`.
+     *
+     * A fifth employee status would have to be cleared by hand on the day it
+     * expired, and it never would be; a date answers the question by itself
+     * and keeps being right without anyone touching it.
+     */
+    probationEndsOn: date('probation_ends_on', { mode: 'string' }),
+
+    /** Payroll identity. Printed on the payslip and nowhere else. */
+    panNumber: varchar('pan_number', { length: 20 }),
+    bankName: varchar('bank_name', { length: 150 }),
+    bankAccountNumber: varchar('bank_account_number', { length: 40 }),
 
     notes: text('notes'),
     /** Exited staff are retained, never deleted — history references them. */
@@ -286,6 +317,192 @@ export const employeeDocuments = pgTable(
       .where(sql`${t.checksumSha256} is not null and ${t.deletedAt} is null`),
   ],
 );
+
+/**
+ * ── Attendance ───────────────────────────────────────────────────────────────
+ *
+ * One row per person per day, and the unique index makes that literal: marking
+ * the same day twice updates rather than duplicates, so a day can never hold
+ * two contradictory answers.
+ *
+ * Non-working days are recorded rather than left blank. A missing row is
+ * ambiguous — nobody marked it, or nobody was expected in? — and payroll has to
+ * tell those apart to work out how many days were actually payable.
+ */
+export const employeeAttendance = pgTable(
+  'employee_attendance',
+  {
+    id: primaryId(),
+    employeeId: uuid('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+
+    /** The day being marked, in the office's own timezone. */
+    onDate: date('on_date', { mode: 'string' }).notNull(),
+    status: varchar('status', { length: 30 }).notNull(),
+
+    /** Wall-clock times as typed. Null when only the status was recorded. */
+    checkInAt: timestamp('check_in_at', { withTimezone: true, mode: 'date' }),
+    checkOutAt: timestamp('check_out_at', { withTimezone: true, mode: 'date' }),
+    workedMinutes: integer('worked_minutes'),
+
+    remarks: text('remarks'),
+
+    markedByUserId: uuid('marked_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Snapshotted so the register still reads after the marker leaves. */
+    markedByName: varchar('marked_by_name', { length: 150 }),
+
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('employee_attendance_day_uq').on(t.employeeId, t.onDate),
+    index('employee_attendance_date_idx').on(t.onDate),
+    index('employee_attendance_status_idx').on(t.employeeId, t.status),
+  ],
+);
+
+/**
+ * ── Leave ────────────────────────────────────────────────────────────────────
+ *
+ * A request, and the decision taken on it. Both live on one row because the
+ * decision is only ever about one request, and splitting them would make
+ * "approved but by whom?" a join nobody remembers to write.
+ *
+ * `days` is stored rather than derived from the dates: half-days exist, and a
+ * public holiday inside a range should not be charged to the employee's
+ * balance. Whoever files the request states the number and it is what payroll
+ * reads.
+ */
+export const employeeLeaveRequests = pgTable(
+  'employee_leave_requests',
+  {
+    id: primaryId(),
+    employeeId: uuid('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+
+    leaveType: varchar('leave_type', { length: 30 }).notNull(),
+    fromDate: date('from_date', { mode: 'string' }).notNull(),
+    toDate: date('to_date', { mode: 'string' }).notNull(),
+    /** Working days claimed. Halves are legitimate, hence not an integer. */
+    days: numeric('days', { precision: 5, scale: 1 }).notNull(),
+    reason: text('reason').notNull(),
+
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    decidedByUserId: uuid('decided_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedByName: varchar('decided_by_name', { length: 150 }),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'date' }),
+    /** Why it was refused, or any condition attached to an approval. */
+    decisionNote: text('decision_note'),
+
+    appliedByUserId: uuid('applied_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    appliedByName: varchar('applied_by_name', { length: 150 }),
+
+    ...timestamps(),
+  },
+  (t) => [
+    index('employee_leave_employee_idx').on(t.employeeId, t.fromDate),
+    index('employee_leave_status_idx').on(t.status, t.fromDate),
+  ],
+);
+
+/**
+ * ── Payslips ─────────────────────────────────────────────────────────────────
+ *
+ * Every figure is copied onto the row at generation and never recomputed.
+ *
+ * That is the whole design. A payslip is a statement of what somebody was paid
+ * in a particular month; deriving it on read means a salary revision in
+ * September silently rewrites what March says, and the one document an employee
+ * keeps for a loan application stops matching the one the system prints. The
+ * salary, the day counts and the deductions are all frozen here.
+ */
+export const employeePayslips = pgTable(
+  'employee_payslips',
+  {
+    id: primaryId(),
+    employeeId: uuid('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'restrict' }),
+
+    /** 1–12 and a four-digit year, rather than a date, because a payslip is a period. */
+    periodMonth: integer('period_month').notNull(),
+    periodYear: integer('period_year').notNull(),
+    /** NBR/PS/2026-27/00042 — quoted by the employee and by accounts. */
+    payslipNumber: varchar('payslip_number', { length: 60 }).notNull(),
+
+    /** The salary as it stood when this was generated. */
+    monthlySalary: numeric('monthly_salary', { precision: 12, scale: 2 }).notNull(),
+
+    /** How the month actually went, frozen alongside the money. */
+    workingDays: numeric('working_days', { precision: 5, scale: 1 }).notNull(),
+    payableDays: numeric('payable_days', { precision: 5, scale: 1 }).notNull(),
+    lopDays: numeric('lop_days', { precision: 5, scale: 1 }).notNull().default('0.0'),
+
+    grossPay: numeric('gross_pay', { precision: 12, scale: 2 }).notNull(),
+    totalDeductions: numeric('total_deductions', { precision: 12, scale: 2 })
+      .notNull()
+      .default('0.00'),
+    netPay: numeric('net_pay', { precision: 12, scale: 2 }).notNull(),
+
+    /**
+     * The named lines, as `[{ label, amount }]`.
+     *
+     * JSON rather than two more tables: the components differ per organisation
+     * and change over time, and a payslip only ever reads them back as printed
+     * rows. Nothing queries an individual allowance.
+     */
+    earnings: jsonb('earnings').$type<Array<{ label: string; amount: string }>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    deductions: jsonb('deductions').$type<Array<{ label: string; amount: string }>>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+
+    status: varchar('status', { length: 20 }).notNull().default('issued'),
+    remarks: text('remarks'),
+
+    generatedByUserId: uuid('generated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    generatedByName: varchar('generated_by_name', { length: 150 }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex('employee_payslips_number_uq').on(t.payslipNumber),
+    // One payslip per person per month. A correction cancels and re-issues
+    // rather than quietly producing a second slip for the same period.
+    uniqueIndex('employee_payslips_period_uq')
+      .on(t.employeeId, t.periodYear, t.periodMonth)
+      .where(sql`${t.status} <> 'cancelled'`),
+    index('employee_payslips_employee_idx').on(t.employeeId, t.periodYear, t.periodMonth),
+  ],
+);
+
+export const employeeAttendanceRelations = relations(employeeAttendance, ({ one }) => ({
+  employee: one(employees, {
+    fields: [employeeAttendance.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const employeeLeaveRequestsRelations = relations(employeeLeaveRequests, ({ one }) => ({
+  employee: one(employees, {
+    fields: [employeeLeaveRequests.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const employeePayslipsRelations = relations(employeePayslips, ({ one }) => ({
+  employee: one(employees, {
+    fields: [employeePayslips.employeeId],
+    references: [employees.id],
+  }),
+}));
 
 export const employeesRelations = relations(employees, ({ one, many }) => ({
   account: one(users, { fields: [employees.userId], references: [users.id] }),

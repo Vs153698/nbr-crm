@@ -1,5 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { STATUS_META, type RecordStatus } from '@nbr/shared';
+import {
+  PAYSLIP_STATUS,
+  payslipPeriodLabel,
+  STATUS_META,
+  type RecordStatus,
+} from '@nbr/shared';
 import {
   drawNotice,
   drawParties,
@@ -387,6 +392,163 @@ export class DocumentsService {
       'invoice',
       recordId,
       `${invoice.invoiceNumber.replace(/\//g, '-')}.pdf`,
+      disposition,
+    );
+  }
+
+  // ── Payslip (§HR) ─────────────────────────────────────────────────────────
+
+  /**
+   * The monthly payslip.
+   *
+   * Built through the same `renderDocument` kit as the invoice, the selection
+   * letter and the applicant file, so it carries the identical masthead,
+   * section rules, table styling and totals block. That sameness is the point:
+   * an employee and an applicant both receive NBR paper, and a payslip that
+   * looked like a different organisation's would undermine both.
+   *
+   * Every figure is read off the payslip row, never recomputed. The row froze
+   * the salary and the day counts at generation, so this reprints exactly what
+   * was issued however long ago — which is what a payslip is for.
+   */
+  async payslip(
+    payslipId: string,
+    disposition: DocumentDisposition = 'attachment',
+  ): Promise<GeneratedDocument> {
+    const [payslip] = await this.db
+      .select()
+      .from(schema.employeePayslips)
+      .where(eq(schema.employeePayslips.id, payslipId))
+      .limit(1);
+
+    if (!payslip) throw new NotFoundError('Payslip');
+
+    const [employee] = await this.db
+      .select()
+      .from(schema.employees)
+      .where(eq(schema.employees.id, payslip.employeeId))
+      .limit(1);
+
+    if (!employee) throw new NotFoundError('Employee');
+
+    const period = payslipPeriodLabel(payslip.periodMonth, payslip.periodYear);
+    const cancelled = payslip.status === PAYSLIP_STATUS.CANCELLED;
+
+    const pdf = await renderDocument(
+      {
+        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        title: 'Payslip',
+        reference: payslip.payslipNumber,
+        issuedOn: payslip.createdAt,
+        status: cancelled
+          ? { label: 'Cancelled', tone: 'danger' }
+          : { label: period, tone: 'ok' },
+      },
+      `Payslip · ${payslip.payslipNumber}`,
+      (doc) => {
+        drawParties(
+          doc,
+          { heading: 'Employer', lines: [this.env.DPDP_DATA_FIDUCIARY_NAME, 'India'] },
+          {
+            heading: 'Employee',
+            lines: [employee.fullName, employee.employeeCode, employee.designation ?? ''].filter(
+              Boolean,
+            ),
+          },
+        );
+
+        sectionTitle(doc, 'Pay period');
+        keyValues(
+          doc,
+          [
+            ['Period', period],
+            ['Department', employee.department ?? '—'],
+            ['Designation', employee.designation ?? '—'],
+            ['Date of joining', formatDate(employee.joinedOn)],
+            ['Working days', payslip.workingDays],
+            ['Days paid', payslip.payableDays],
+            // Only when there was any — a "0.0" line invites the reader to
+            // work out whether something is wrong with it.
+            ...(Number(payslip.lopDays) > 0
+              ? ([['Loss of pay days', payslip.lopDays]] as Array<[string, string]>)
+              : []),
+            ['Bank', employee.bankName ?? '—'],
+            // Last four only. A payslip is forwarded by email far more often
+            // than anybody intends, and the full number has no reason to be on it.
+            [
+              'Account',
+              employee.bankAccountNumber
+                ? `••••${employee.bankAccountNumber.slice(-4)}`
+                : '—',
+            ],
+            ['PAN', employee.panNumber ?? '—'],
+          ],
+          { columns: 2, labelWidth: 108 },
+        );
+
+        doc.moveDown(0.6);
+
+        sectionTitle(doc, 'Earnings');
+        drawTable(
+          doc,
+          [
+            { key: 'label', label: 'Description', weight: 3.4 },
+            { key: 'amount', label: 'Amount', weight: 1.1, money: true },
+          ],
+          payslip.earnings.map((line) => ({ label: line.label, amount: line.amount })),
+          { zebra: false },
+        );
+
+        if (payslip.deductions.length > 0) {
+          sectionTitle(doc, 'Deductions');
+          drawTable(
+            doc,
+            [
+              { key: 'label', label: 'Description', weight: 3.4 },
+              { key: 'amount', label: 'Amount', weight: 1.1, money: true },
+            ],
+            payslip.deductions.map((line) => ({ label: line.label, amount: line.amount })),
+            { zebra: false },
+          );
+        }
+
+        const totals: TotalLine[] = [{ label: 'Gross pay', amount: payslip.grossPay }];
+        if (Number(payslip.totalDeductions) > 0) {
+          totals.push({
+            label: 'Total deductions',
+            amount: payslip.totalDeductions,
+            negative: true,
+          });
+        }
+        totals.push({ label: 'Net pay', amount: payslip.netPay, emphasis: true });
+
+        drawTotals(doc, totals);
+
+        if (payslip.remarks) {
+          sectionTitle(doc, 'Remarks');
+          doc.font('Helvetica').fontSize(9).fillColor(INK.muted).text(payslip.remarks);
+        }
+
+        if (cancelled) {
+          drawNotice(
+            doc,
+            'This payslip has been cancelled and superseded. It is retained for the audit trail and must not be treated as a statement of pay.',
+            'danger',
+          );
+        } else {
+          drawNotice(
+            doc,
+            'Computer-generated payslip. No signature is required. Figures are those recorded for this pay period and are not affected by later salary revisions.',
+          );
+        }
+      },
+    );
+
+    return this.publish(
+      pdf,
+      'invoice',
+      payslip.employeeId,
+      `${payslip.payslipNumber.replace(/\//g, '-')}.pdf`,
       disposition,
     );
   }
