@@ -65,8 +65,9 @@ export function PaymentTab({
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.payment(recordId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+    // One prefix: the action panel, timeline and client-progress badge all
+    // hang off it, so none of them can be left stale.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
   }
 
   /**

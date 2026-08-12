@@ -234,7 +234,7 @@ function OfficialDetailsDialog({
     onSuccess: () => {
       toast.success('Official record details saved');
       void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(record.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.record(record.id) });
       onClose();
     },
     onError: (error: unknown) =>

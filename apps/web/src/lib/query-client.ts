@@ -42,7 +42,19 @@ export const queryKeys = {
   applicantList: (params: Record<string, unknown>) => ['applicants', 'list', params] as const,
   applicant: (id: string) => ['applicants', id] as const,
   applicantTimeline: (id: string) => ['applicants', id, 'timeline'] as const,
+  /**
+   * Everything cached about one record.
+   *
+   * Invalidating this prefix catches the action panel, the timeline, the
+   * website decisions and the client-progress badge in one call. Mutations used
+   * to name two of those four individually, which is why the progress badge
+   * only ever updated on a page refresh: nothing invalidated it, and it had a
+   * 30-second stale time of its own.
+   */
+  record: (id: string) => ['records', id] as const,
   recordActions: (id: string) => ['records', id, 'actions'] as const,
+  /** The client-facing eleven-stage badge. */
+  clientProgress: (id: string) => ['records', id, 'client-progress'] as const,
   /** Website review decisions offered on a mirrored application. */
   legacyActions: (id: string) => ['records', id, 'legacy-actions'] as const,
   recordTimeline: (id: string) => ['records', id, 'timeline'] as const,

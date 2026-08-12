@@ -2,6 +2,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { type ClientProgress } from '@nbr/shared';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { queryKeys } from '@/lib/query-client';
 import { cn } from '@/lib/cn';
 import { formatDate } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
@@ -24,10 +25,16 @@ import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
  */
 export function ClientProgressBadge({ recordId }: { recordId: string }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['records', recordId, 'client-progress'],
+    queryKey: queryKeys.clientProgress(recordId),
     queryFn: ({ signal }) =>
       api.get<ClientProgress>(`/records/${recordId}/client-progress`, undefined, signal),
-    staleTime: 30_000,
+    /*
+      Short, because every stage the badge reports is something an operator can
+      cause from this very page. Anything that moves the record invalidates the
+      `records/:id` prefix this key sits under, so the badge refetches at once
+      rather than sitting on a stale answer until somebody reloads.
+    */
+    staleTime: 5_000,
   });
 
   if (isLoading) return <span className="skeleton h-6 w-40 rounded-full" />;

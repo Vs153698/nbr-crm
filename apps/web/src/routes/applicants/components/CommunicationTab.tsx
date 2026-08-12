@@ -75,6 +75,9 @@ export function CommunicationTab({
     {
       email: () => { setPresetTemplate(null); setEmailOpen(true); },
       'call-note': () => setCallOpen(true),
+      // The selection letter is its own composer — fixed wording, an attached
+      // Achiever Pack and a preview — rather than a template in the generic one.
+      'selection-letter': () => setSelectionOpen(true),
       ...Object.fromEntries(
         EMAIL_TEMPLATE_CODES.map((code) => [
           `email:${code}`,
@@ -113,7 +116,7 @@ export function CommunicationTab({
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['communications', applicantId] });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
   }
 
   const canSend = can('communications:send');

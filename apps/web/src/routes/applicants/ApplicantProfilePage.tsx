@@ -266,6 +266,13 @@ export default function ApplicantProfilePage() {
     evidence: 'evidence',
     email: 'communication',
     'call-note': 'communication',
+    /*
+      The selection letter has its own composer, not the generic one, so it is
+      not covered by the `email:` prefix below. Without this line the primary
+      action of the whole Selection Sent stage fell through to "that action is
+      not available here".
+    */
+    'selection-letter': 'communication',
   };
 
   function tabForAction(target: string): string | undefined {

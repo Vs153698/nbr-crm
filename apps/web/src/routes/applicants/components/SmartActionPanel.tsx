@@ -56,8 +56,9 @@ export function SmartActionPanel({
       // The status change ripples into the header, the tabs, the timeline and
       // the panel itself — invalidate all of it rather than patching pieces.
       void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+      // One prefix: the action panel, timeline and client-progress badge all
+      // hang off it, so none of them can be left stale.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
     },
     onError: (error: unknown) => {
@@ -194,9 +195,10 @@ export function SmartActionPanel({
               />
               <span>
                 <span className="font-semibold text-warn">
-                  The applicant has not been told they were selected.
+                  Approved, but nothing has been sent yet.
                 </span>{' '}
-                Send the selection letter below — this stage is not finished until they know.
+                The stage is named for the step, not for a completed send — the record reaches
+                Selection Sent on approval. Sending the letter below is what finishes it.
               </span>
             </div>
           )

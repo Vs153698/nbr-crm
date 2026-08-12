@@ -56,7 +56,7 @@ export function NotesTab({
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.notes(applicantId, recordId) });
-    if (recordId) void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+    if (recordId) void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
   }
 
   const createMutation = useMutation({

@@ -90,7 +90,7 @@ export function SelectionLetterDialog({
       });
       onClose();
       void queryClient.invalidateQueries({ queryKey: queryKeys.communications(applicantId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
     },
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not send the letter'),

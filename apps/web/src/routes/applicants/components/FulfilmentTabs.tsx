@@ -87,8 +87,9 @@ export function CertificateTab({
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.certificate(recordId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+    // One prefix: the action panel, timeline and client-progress badge all
+    // hang off it, so none of them can be left stale.
+    void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
   }
 
   if (isLoading) return <div className="skeleton h-40" />;
@@ -720,7 +721,7 @@ export function PublicationsTab({
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.publications(recordId) });
             void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+            void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
           }}
         />
       ) : null}
@@ -981,8 +982,9 @@ export function DispatchTab({
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.dispatch(recordId) });
             void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
-            void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+            // One prefix: the action panel, timeline and client-progress badge all
+            // hang off it, so none of them can be left stale.
+            void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
           }}
         />
       ) : null}

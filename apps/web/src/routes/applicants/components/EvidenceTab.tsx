@@ -129,8 +129,9 @@ export function EvidenceTab({
         void queryClient.invalidateQueries({ queryKey: queryKeys.evidence(recordId) });
         void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
         // Uploading evidence can unblock the has_evidence transition guard.
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recordActions(recordId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recordTimeline(recordId) });
+        // One prefix: the action panel, timeline and client-progress badge all
+        // hang off it, so none of them can be left stale.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
       } catch (error: unknown) {
         const message =
           error instanceof ApiError ? error.message : 'Upload failed. Check your connection.';
