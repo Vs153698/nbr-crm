@@ -30,11 +30,22 @@ export function PaymentTab({
   applicantId,
   autoOpen,
   onAutoOpened,
+  onSettled,
 }: {
   recordId: string;
   applicantId: string;
   autoOpen?: string | null;
   onAutoOpened?: () => void;
+  /**
+   * The invoice has just been settled in full.
+   *
+   * Told directly rather than left for the page to notice: the server advances
+   * the record to Certificate Verification on settlement, and the operator
+   * should land on the certificate panel in the same gesture. Waiting for the
+   * refetch to come back and diffing the status works too, but it is a slower
+   * and less certain route to a navigation we already know we want.
+   */
+  onSettled?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { can } = useAuth();
@@ -402,6 +413,7 @@ export function PaymentTab({
           payment={payment}
           onClose={() => setPayOpen(false)}
           onSaved={invalidate}
+          onSettled={onSettled}
         />
       ) : null}
 
@@ -581,10 +593,13 @@ function RecordPaymentDialog({
   payment,
   onClose,
   onSaved,
+  onSettled,
 }: {
   payment: PaymentSummary;
   onClose: () => void;
   onSaved: () => void;
+  /** Called only when this payment cleared the balance. */
+  onSettled?: () => void;
 }) {
   const [amount, setAmount] = useState(payment.balanceDue);
   const [paidOn, setPaidOn] = useState(new Date().toISOString().slice(0, 10));
@@ -617,6 +632,17 @@ function RecordPaymentDialog({
       );
       onClose();
       onSaved();
+
+      /*
+        Settled in full — the fee is done and the certificate is what is owed
+        next, so the operator is taken there rather than left looking at a
+        ledger with nothing outstanding on it.
+
+        Only on settlement. A part payment leaves money owed and the record at
+        Payment Pending, and moving off the ledger would hide the work that is
+        still here.
+      */
+      if (result.settlement.isSettled) onSettled?.();
     },
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not record the payment'),

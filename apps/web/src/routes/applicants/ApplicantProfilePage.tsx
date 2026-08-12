@@ -155,6 +155,24 @@ export default function ApplicantProfilePage() {
     [records, activeRecordId],
   );
 
+  /**
+   * Pin the record the page is working on, as soon as there is one.
+   *
+   * `records` is ordered by stage, so a record's position *changes when its
+   * status does*. Left unpinned, "the first record" is a moving target: paying
+   * a record's fee moves it from the top of the list into the middle, and the
+   * page would silently re-point at whichever other application had taken its
+   * place — the header, the action panel and the panel-follow below would all
+   * start describing a different record, which reads as "the tab did not
+   * change" when in fact the whole page changed subject.
+   *
+   * An applicant with one record was never affected, which is why this hid.
+   */
+  useEffect(() => {
+    if (activeRecordId || records.length === 0) return;
+    setActiveRecordId(records[0]!.id);
+  }, [records, activeRecordId]);
+
   const { data: panel, isLoading: panelLoading } = useQuery({
     queryKey: queryKeys.recordActions(activeRecord?.id ?? ''),
     queryFn: ({ signal }) =>
@@ -718,6 +736,8 @@ export default function ApplicantProfilePage() {
                       applicantId={applicant.id}
                       autoOpen={pendingDialog}
                       onAutoOpened={clearPendingDialog}
+                      // Fees settled → the certificate is the next thing owed.
+                      onSettled={() => setTab('certificate')}
                     />
                   ) : null}
                 </Tabs.Content>
