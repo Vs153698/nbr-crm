@@ -1,6 +1,6 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/AppShell';
@@ -36,7 +36,7 @@ import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
 import { DetailGrid, EMPTY, orEmpty } from './components/DetailGrid';
 import { PipelineRail } from './components/PipelineRail';
 import { TimelineFeed } from './components/TimelineFeed';
-import { applicantRecordRank, type RecordStatus } from '@nbr/shared';
+import { applicantRecordRank, stageWorkTab, type RecordStatus } from '@nbr/shared';
 import type { ApplicantProfile, AttachmentItem, SmartActionPanel as PanelData } from './types';
 
 /**
@@ -96,7 +96,14 @@ export default function ApplicantProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { can } = useAuth();
 
-  const activeTab = searchParams.get('tab') ?? 'overview';
+  /**
+   * The panel asked for in the URL, if any.
+   *
+   * Left undefined rather than defaulted, because "no tab in the URL" and "the
+   * Overview tab" are different states: the first means nobody has chosen, and
+   * is what lets the record's own stage decide where to land.
+   */
+  const requestedTab = searchParams.get('tab');
   /**
    * A dialog the Smart Action panel has asked a tab to open.
    *
@@ -154,6 +161,72 @@ export default function ApplicantProfilePage() {
       api.get<PanelData>(`/records/${activeRecord?.id}/actions`, undefined, signal),
     enabled: Boolean(activeRecord?.id),
   });
+
+  /** Open a panel, leaving every other query parameter alone. */
+  const setTab = useCallback(
+    (tab: string) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set('tab', tab);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  /**
+   * Which panel is showing.
+   *
+   * An explicit `?tab=` always wins — that is somebody who has chosen, or a
+   * link somebody was sent. With nothing asked for, the record's own stage
+   * decides, so opening a profile lands on the work rather than on a summary
+   * the operator then has to click past.
+   */
+  const activeTab = requestedTab ?? stageWorkTab(activeRecord?.status ?? '');
+
+  /**
+   * Follow the record when its stage moves.
+   *
+   * The stage can change without anyone touching the tabs: recording a payment
+   * settles the fee and the server advances the record to Certificate
+   * Verification on its own, and verifying a certificate sends it to Dispatch.
+   * Before this, the operator was left on the panel they had been using with no
+   * sign the work had moved somewhere else.
+   *
+   * Only an actual change fires it, so it never fights a deliberate click; and
+   * it is skipped on first render, where the line above has already chosen.
+   */
+  const previousStatus = useRef<string | null>(null);
+  useEffect(() => {
+    const status = activeRecord?.status;
+    if (!status) return;
+
+    const moved = previousStatus.current !== null && previousStatus.current !== status;
+    previousStatus.current = status;
+    if (!moved) return;
+
+    const next = stageWorkTab(status);
+    if (next !== activeTab) setTab(next);
+  }, [activeRecord?.status, activeTab, setTab]);
+
+  /**
+   * A different record is a different piece of work.
+   *
+   * Switching between an applicant's records in the Records list re-points the
+   * whole page, so the panel should follow the record being looked at rather
+   * than staying wherever the previous one left it.
+   */
+  useEffect(() => {
+    if (!activeRecordId || !activeRecord) return;
+    previousStatus.current = activeRecord.status;
+    setTab(stageWorkTab(activeRecord.status));
+    // Keyed on the chosen record alone: re-running when its status changes is
+    // the other effect's job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRecordId]);
 
   const revealMutation = useMutation({
     mutationFn: () =>
@@ -245,12 +318,6 @@ export default function ApplicantProfilePage() {
     } finally {
       setDownloading(null);
     }
-  }
-
-  function setTab(tab: string) {
-    const next = new URLSearchParams(searchParams);
-    next.set('tab', tab);
-    setSearchParams(next, { replace: true });
   }
 
   /**

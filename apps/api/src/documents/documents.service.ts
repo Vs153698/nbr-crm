@@ -1,11 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  letterBlocksFromHtml,
   PAYSLIP_STATUS,
   payslipPeriodLabel,
+  RECOGNITION_TYPE,
+  renderSelectionLetter,
+  SELECTION_KIND,
   STATUS_META,
   type RecordStatus,
 } from '@nbr/shared';
 import {
+  drawLetter,
   drawNotice,
   drawParties,
   drawTable,
@@ -25,6 +30,7 @@ import { NotFoundError, ValidationError } from '../common/errors';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { CommunicationsService } from '../ops/communications.service';
 import { StorageService } from '../storage/storage.service';
 
 
@@ -71,6 +77,9 @@ export class DocumentsService {
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) private readonly env: Env,
     private readonly storage: StorageService,
+    // The selection letter is built from the same prefill the composer uses, so
+    // the previewed PDF and the sent email can only ever say the same thing.
+    private readonly communications: CommunicationsService,
   ) {}
 
   // ── Applicant file (§4 Quick Actions, §11.9) ──────────────────────────────
@@ -197,50 +206,40 @@ export class DocumentsService {
       });
     }
 
+    /**
+     * The letter, built exactly as the email builds it.
+     *
+     * This used to be a separately written three-paragraph note that shared
+     * nothing with the message the applicant actually receives — so the preview
+     * an operator checked before sending, and the copy they downloaded for the
+     * file, both showed a document NBR never sent. The wording is settled and
+     * lives in one place; this renders that same letter onto a page.
+     *
+     * `kind` is the one field the composer asks an operator for. There is no
+     * operator here, so it comes from what the record was recognised as, which
+     * is the same judgement made a different way.
+     */
+    const { fields, organisation } = await this.communications.selectionLetterPrefill(recordId);
+    const kind =
+      record.recognitionType === RECOGNITION_TYPE.ACHIEVER
+        ? SELECTION_KIND.APPRECIATION
+        : SELECTION_KIND.RECORD;
+
+    const blocks = letterBlocksFromHtml(
+      renderSelectionLetter({ ...fields, kind }, organisation),
+    );
+
     const pdf = await renderDocument(
       {
-        organisation: this.env.DPDP_DATA_FIDUCIARY_NAME,
+        organisation: organisation.name,
         title: 'Letter of selection',
         reference: record.recordCode,
         issuedOn: new Date(),
       },
       `Letter of selection · ${record.recordCode}`,
       (doc) => {
-        // A letter is prose, not a form: wider leading and a real signature
-        // block, because this is the one document here an applicant may print
-        // and show to somebody.
-        doc.moveDown(0.6);
-        doc.font('Helvetica-Bold').fontSize(11).fillColor(INK.strong).text(record.applicantName);
-        doc.font('Helvetica').fontSize(9).fillColor(INK.muted).text(record.applicantCode);
-        doc.moveDown(1.4);
-
-        doc
-          .font('Helvetica')
-          .fontSize(10.5)
-          .fillColor(INK.body)
-          .text(`Dear ${record.applicantName},`, { lineGap: 3 });
-        doc.moveDown(0.8);
-
-        doc.text(
-          `We are pleased to confirm that your achievement, "${record.recordTitle}", has been reviewed by our verification team and selected for entry into the ${this.env.DPDP_DATA_FIDUCIARY_NAME}.`,
-          { align: 'justify', lineGap: 3 },
-        );
-        doc.moveDown(0.7);
-        doc.text(`Your record has been assigned the reference ${record.recordCode}.`, {
-          align: 'justify',
-          lineGap: 3,
-        });
-        doc.moveDown(0.7);
-        doc.text(
-          'Please quote this reference in any correspondence. Our team will be in touch with the next steps.',
-          { align: 'justify', lineGap: 3 },
-        );
-
-        doc.moveDown(2.4);
-        doc.font('Helvetica').fontSize(10).fillColor(INK.body).text('Yours sincerely,');
-        doc.moveDown(2);
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(INK.strong).text(this.env.DPDP_DATA_FIDUCIARY_NAME);
-        doc.font('Helvetica').fontSize(8.5).fillColor(INK.muted).text('Verification team');
+        doc.moveDown(0.4);
+        drawLetter(doc, blocks);
       },
     );
 
@@ -565,6 +564,8 @@ export class DocumentsService {
         applicantName: schema.applicants.fullName,
         applicantCode: schema.applicants.applicantCode,
         recordTitle: schema.achievements.recordTitle,
+        // Which award this is — it picks the selection letter's wording.
+        recognitionType: schema.achievements.recognitionType,
       })
       .from(schema.records)
       .innerJoin(schema.applicants, eq(schema.applicants.id, schema.records.applicantId))

@@ -1063,19 +1063,6 @@ export class CommunicationsService {
     }
 
 
-    /**
-     * The confidential stamp, embedded inline.
-     *
-     * Unlike the Achiever Pack this is decoration, so a missing file downgrades
-     * the letter rather than blocking it — the confidentiality line before the
-     * sign-off still carries the point in words.
-     */
-    try {
-      stamp = await readFile(CONFIDENTIAL_STAMP_PATH);
-    } catch {
-      this.logger.warn(`Confidential stamp missing at ${CONFIDENTIAL_STAMP_PATH} — sending without it`);
-    }
-
     const actor = requireActor();
 
     const [communication] = await this.db

@@ -1,6 +1,7 @@
 import { Controller, Get, Module, Param, Query } from '@nestjs/common';
 import { ACTIONS, MODULES, uuidSchema } from '@nbr/shared';
 import { Can } from '../auth/auth.decorators';
+import { OpsModule } from '../ops/ops.module';
 import { StorageModule } from '../storage/storage.module';
 import {
   DocumentsService,
@@ -98,7 +99,7 @@ class PayslipDocumentsController {
  * writes anything: a document here is a view of the record, produced on demand.
  */
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, OpsModule],
   controllers: [ApplicantDocumentsController, RecordDocumentsController, PayslipDocumentsController],
   providers: [DocumentsService],
   exports: [DocumentsService],

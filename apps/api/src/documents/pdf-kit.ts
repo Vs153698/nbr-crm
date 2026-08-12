@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
+import type { LetterBlock, LetterRun } from '@nbr/shared';
 
 /**
  * The seal, drawn on every document's masthead.
@@ -327,6 +328,123 @@ export function drawFooters(doc: Doc, label: string): void {
 }
 
 // ── Content blocks ───────────────────────────────────────────────────────────
+
+/**
+ * Lay a parsed letter onto the page.
+ *
+ * Takes the blocks produced from the letter's own HTML, so the PDF an operator
+ * previews and downloads carries the same words in the same order as the email
+ * the applicant receives. Nothing here decides what the letter says.
+ *
+ * pdfkit has no rich-text run support, so a paragraph is drawn run by run with
+ * `continued`, which is what lets a bold or underlined phrase sit mid-sentence
+ * rather than forcing one style per paragraph.
+ */
+export function drawLetter(doc: Doc, blocks: readonly LetterBlock[]): void {
+  const width = contentWidth(doc);
+
+  for (const block of blocks) {
+    // The confidential stamp is an inline email image; in print the line above
+    // the sign-off carries the same point, so it is skipped rather than left as
+    // a broken box.
+    if (block.type === 'stamp') continue;
+
+    // Start a page rather than orphan a heading or the first line of a
+    // paragraph at the very bottom.
+    if (doc.y > bodyBottom(doc) - 60) doc.addPage();
+
+    if (block.type === 'heading') {
+      doc.moveDown(0.9);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .fillColor(block.red ? ACCENT.danger : INK.strong)
+        .text(block.text, PAGE.margin, doc.y, { width });
+      doc.moveDown(0.35);
+      continue;
+    }
+
+    if (block.type === 'list') {
+      doc.font('Helvetica').fontSize(10).fillColor(INK.body);
+      block.items.forEach((item, index) => {
+        if (doc.y > bodyBottom(doc) - 24) doc.addPage();
+        doc.text(`${index + 1}. ${item}`, PAGE.margin + 12, doc.y, {
+          width: width - 12,
+          lineGap: 2.5,
+        });
+        doc.moveDown(0.2);
+      });
+      // pdfkit remembers the x it was last told to draw at, so without this the
+      // list's indent leaks into every paragraph that follows it.
+      doc.x = PAGE.margin;
+      doc.moveDown(0.45);
+      continue;
+    }
+
+    const colour = block.red ? ACCENT.danger : INK.body;
+    const align = block.centred ? 'center' : 'left';
+
+    /**
+     * A paragraph is drawn one line at a time.
+     *
+     * pdfkit tracks its own cursor while `continued` is set, and a newline
+     * inside a continued run corrupts it — the letter's payment block came out
+     * as one run-on line, and the dispatch paragraph printed on top of itself.
+     * Splitting on the breaks first means every `continued` chain is a single
+     * line, which is the only shape pdfkit handles correctly.
+     */
+    for (const line of splitIntoLines(block.runs)) {
+      if (line.length === 0) {
+        doc.moveDown(0.5);
+        continue;
+      }
+
+      if (doc.y > bodyBottom(doc) - 24) doc.addPage();
+      // Only before the first run of a line: a `continued` run must carry on
+      // from where the previous one ended, not restart at the margin.
+      doc.x = PAGE.margin;
+
+      line.forEach((run, index) => {
+        doc
+          .font(fontFor(run))
+          .fontSize(10)
+          .fillColor(colour)
+          .text(run.text, {
+            width,
+            align,
+            lineGap: 2.5,
+            underline: run.underline,
+            continued: index < line.length - 1,
+          });
+      });
+    }
+
+    doc.moveDown(0.55);
+  }
+}
+
+/** Break a paragraph's runs at their newlines, keeping each run's styling. */
+function splitIntoLines(runs: readonly LetterRun[]): LetterRun[][] {
+  const lines: LetterRun[][] = [[]];
+
+  for (const run of runs) {
+    const parts = run.text.split('\n');
+    parts.forEach((part, index) => {
+      if (index > 0) lines.push([]);
+      if (part.length > 0) lines[lines.length - 1]!.push({ ...run, text: part });
+    });
+  }
+
+  return lines;
+}
+
+/** Helvetica has four faces, and a run needs whichever matches its markup. */
+function fontFor(run: LetterRun): string {
+  if (run.bold && run.italic) return 'Helvetica-BoldOblique';
+  if (run.bold) return 'Helvetica-Bold';
+  if (run.italic) return 'Helvetica-Oblique';
+  return 'Helvetica';
+}
 
 export function sectionTitle(doc: Doc, text: string): void {
   doc.moveDown(0.9);

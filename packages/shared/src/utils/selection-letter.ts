@@ -322,3 +322,195 @@ export function renderSelectionLetterText(
     organisation.supportPhone,
   ].join('\n');
 }
+
+/**
+ * ── The letter as structured blocks ─────────────────────────────────────────
+ *
+ * The PDF an operator previews and downloads must be the letter the applicant
+ * receives. It was not: the two were written separately, and the PDF had drifted
+ * into three generic paragraphs that shared nothing with the email beyond the
+ * applicant's name.
+ *
+ * Rather than maintain the wording twice — which is what produced the drift —
+ * the PDF is derived from the HTML the email itself sends. The parser below is
+ * narrow on purpose: it reads only the tags `renderSelectionLetter` emits, so
+ * it is a reader for one known document rather than an HTML parser. If the
+ * letter gains a construct, this has to learn it, and `letterBlocksToText`
+ * exists so a test can prove the two still say the same thing.
+ */
+export interface LetterRun {
+  readonly text: string;
+  readonly bold: boolean;
+  readonly italic: boolean;
+  readonly underline: boolean;
+}
+
+export type LetterBlock =
+  | { readonly type: 'stamp' }
+  | { readonly type: 'heading'; readonly text: string; readonly red: boolean }
+  | {
+      readonly type: 'paragraph';
+      readonly runs: readonly LetterRun[];
+      readonly red: boolean;
+      readonly centred: boolean;
+    }
+  | { readonly type: 'list'; readonly items: readonly string[] };
+
+const ENTITIES: Readonly<Record<string, string>> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&ldquo;': '“',
+  '&rdquo;': '”',
+  '&ndash;': '–',
+  '&nbsp;': ' ',
+};
+
+function decodeEntities(value: string): string {
+  return value.replace(/&(?:amp|lt|gt|quot|#39|ldquo|rdquo|ndash|nbsp);/g, (match) => ENTITIES[match] ?? match);
+}
+
+/**
+ * A stand-in for `<br />` while whitespace is being collapsed.
+ *
+ * The letter's HTML is written across indented source lines, so it is full of
+ * newlines and runs of spaces that a browser collapses to nothing. Collapsing
+ * them here as well is what keeps the PDF from inheriting the source's
+ * indentation — but a real line break has to survive that, hence a character
+ * that cannot appear in the letter itself.
+ */
+const BREAK = '\u0000';
+
+/** Inline markup → runs. Handles only `b`, `i`, `u` and `br`, which is all the letter uses. */
+function parseRuns(html: string): LetterRun[] {
+  const runs: LetterRun[] = [];
+  const open = { b: 0, i: 0, u: 0 };
+  let buffer = '';
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+    const text = decodeEntities(buffer)
+      // Insignificant whitespace, exactly as a browser would treat it.
+      .replace(/[^\S\u0000]+/g, ' ')
+      // A line break swallows the spaces either side of it — but a space
+      // between two runs must survive, or "from the" and a bold name that
+      // follows it would be printed as one word.
+      .replace(/ *\u0000 */g, '\n');
+
+    if (text.length > 0) {
+      runs.push({ text, bold: open.b > 0, italic: open.i > 0, underline: open.u > 0 });
+    }
+    buffer = '';
+  };
+
+  // Attributes are allowed: the letter carries `<b style="color:…">` for the
+  // red deadline, and a matcher that only accepted bare tags left the whole
+  // opening tag sitting in the text as if it were prose.
+  const tag = /<(\/?)(b|i|u|br)\b[^>]*>/gi;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tag.exec(html)) !== null) {
+    buffer += html.slice(cursor, match.index);
+    cursor = match.index + match[0].length;
+
+    const name = match[2]!.toLowerCase() as 'b' | 'i' | 'u' | 'br';
+    if (name === 'br') {
+      buffer += BREAK;
+      continue;
+    }
+
+    // A style change starts a new run, so the text before it keeps the old one.
+    flush();
+    if (match[1] === '/') open[name] = Math.max(0, open[name] - 1);
+    else open[name] += 1;
+  }
+
+  buffer += html.slice(cursor);
+  flush();
+
+  return runs.filter((run) => run.text.length > 0);
+}
+
+const RED = '#c0392b';
+
+/**
+ * Read the rendered letter back into blocks.
+ *
+ * Scans for the block-level tags in document order. The wrapper `div`s carry no
+ * content of their own, so they are simply not looked for — the `p` inside the
+ * citation block is found like any other paragraph.
+ */
+export function letterBlocksFromHtml(html: string): LetterBlock[] {
+  const blocks: LetterBlock[] = [];
+  const block = /<img\b[^>]*>|<(p|h3|ol)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = block.exec(html)) !== null) {
+    if (match[1] === undefined) {
+      blocks.push({ type: 'stamp' });
+      continue;
+    }
+
+    const tag = match[1].toLowerCase();
+    const attributes = match[2] ?? '';
+    const inner = match[3] ?? '';
+    const red = attributes.includes(RED);
+
+    if (tag === 'h3') {
+      blocks.push({ type: 'heading', text: decodeEntities(stripTags(inner)).trim(), red });
+      continue;
+    }
+
+    if (tag === 'ol') {
+      const items = [...inner.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)].map((item) =>
+        decodeEntities(stripTags(item[1] ?? '')).trim(),
+      );
+      blocks.push({ type: 'list', items });
+      continue;
+    }
+
+    const runs = trimEdges(parseRuns(inner));
+    if (runs.length === 0) continue;
+    blocks.push({ type: 'paragraph', runs, red, centred: attributes.includes('text-align:center') });
+  }
+
+  return blocks;
+}
+
+function stripTags(html: string): string {
+  return html.replace(/<[^>]*>/g, '');
+}
+
+/** Drop the leading and trailing space a paragraph's source indentation leaves. */
+function trimEdges(runs: readonly LetterRun[]): LetterRun[] {
+  const trimmed = runs.map((run, index) => {
+    let text = run.text;
+    if (index === 0) text = text.replace(/^[ \n]+/, '');
+    if (index === runs.length - 1) text = text.replace(/[ \n]+$/, '');
+    return { ...run, text };
+  });
+
+  return trimmed.filter((run) => run.text.length > 0);
+}
+
+/**
+ * The blocks as plain text.
+ *
+ * Exists so a test can assert the parsed letter still carries every word the
+ * HTML does — the check that would have caught the PDF drifting away from the
+ * email in the first place.
+ */
+export function letterBlocksToText(blocks: readonly LetterBlock[]): string {
+  return blocks
+    .map((item) => {
+      if (item.type === 'stamp') return '';
+      if (item.type === 'heading') return item.text;
+      if (item.type === 'list') return item.items.map((entry) => `- ${entry}`).join('\n');
+      return item.runs.map((run) => run.text).join('');
+    })
+    .filter((line) => line.length > 0)
+    .join('\n\n');
+}

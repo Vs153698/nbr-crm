@@ -465,6 +465,65 @@ export function stageActions(status: RecordStatus): readonly StageAction[] {
 }
 
 /**
+ * The panel on the applicant profile where this stage's work actually happens.
+ *
+ * One mapping, used for two things that were previously left to the operator:
+ * which panel to open when a profile is first opened, and which panel to follow
+ * the record to when its stage changes under them.
+ *
+ * Verification already behaved this way — its primary action navigates to
+ * Evidence — but only because somebody wrote that one action by hand. Every
+ * other stage left the operator on whichever panel they happened to be on, so
+ * recording a payment advanced the record to Certificate Verification and left
+ * them looking at the payment ledger, with no sign that the work had moved.
+ *
+ * Stages with no work of their own point at Overview rather than inventing a
+ * destination: a rejected or completed record is read, not worked on.
+ */
+const STAGE_WORK_TAB: Readonly<Record<RecordStatus, string>> = {
+  // Intake — the application itself is what there is to look at.
+  [RECORD_STATUS.NEW_LEAD]: 'overview',
+  [RECORD_STATUS.APPLICATION_SUBMITTED]: 'application',
+
+  // Verification and approval are both decided by reading the evidence.
+  [RECORD_STATUS.UNDER_REVIEW]: 'evidence',
+  [RECORD_STATUS.VERIFICATION_PENDING]: 'evidence',
+
+  // The selection letter is the work, and it goes out from Communication.
+  [RECORD_STATUS.SELECTED]: 'communication',
+
+  [RECORD_STATUS.PAYMENT_PENDING]: 'payment',
+
+  // Fees received: the money is done and the certificate is what is owed next.
+  [RECORD_STATUS.PAYMENT_RECEIVED]: 'certificate',
+  [RECORD_STATUS.CERTIFICATE_PENDING]: 'certificate',
+  [RECORD_STATUS.CERTIFICATE_UPLOADED]: 'certificate',
+
+  [RECORD_STATUS.DISPATCH_PENDING]: 'dispatch',
+  [RECORD_STATUS.DISPATCHED]: 'dispatch',
+  [RECORD_STATUS.DELIVERED]: 'dispatch',
+
+  [RECORD_STATUS.PUBLICATION]: 'publications',
+
+  // Nothing left to do — these are read rather than worked.
+  [RECORD_STATUS.ON_HOLD]: 'overview',
+  [RECORD_STATUS.REJECTED]: 'overview',
+  [RECORD_STATUS.COMPLETED]: 'overview',
+  [RECORD_STATUS.CLOSED]: 'overview',
+};
+
+/**
+ * Where the work is for a record at this status.
+ *
+ * Falls back to Overview, which is always safe to land on — a status this build
+ * does not recognise must not send the operator to a panel that cannot render
+ * it.
+ */
+export function stageWorkTab(status: string): string {
+  return STAGE_WORK_TAB[status as RecordStatus] ?? 'overview';
+}
+
+/**
  * Timeline event types (§13). Append-only: the API writes these, nothing
  * updates or deletes them. `meta` carries the structured payload per type.
  */
