@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Module, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, Param, Post, Put, Query } from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
@@ -47,6 +47,18 @@ class UsersController {
   ): Promise<{ ok: true }> {
     await this.users.updateUser(uuidSchema.parse(id), body);
     return { ok: true };
+  }
+
+  /**
+   * Remove a login.
+   *
+   * Soft — the account is referenced from the audit trail and from the records
+   * it handled, so the row stays and stops working rather than vanishing.
+   */
+  @Delete(':id')
+  @Can(MODULES.USERS, ACTIONS.DELETE)
+  async remove(@Param('id') id: string, @Query('reason') reason?: string) {
+    return this.users.deleteUser(uuidSchema.parse(id), reason);
   }
 
   /** Force-logout every device for this user (§1 "device logout"). */

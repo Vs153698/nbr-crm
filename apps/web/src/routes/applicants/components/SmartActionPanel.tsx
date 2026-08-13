@@ -1,14 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
-import { Dialog } from '@/components/ui/Dialog';
-import { Select, Textarea } from '@/components/ui/Field';
-import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
 import { formatDate, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, iconByName, Icons } from '@/lib/icons';
-import { queryKeys } from '@/lib/query-client';
+import { ChangeStageDialog } from './ChangeStageDialog';
 import type { SmartActionPanel as PanelData } from '../types';
 
 const VARIANT_MAP: Record<string, 'primary' | 'secondary' | 'success' | 'danger' | 'whatsapp'> = {
@@ -41,39 +36,8 @@ export function SmartActionPanel({
   isLoading: boolean;
   onAction?: (action: { kind: string; target: string }) => void;
 }) {
-  const queryClient = useQueryClient();
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [targetStatus, setTargetStatus] = useState('');
-  const [remark, setRemark] = useState('');
-
-  const changeStatus = useMutation({
-    mutationFn: (payload: { toStatus: string; remark?: string }) =>
-      api.post<{ status: string }>(`/records/${recordId}/status`, payload),
-    onSuccess: () => {
-      toast.success('Status updated', { description: 'The change is on the timeline.' });
-      setStatusDialogOpen(false);
-      setRemark('');
-      // The status change ripples into the header, the tabs, the timeline and
-      // the panel itself — invalidate all of it rather than patching pieces.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
-      // One prefix: the action panel, timeline and client-progress badge all
-      // hang off it, so none of them can be left stale.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.record(recordId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
-    },
-    onError: (error: unknown) => {
-      if (error instanceof ApiError) {
-        // Guard failures are the interesting case: the message explains
-        // exactly what is missing ("upload evidence first").
-        toast.error(
-          error.code === 'GUARD_NOT_SATISFIED' ? 'Not ready for this step' : 'Could not change status',
-          { description: error.message },
-        );
-      } else {
-        toast.error('Could not change status');
-      }
-    },
-  });
 
   if (isLoading) {
     return (
@@ -266,63 +230,15 @@ export function SmartActionPanel({
         ) : null}
       </div>
 
-      {/* M-01 Change Status — only legal next steps appear */}
-      <Dialog
+      <ChangeStageDialog
+        recordId={recordId}
+        applicantId={applicantId}
+        currentLabel={panel.statusLabel}
+        transitions={panel.transitions}
+        initialTarget={targetStatus}
         open={statusDialogOpen}
         onOpenChange={setStatusDialogOpen}
-        title="Change status"
-        description="Only valid next steps are shown. The change is recorded on the timeline."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setStatusDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              loading={changeStatus.isPending}
-              disabled={!targetStatus || (selectedTransition?.requiresRemark && !remark.trim())}
-              onClick={() => changeStatus.mutate({ toStatus: targetStatus, remark: remark || undefined })}
-            >
-              Update status
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-lg bg-canvas px-3 py-2">
-            <span className="text-xs text-ink-3">Current status</span>
-            <span className="text-xs font-semibold text-ink">{panel.statusLabel}</span>
-          </div>
-
-          <Select
-            label="Move to"
-            value={targetStatus}
-            onChange={(event) => setTargetStatus(event.target.value)}
-            placeholder="Choose the next step"
-            options={availableTransitions.map((transition) => ({
-              value: transition.to,
-              label: transition.label,
-            }))}
-          />
-
-          {selectedTransition?.requiresOverride ? (
-            <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2.5 text-[11px] text-warn">
-              <Icons.ShieldAlert size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
-              This is an Admin override. It is recorded in the audit log with your name.
-            </p>
-          ) : null}
-
-          <Textarea
-            label={selectedTransition?.requiresRemark ? 'Remark (required)' : 'Remark'}
-            value={remark}
-            onChange={(event) => setRemark(event.target.value)}
-            required={selectedTransition?.requiresRemark}
-            rows={3}
-            placeholder="Why this change? This goes on the permanent timeline."
-            hint="Timeline entries cannot be edited or deleted afterwards."
-          />
-        </div>
-      </Dialog>
+      />
     </>
   );
 }

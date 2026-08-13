@@ -1,4 +1,5 @@
 import * as Tabs from '@radix-ui/react-tabs';
+import { USER_STATUS } from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -10,11 +11,11 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
 import { useNavigate } from 'react-router-dom';
 import { RowActions, RowActionsCell } from '@/components/ui/RowActions';
-import { Input, Select } from '@/components/ui/Field';
+import { Input, Select, Textarea } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
-import { formatRelative } from '@/lib/format';
+import { formatRelative, humanise } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 
@@ -62,8 +63,11 @@ export default function UsersRolesPage() {
   const queryClient = useQueryClient();
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [newRoleOpen, setNewRoleOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRow | null>(null);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<UserRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
 
   const { data: users, isLoading: usersLoading } = useQuery({
     queryKey: queryKeys.users,
@@ -92,6 +96,20 @@ export default function UsersRolesPage() {
     },
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not revoke sessions'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => api.delete(`/users/${userId}`),
+    onSuccess: () => {
+      toast.success('User deleted', {
+        description: 'The login no longer works. Their history stays on the record.',
+      });
+      setDeleteTarget(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roles });
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not delete the user'),
   });
 
   const userColumns: Array<Column<UserRow>> = [
@@ -168,6 +186,16 @@ export default function UsersRolesPage() {
                 : []),
               // Signing yourself out from here would be indistinguishable from
               // a bug.
+              ...(can('users:edit')
+                ? [
+                    {
+                      id: 'edit',
+                      label: 'Edit user',
+                      icon: Icons.PenLine,
+                      onSelect: () => setEditingUser(row),
+                    },
+                  ]
+                : []),
               ...(can('users:edit') && row.id !== currentUser?.id
                 ? [
                     {
@@ -176,6 +204,19 @@ export default function UsersRolesPage() {
                       icon: Icons.LogOut,
                       danger: true,
                       onSelect: () => setRevokeTarget(row),
+                    },
+                  ]
+                : []),
+              // Deleting yourself would strand your own session, and the server
+              // refuses it too.
+              ...(can('users:delete') && row.id !== currentUser?.id
+                ? [
+                    {
+                      id: 'delete',
+                      label: 'Delete user',
+                      icon: Icons.Trash2,
+                      danger: true,
+                      onSelect: () => setDeleteTarget(row),
                     },
                   ]
                 : []),
@@ -192,11 +233,20 @@ export default function UsersRolesPage() {
         title="Users & Roles"
         subtitle="Roles are database-driven — change a permission here and it takes effect immediately."
         actions={
-          can('users:create') ? (
-            <Button variant="primary" icon={Icons.UserPlus} onClick={() => setInviteOpen(true)}>
-              Add user
-            </Button>
-          ) : null
+          <>
+            {/* POST /roles has always existed; nothing on this screen reached
+                it, so a new role could only be created by calling the API. */}
+            {can('roles:create') ? (
+              <Button variant="secondary" icon={Icons.Shield} onClick={() => setNewRoleOpen(true)}>
+                New role
+              </Button>
+            ) : null}
+            {can('users:create') ? (
+              <Button variant="primary" icon={Icons.UserPlus} onClick={() => setInviteOpen(true)}>
+                Add user
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -283,6 +333,27 @@ export default function UsersRolesPage() {
 
       {inviteOpen ? <InviteUserDialog roles={roles ?? []} onClose={() => setInviteOpen(false)} /> : null}
 
+      {editingUser ? (
+        <EditUserDialog
+          user={editingUser}
+          roles={roles ?? []}
+          isSelf={editingUser.id === currentUser?.id}
+          onClose={() => setEditingUser(null)}
+        />
+      ) : null}
+
+      {newRoleOpen ? (
+        <NewRoleDialog
+          onClose={() => setNewRoleOpen(false)}
+          onCreated={(role) => {
+            setNewRoleOpen(false);
+            // Straight into the permission grid: a role with no permissions
+            // grants nothing, so creating one is only half the job.
+            setEditingRole(role);
+          }}
+        />
+      ) : null}
+
       {editingRole && catalogue ? (
         <PermissionGridDialog
           role={editingRole}
@@ -307,7 +378,259 @@ export default function UsersRolesPage() {
         loading={revokeMutation.isPending}
         onConfirm={() => revokeTarget && revokeMutation.mutate(revokeTarget.id)}
       />
+
+      {/* Typing the email is the gate: "Delete" sitting under "Edit" at the
+          same weight is how people delete accounts they meant to edit. */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this user?"
+        message={
+          <>
+            <strong>{deleteTarget?.fullName}</strong> will no longer be able to sign in, and is
+            signed out everywhere immediately. Their name stays on the records and audit entries
+            they touched — that history is not removed.
+            <br />
+            <br />
+            If they have only left temporarily, edit the user and set them to{' '}
+            <strong>Deactivated</strong> instead; that is reversible.
+          </>
+        }
+        confirmLabel="Delete user"
+        confirmPhrase={deleteTarget?.email}
+        variant="danger"
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
     </div>
+  );
+}
+
+/**
+ * Edit a user's details.
+ *
+ * The API has accepted all of this since the screen was built — name, employee
+ * code, phone, designation, role and active state — but nothing here offered
+ * it, so a mistyped name or a change of role meant a database edit.
+ *
+ * Two fields are withheld when editing yourself, matching the server: changing
+ * your own role or deactivating yourself is almost always a mistake, and in the
+ * Super Admin case it can lock the organisation out of its own system.
+ */
+function EditUserDialog({
+  user,
+  roles,
+  isSelf,
+  onClose,
+}: {
+  user: UserRow;
+  roles: RoleRow[];
+  isSelf: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    fullName: user.fullName,
+    employeeCode: user.employeeCode ?? '',
+    designation: user.designation ?? '',
+    phone: '',
+    roleId: user.roleId,
+    status: user.status,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      // Blank means "leave it alone" — the optional string fields reject an
+      // empty value rather than clearing it.
+      const payload: Record<string, unknown> = { fullName: form.fullName.trim() };
+      if (form.employeeCode.trim()) payload.employeeCode = form.employeeCode.trim();
+      if (form.designation.trim()) payload.designation = form.designation.trim();
+      if (form.phone.trim()) payload.phone = form.phone.trim();
+      if (!isSelf) {
+        payload.roleId = form.roleId;
+        payload.status = form.status;
+      }
+      return api.put(`/users/${user.id}`, payload);
+    },
+    onSuccess: () => {
+      const roleChanged = !isSelf && form.roleId !== user.roleId;
+      toast.success('User updated', {
+        description: roleChanged
+          ? 'The role changed, so they have been signed out everywhere.'
+          : undefined,
+      });
+      onClose();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roles });
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not update the user'),
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={onClose}
+      title={`Edit ${user.fullName}`}
+      description="The sign-in email cannot be changed here — it is the account's identity."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={saveMutation.isPending}
+            disabled={!form.fullName.trim()}
+            onClick={() => saveMutation.mutate()}
+          >
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-lg border border-line bg-canvas px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-ink-3">Sign-in email</p>
+          <p className="tabular font-mono text-xs font-semibold text-ink">{user.email}</p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Input
+            label="Full name"
+            required
+            value={form.fullName}
+            onChange={(event) => setForm((f) => ({ ...f, fullName: event.target.value }))}
+            containerClassName="sm:col-span-2"
+          />
+          <Input
+            label="Employee ID"
+            value={form.employeeCode}
+            onChange={(event) => setForm((f) => ({ ...f, employeeCode: event.target.value }))}
+          />
+          <Input
+            label="Designation"
+            value={form.designation}
+            onChange={(event) => setForm((f) => ({ ...f, designation: event.target.value }))}
+          />
+          <Input
+            label="Phone"
+            value={form.phone}
+            hint="Blank leaves the current number unchanged."
+            onChange={(event) => setForm((f) => ({ ...f, phone: event.target.value }))}
+            containerClassName="sm:col-span-2"
+          />
+        </div>
+
+        {isSelf ? (
+          <p className="flex items-start gap-1.5 rounded-lg bg-slate2-tint p-2.5 text-[11px] text-ink-2">
+            <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+            You cannot change your own role or deactivate your own account. Ask another
+            administrator.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select
+              label="Role"
+              value={form.roleId}
+              hint="Changing this signs them out everywhere."
+              onChange={(event) => setForm((f) => ({ ...f, roleId: event.target.value }))}
+              options={roles.map((role) => ({ value: role.id, label: role.name }))}
+            />
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(event) => setForm((f) => ({ ...f, status: event.target.value }))}
+              options={Object.values(USER_STATUS).map((value) => ({
+                value,
+                label: humanise(value),
+              }))}
+            />
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Create a role.
+ *
+ * Deliberately only a name and a description: a role is defined by its
+ * permission grid, and asking for thirty checkboxes in the same breath as a
+ * name is how half-configured roles get saved. The grid opens straight after,
+ * which is also the honest order — a role with no permissions grants nothing
+ * until it is filled in.
+ */
+function NewRoleDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (role: RoleRow) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.post<RoleRow>('/roles', {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        permissions: [],
+      }),
+    onSuccess: async (role) => {
+      toast.success(`Role "${role.name}" created`, {
+        description: 'Now choose what it can do — it grants nothing until you do.',
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.roles });
+      onCreated(role);
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not create the role'),
+  });
+
+  return (
+    <Dialog
+      open
+      onOpenChange={onClose}
+      title="New role"
+      description="Name it now, then pick its permissions."
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={createMutation.isPending}
+            disabled={name.trim().length < 2}
+            onClick={() => createMutation.mutate()}
+          >
+            Create & choose permissions
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Input
+          label="Role name"
+          required
+          value={name}
+          placeholder="Verification Officer"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <Textarea
+          label="Description"
+          rows={2}
+          value={description}
+          placeholder="What this role is for, so the next administrator knows."
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </div>
+    </Dialog>
   );
 }
 

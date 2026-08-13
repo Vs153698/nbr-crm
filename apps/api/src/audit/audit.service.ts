@@ -212,6 +212,7 @@ export const AUDIT = {
   USER_CREATED: 'user.created',
   USER_UPDATED: 'user.updated',
   USER_DEACTIVATED: 'user.deactivated',
+  USER_DELETED: 'user.deleted',
   ROLE_CREATED: 'role.created',
   ROLE_UPDATED: 'role.updated',
   ROLE_PERMISSIONS_CHANGED: 'role.permissions_changed',

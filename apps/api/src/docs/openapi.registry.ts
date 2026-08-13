@@ -1497,6 +1497,18 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     audited: 'user.updated',
     notes: 'Deactivating an account revokes its sessions immediately rather than at token expiry.',
   },
+  'UsersController.remove': {
+    tag: 'Administration',
+    summary: 'Delete a user',
+    description:
+      'Soft-deletes the login and signs it out everywhere. The row is kept because the audit ' +
+      'trail and the records this user handled refer to it.',
+    response: OK,
+    audited: 'user.deleted',
+    notes:
+      'Refuses your own account, and refuses the last active Super Admin — that account is what ' +
+      'guarantees the system can still be administered.',
+  },
   'UsersController.revoke': {
     tag: 'Administration',
     summary: 'Revoke a user’s sessions',

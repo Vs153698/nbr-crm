@@ -226,6 +226,86 @@ export class UsersService {
     });
   }
 
+  /**
+   * Remove a login.
+   *
+   * A soft delete, because the account is referenced from places that must stay
+   * readable: every audit entry names who acted, records name who handled them,
+   * and an employee row may link to this login. A hard delete would either
+   * cascade that history away or leave it pointing at nothing.
+   *
+   * Two accounts are refused outright. Your own, because an administrator who
+   * deletes themselves mid-session leaves a half-working session and no way
+   * back; and the last Super Admin, because that is the account that can undo
+   * everything else — losing it locks the organisation out of its own system.
+   *
+   * Deactivating is usually the better answer and is offered alongside this:
+   * it stops the sign-in without removing the person from the directory.
+   */
+  async deleteUser(userId: string, reason?: string): Promise<{ ok: true }> {
+    const actor = requireActor();
+
+    if (userId === actor.userId) {
+      throw new ForbiddenError('You cannot delete your own account.');
+    }
+
+    const [existing] = await this.db
+      .select({
+        id: schema.users.id,
+        fullName: schema.users.fullName,
+        email: schema.users.email,
+        roleId: schema.users.roleId,
+        isSuperAdmin: schema.roles.isSuperAdmin,
+      })
+      .from(schema.users)
+      .innerJoin(schema.roles, eq(schema.users.roleId, schema.roles.id))
+      .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
+      .limit(1);
+
+    if (!existing) throw new NotFoundError('User');
+
+    if (existing.isSuperAdmin) {
+      const [remaining] = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.users)
+        .innerJoin(schema.roles, eq(schema.users.roleId, schema.roles.id))
+        .where(
+          and(
+            eq(schema.roles.isSuperAdmin, true),
+            isNull(schema.users.deletedAt),
+            sql`${schema.users.id} <> ${userId}`,
+            eq(schema.users.status, 'active'),
+          ),
+        );
+
+      if ((remaining?.count ?? 0) === 0) {
+        throw new ConflictError(
+          'LAST_SUPER_ADMIN',
+          'This is the only active Super Admin. Promote another account first, or the system could not be administered.',
+        );
+      }
+    }
+
+    await this.db
+      .update(schema.users)
+      .set({ deletedAt: new Date(), status: 'deactivated' })
+      .where(eq(schema.users.id, userId));
+
+    // The token outlives the row otherwise, and a deleted account must not keep
+    // working until its session happens to expire.
+    await this.auth.revokeAllSessions(userId, 'account_disabled');
+
+    await this.audit.record({
+      action: AUDIT.USER_DELETED,
+      entityType: 'user',
+      entityId: userId,
+      entityLabel: `${existing.fullName} <${existing.email}>`,
+      meta: { reason: reason ?? null },
+    });
+
+    return { ok: true };
+  }
+
   /** Force-logout every device for a user (W-28 "session revocation"). */
   async revokeSessions(userId: string): Promise<void> {
     await this.auth.revokeAllSessions(userId, 'admin_revoked');
