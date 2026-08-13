@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
@@ -6,7 +6,10 @@ import {
   changeStatusSchema,
   officialRecordDetailsSchema,
   uuidSchema,
+  markProgressSchema,
   type ClientProgress,
+  type ClientProgressStage,
+  type MarkProgressInput,
   type OfficialRecordDetailsInput,
   type RecordStatus,
 } from '@nbr/shared';
@@ -53,6 +56,37 @@ export class RecordsController {
   @Can(MODULES.RECORDS, ACTIONS.VIEW)
   async clientProgress(@Param('id') id: string): Promise<ClientProgress> {
     return this.clientProgressService.forRecord(uuidSchema.parse(id));
+  }
+
+  /**
+   * Record a stage by hand.
+   *
+   * For something that happened where the CRM was not there to see it — a photo
+   * sent over WhatsApp, a delivery confirmed on the phone. The badge keeps
+   * showing it as hand-marked, and a derived fact always takes precedence.
+   */
+  @Post(':id/client-progress/:stage')
+  @Can(MODULES.RECORDS, ACTIONS.MARK_PROGRESS)
+  async markProgress(
+    @Param('id') id: string,
+    @Param('stage') stage: string,
+    @Body(zodBody(markProgressSchema)) body: MarkProgressInput,
+  ): Promise<{ ok: true }> {
+    return this.clientProgressService.mark(
+      uuidSchema.parse(id),
+      stage as ClientProgressStage,
+      body,
+    );
+  }
+
+  /** Withdraw a hand-marked stage; the derived answer takes over again. */
+  @Delete(':id/client-progress/:stage')
+  @Can(MODULES.RECORDS, ACTIONS.MARK_PROGRESS)
+  async clearProgressMark(
+    @Param('id') id: string,
+    @Param('stage') stage: string,
+  ): Promise<{ ok: true }> {
+    return this.clientProgressService.clearMark(uuidSchema.parse(id), stage as ClientProgressStage);
   }
 
   /**

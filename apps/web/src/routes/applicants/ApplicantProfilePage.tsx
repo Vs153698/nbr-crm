@@ -30,7 +30,6 @@ import { PaymentTab } from './components/PaymentTab';
 import { TasksTab } from './components/TasksTab';
 import { NotesTab } from './components/NotesTab';
 import { SmartActionPanel } from './components/SmartActionPanel';
-import { StatusBadgeMenu } from './components/StatusBadgeMenu';
 import { WebsiteReviewPanel } from './components/WebsiteReviewPanel';
 import { RecordBadges } from './components/RecordBadges';
 import { FilePreviewSheet } from '@/components/ui/FilePreviewSheet';
@@ -544,17 +543,7 @@ export default function ApplicantProfilePage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg font-bold tracking-tight text-ink">{applicant.fullName}</h2>
-                  {/* The stage, and the control that changes it, in one place. */}
-                  {activeRecord ? (
-                    <StatusBadgeMenu
-                      recordId={activeRecord.id}
-                      applicantId={applicant.id}
-                      status={activeRecord.status}
-                      statusLabel={panel?.statusLabel ?? humanise(activeRecord.status)}
-                      transitions={panel?.transitions ?? []}
-                      canChange={can('records:change_status') && !panelLoading}
-                    />
-                  ) : null}
+                  {activeRecord ? <StatusBadge status={activeRecord.status} /> : null}
                   {/*
                     Title Type — what NBR has actually recognised.
 
@@ -578,7 +567,12 @@ export default function ApplicantProfilePage() {
                   {/* The client's eleven-stage view, beside the internal status
                       rather than instead of it. The workflow rail further down
                       is untouched. */}
-                  {activeRecord ? <ClientProgressBadge recordId={activeRecord.id} /> : null}
+                  {activeRecord ? (
+                    <ClientProgressBadge
+                      recordId={activeRecord.id}
+                      applicantId={applicant.id}
+                    />
+                  ) : null}
                 </div>
 
                 {/* What the selected record is: one person or a group, and

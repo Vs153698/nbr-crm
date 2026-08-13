@@ -40,6 +40,7 @@ import {
   nbrWebhookApplicationSchema,
   packageSchema,
   presignUploadSchema,
+  markProgressSchema,
   selectionLetterSchema,
   recordTransactionSchema,
   resetPasswordSchema,
@@ -582,6 +583,26 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'before any reminder was sent, say — which is reported honestly rather than ticked to ' +
       'make the run look unbroken. Nothing here drives the workflow, and the record\'s own ' +
       'status rail is unaffected.',
+  },
+  'RecordsController.markProgress': {
+    tag: 'Records',
+    summary: 'Record a client-progress stage by hand',
+    description:
+      'For an event that genuinely happened where the CRM did not witness it. The badge keeps ' +
+      'showing the stage as hand-marked, and a derived fact always takes precedence over it.',
+    body: zodSchema(markProgressSchema, 'MarkProgress'),
+    response: OK,
+    audited: 'record.progress_marked',
+    notes:
+      'Submitted and Fees Received are refused — the first follows from the record existing, the ' +
+      'second from the ledger.',
+  },
+  'RecordsController.clearProgressMark': {
+    tag: 'Records',
+    summary: 'Withdraw a hand-marked stage',
+    description: 'Removes the manual mark; the derived answer applies again.',
+    response: OK,
+    audited: 'record.progress_mark_cleared',
   },
   'AttachmentsController.remove': {
     tag: 'Evidence & files',

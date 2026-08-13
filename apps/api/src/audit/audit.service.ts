@@ -157,6 +157,9 @@ export const AUDIT = {
   RECORD_UPDATED: 'record.updated',
   STATUS_CHANGED: 'record.status_changed',
   STATUS_OVERRIDE: 'record.status_override',
+  /** A client-progress stage recorded by hand, and its withdrawal. */
+  PROGRESS_MARKED: 'record.progress_marked',
+  PROGRESS_MARK_CLEARED: 'record.progress_mark_cleared',
   RECORD_ASSIGNED: 'record.assigned',
 
   EVIDENCE_UPLOADED: 'evidence.uploaded',

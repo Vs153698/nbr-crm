@@ -505,3 +505,17 @@ export const courierSchema = z.object({
   trackingUrlTemplate: optionalTrimmedString(500),
   isActive: z.boolean().default(true),
 });
+
+/**
+ * Record a client-progress stage by hand.
+ *
+ * `occurredAt` is when the thing actually happened, not when it was typed —
+ * a photo that arrived last Tuesday is marked as last Tuesday, so the badge
+ * reports the event's own date.
+ */
+export const markProgressSchema = z.object({
+  occurredAt: z.coerce.date(),
+  note: optionalTrimmedString(500),
+});
+
+export type MarkProgressInput = z.infer<typeof markProgressSchema>;

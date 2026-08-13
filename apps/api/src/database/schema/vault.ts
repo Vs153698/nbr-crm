@@ -279,6 +279,41 @@ export const publications = pgTable(
   ],
 );
 
+/**
+ * Client-progress stages recorded by hand.
+ *
+ * The eleven-stage badge is derived from real events — a settled invoice, a
+ * sent email, a courier delivery date — and holds nothing of its own. This is
+ * the exception: an event that genuinely happened where the CRM was not the
+ * one to witness it, such as a photo sent over WhatsApp or a delivery confirmed
+ * on the phone.
+ *
+ * Stored as its own dated fact rather than by ticking the stage, so the badge
+ * can keep saying *how* it knows. A derived fact always wins; these only ever
+ * fill a gap.
+ */
+export const recordProgressMarks = pgTable(
+  'record_progress_marks',
+  {
+    id: primaryId(),
+    recordId: uuid('record_id')
+      .notNull()
+      .references(() => records.id, { onDelete: 'cascade' }),
+    stage: varchar('stage', { length: 40 }).notNull(),
+    /** When the thing actually happened, per whoever marked it. */
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'date' }).notNull(),
+    note: text('note'),
+    markedByUserId: uuid('marked_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    markedByName: varchar('marked_by_name', { length: 150 }),
+    ...timestamps(),
+  },
+  (t) => [
+    // One answer per stage. Re-marking corrects rather than appending, the same
+    // rule the attendance register follows.
+    uniqueIndex('record_progress_marks_stage_uq').on(t.recordId, t.stage),
+  ],
+);
+
 /** §12 Dispatch Module. One live dispatch per record; re-dispatch appends. */
 export const dispatches = pgTable(
   'dispatches',

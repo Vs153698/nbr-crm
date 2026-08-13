@@ -101,6 +101,10 @@ const OPERATIONS_PERMISSIONS: PermissionCode[] = [
   p(MODULES.DISPATCH, ACTIONS.EDIT),
   p(MODULES.DISPATCH, ACTIONS.EXPORT),
   p(MODULES.RECORDS, ACTIONS.CHANGE_STATUS),
+  // Operations handle the kit, the courier and the photographs, so they are the
+  // team who learn that a parcel arrived or a photo came in by WhatsApp — the
+  // events the system cannot see for itself.
+  p(MODULES.RECORDS, ACTIONS.MARK_PROGRESS),
   p(MODULES.EVIDENCE, ACTIONS.CREATE),
   p(MODULES.NOTES, ACTIONS.CREATE),
   p(MODULES.TASKS, ACTIONS.CREATE),

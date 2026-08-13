@@ -55,6 +55,17 @@ export const ACTIONS = {
   SEND: 'send',
   /** Bypass a hard block (blacklist duplicate guard, workflow lock). */
   OVERRIDE: 'override',
+  /**
+   * Record a client-progress stage by hand.
+   *
+   * Its own action rather than folded into `edit`, because it is a different
+   * kind of trust: everything else on the progress badge is derived from what
+   * the system watched happen, and this is the one way a person can assert a
+   * milestone the system never saw. Whoever holds it can put a date against a
+   * claim the client will be shown, so it should be grantable — and revocable —
+   * without touching their ability to edit a record at all.
+   */
+  MARK_PROGRESS: 'mark_progress',
   /** Administer the module itself (settings of settings). */
   MANAGE: 'manage',
   /** Read decrypted sensitive identifiers. */
@@ -78,6 +89,7 @@ export const MODULE_ACTIONS: Readonly<Record<ModuleName, readonly ActionName[]>>
     ACTIONS.CREATE,
     ACTIONS.EDIT,
     ACTIONS.CHANGE_STATUS,
+    ACTIONS.MARK_PROGRESS,
     ACTIONS.EXPORT,
     ACTIONS.OVERRIDE,
   ],
@@ -171,6 +183,7 @@ export const ACTION_LABELS: Readonly<Record<ActionName, string>> = {
   [ACTIONS.CHANGE_STATUS]: 'Change status',
   [ACTIONS.SEND]: 'Send',
   [ACTIONS.OVERRIDE]: 'Override',
+  [ACTIONS.MARK_PROGRESS]: 'Mark progress by hand',
   [ACTIONS.MANAGE]: 'Manage',
   [ACTIONS.REVEAL]: 'Reveal',
 };

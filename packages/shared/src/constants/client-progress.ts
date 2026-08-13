@@ -53,6 +53,19 @@ export interface ClientProgressStageMeta {
   readonly evidence: string;
   /** True when only an employee can complete it; never satisfied passively. */
   readonly needsEmployeeAction: boolean;
+  /**
+   * May an operator record this stage by hand?
+   *
+   * True where the event can genuinely happen without the CRM witnessing it —
+   * a photo sent over WhatsApp, a delivery confirmed on the phone. Those are
+   * real events the system simply did not see, and refusing to record them
+   * makes the badge *less* accurate, not more.
+   *
+   * False where the system is the authority and a hand-typed claim would be
+   * worse evidence than what it already holds: the fee is settled by the
+   * ledger, and the application either exists or it does not.
+   */
+  readonly manuallyMarkable: boolean;
 }
 
 export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
@@ -62,6 +75,8 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 1,
     evidence: 'The application was filed.',
     needsEmployeeAction: false,
+    // The record exists, so this is true by construction.
+    manuallyMarkable: false,
   },
   {
     code: CLIENT_PROGRESS_STAGE.UNDER_REVIEW,
@@ -69,6 +84,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 2,
     evidence: 'An employee started verifying the documents.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.EVALUATION_COMPLETED,
@@ -76,6 +92,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 3,
     evidence: 'Verification finished and the record was sent for approval.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.APPROVED,
@@ -83,6 +100,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 4,
     evidence: 'An approver selected the record.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.REMINDER_MAIL_SENT,
@@ -90,6 +108,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 5,
     evidence: 'A payment reminder was actually sent and appears in the communication log.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.FEES_RECEIVED,
@@ -97,6 +116,9 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 6,
     evidence: 'The invoice is settled in full.',
     needsEmployeeAction: false,
+    // Money comes from the ledger. A hand-typed claim that a fee arrived is
+    // exactly the kind of tick this badge exists to prevent.
+    manuallyMarkable: false,
   },
   {
     code: CLIENT_PROGRESS_STAGE.CERTIFICATE_VERIFICATION,
@@ -104,6 +126,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 7,
     evidence: 'An employee uploaded the certificate and marked it verified.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.KIT_DISPATCHED,
@@ -111,6 +134,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 8,
     evidence: 'The courier row carries a dispatch date.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.KIT_DELIVERED,
@@ -118,6 +142,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 9,
     evidence: 'The courier row carries a delivery date.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.PHOTO_RECEIVED,
@@ -125,6 +150,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 10,
     evidence: "A photo was added to the record's evidence after the kit was delivered.",
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
   {
     code: CLIENT_PROGRESS_STAGE.PHOTO_UPLOADED,
@@ -132,6 +158,7 @@ export const CLIENT_PROGRESS_STAGES: readonly ClientProgressStageMeta[] = [
     step: 11,
     evidence: 'A publication entry exists — the photo has been published.',
     needsEmployeeAction: true,
+    manuallyMarkable: true,
   },
 ];
 
@@ -149,11 +176,36 @@ export interface ClientProgressFacts {
   readonly deliveredAt: string | null;
   readonly photoReceivedAt: string | null;
   readonly photoUploadedAt: string | null;
+  /**
+   * Stages an operator has recorded by hand, keyed by stage.
+   *
+   * Consulted only where the system has no fact of its own — see
+   * `deriveClientProgress`. Absent on older callers, hence optional.
+   */
+  readonly manual?: Readonly<Partial<Record<ClientProgressStage, ManualProgressMark>>>;
+}
+
+/** An operator's record of something the CRM did not witness. */
+export interface ManualProgressMark {
+  /** When the thing actually happened, as stated by whoever marked it. */
+  readonly at: string;
+  readonly note: string | null;
+  readonly markedByName: string | null;
+  readonly markedAt: string;
 }
 
 export interface ClientProgressStageState extends ClientProgressStageMeta {
   readonly reached: boolean;
   readonly at: string | null;
+  /**
+   * Where the date came from.
+   *
+   * Carried through to the UI so a hand-marked stage is visibly different from
+   * one the system observed. Without that distinction the badge would report
+   * both as the same kind of truth, which is the thing it was built not to do.
+   */
+  readonly source: 'derived' | 'manual';
+  readonly mark: ManualProgressMark | null;
   /**
    * Reached, but a later stage was reached without it.
    *
@@ -182,7 +234,7 @@ export interface ClientProgress {
  * rather than because the work was done.
  */
 export function deriveClientProgress(facts: ClientProgressFacts): ClientProgress {
-  const at: Readonly<Record<ClientProgressStage, string | null>> = {
+  const observed: Readonly<Record<ClientProgressStage, string | null>> = {
     [CLIENT_PROGRESS_STAGE.SUBMITTED]: facts.submittedAt,
     [CLIENT_PROGRESS_STAGE.UNDER_REVIEW]: facts.reviewStartedAt,
     [CLIENT_PROGRESS_STAGE.EVALUATION_COMPLETED]: facts.evaluationCompletedAt,
@@ -196,6 +248,19 @@ export function deriveClientProgress(facts: ClientProgressFacts): ClientProgress
     [CLIENT_PROGRESS_STAGE.PHOTO_UPLOADED]: facts.photoUploadedAt,
   };
 
+  /**
+   * A manual mark fills a gap; it never overrides what the system saw.
+   *
+   * If the ledger says the fee settled on the 3rd, that is better evidence
+   * than a date somebody typed, and letting the typed one win would make the
+   * badge worse. So manual marks apply only where the observed fact is null.
+   */
+  const marks = facts.manual ?? {};
+  const at: Record<ClientProgressStage, string | null> = { ...observed };
+  for (const stage of CLIENT_PROGRESS_STAGES) {
+    if (!at[stage.code] && marks[stage.code]) at[stage.code] = marks[stage.code]!.at;
+  }
+
   // The furthest thing that actually happened, which is not necessarily the
   // last one in a contiguous run.
   let furthest = -1;
@@ -205,10 +270,13 @@ export function deriveClientProgress(facts: ClientProgressFacts): ClientProgress
 
   const stages = CLIENT_PROGRESS_STAGES.map((stage, index) => {
     const reached = Boolean(at[stage.code]);
+    const manual = !observed[stage.code] && Boolean(marks[stage.code]);
     return {
       ...stage,
       reached,
       at: at[stage.code],
+      source: manual ? ('manual' as const) : ('derived' as const),
+      mark: manual ? marks[stage.code]! : null,
       // Passed over: the process moved beyond it without it ever happening.
       skipped: !reached && index < furthest,
     };

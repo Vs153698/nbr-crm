@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   CERTIFICATE_VERIFICATION,
+  CLIENT_PROGRESS_STAGE,
+  CLIENT_PROGRESS_STAGES,
   COMMUNICATION_STATUS,
   deriveClientProgress,
   EVIDENCE_KIND,
@@ -9,9 +11,13 @@ import {
   TEMPLATE_CODE,
   TIMELINE_EVENT,
   type ClientProgress,
+  type ClientProgressStage,
+  type ManualProgressMark,
 } from '@nbr/shared';
 import { and, asc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
-import { NotFoundError } from '../common/errors';
+import { AUDIT, AuditService } from '../audit/audit.service';
+import { NotFoundError, ValidationError } from '../common/errors';
+import { requireActor } from '../common/request-context';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
@@ -37,7 +43,10 @@ import * as schema from '../database/schema';
  */
 @Injectable()
 export class ClientProgressService {
-  constructor(@Inject(DB) private readonly db: Database) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    private readonly audit: AuditService,
+  ) {}
 
   async forRecord(recordId: string): Promise<ClientProgress> {
     const [record] = await this.db
@@ -72,6 +81,10 @@ export class ClientProgressService {
       this.photoUploadedAt(recordId),
     ]);
 
+    // What an operator has recorded by hand. Folded in by `deriveClientProgress`
+    // only where the system saw nothing itself.
+    const manual = await this.manualMarks(recordId);
+
     // Ordered after the dispatch lookup because "received" means received
     // *back* — a photo that predates delivery is the applicant's ID photo from
     // the application, not the one taken with their award.
@@ -92,7 +105,121 @@ export class ClientProgressService {
       deliveredAt: dispatch.deliveredAt,
       photoReceivedAt,
       photoUploadedAt,
+      manual,
     });
+  }
+
+  /**
+   * Record a stage by hand.
+   *
+   * For an event that genuinely happened where the CRM was not there to see it.
+   * Idempotent per stage: re-marking corrects the date rather than adding a
+   * second answer, so a stage can never hold two.
+   *
+   * Two stages are refused. Submitted is true the moment the record exists, and
+   * Fees Received is the ledger's to say — a typed claim that money arrived is
+   * precisely the tick this badge was built to prevent.
+   */
+  async mark(
+    recordId: string,
+    stage: ClientProgressStage,
+    input: { occurredAt: Date; note?: string },
+  ): Promise<{ ok: true }> {
+    const actor = requireActor();
+    const meta = CLIENT_PROGRESS_STAGES.find((entry) => entry.code === stage);
+
+    if (!meta?.manuallyMarkable) {
+      throw new ValidationError({
+        stage: [
+          `${meta?.label ?? stage} cannot be marked by hand — ${
+            stage === CLIENT_PROGRESS_STAGE.FEES_RECEIVED
+              ? 'record the payment instead, and it follows from the ledger.'
+              : 'it follows from the record itself.'
+          }`,
+        ],
+      });
+    }
+
+    if (input.occurredAt.getTime() > Date.now()) {
+      throw new ValidationError({
+        occurredAt: ['A stage cannot be recorded as having happened in the future.'],
+      });
+    }
+
+    await this.db
+      .insert(schema.recordProgressMarks)
+      .values({
+        recordId,
+        stage,
+        occurredAt: input.occurredAt,
+        note: input.note ?? null,
+        markedByUserId: actor.userId,
+        markedByName: actor.fullName,
+      })
+      .onConflictDoUpdate({
+        target: [schema.recordProgressMarks.recordId, schema.recordProgressMarks.stage],
+        set: {
+          occurredAt: input.occurredAt,
+          note: input.note ?? null,
+          markedByUserId: actor.userId,
+          markedByName: actor.fullName,
+          updatedAt: new Date(),
+        },
+      });
+
+    await this.audit.record({
+      action: AUDIT.PROGRESS_MARKED,
+      entityType: 'record',
+      entityId: recordId,
+      entityLabel: meta.label,
+      meta: { stage, occurredAt: input.occurredAt.toISOString(), note: input.note ?? null },
+    });
+
+    return { ok: true };
+  }
+
+  /** Withdraw a hand-marked stage. The derived answer takes over again. */
+  async clearMark(recordId: string, stage: ClientProgressStage): Promise<{ ok: true }> {
+    const deleted = await this.db
+      .delete(schema.recordProgressMarks)
+      .where(
+        and(
+          eq(schema.recordProgressMarks.recordId, recordId),
+          eq(schema.recordProgressMarks.stage, stage),
+        ),
+      );
+
+    if (deleted.count === 0) throw new NotFoundError('Progress mark');
+
+    await this.audit.record({
+      action: AUDIT.PROGRESS_MARK_CLEARED,
+      entityType: 'record',
+      entityId: recordId,
+      entityLabel: CLIENT_PROGRESS_STAGES.find((entry) => entry.code === stage)?.label ?? stage,
+      meta: { stage },
+    });
+
+    return { ok: true };
+  }
+
+  private async manualMarks(
+    recordId: string,
+  ): Promise<Partial<Record<ClientProgressStage, ManualProgressMark>>> {
+    const rows = await this.db
+      .select()
+      .from(schema.recordProgressMarks)
+      .where(eq(schema.recordProgressMarks.recordId, recordId));
+
+    const marks: Partial<Record<ClientProgressStage, ManualProgressMark>> = {};
+    for (const row of rows) {
+      marks[row.stage as ClientProgressStage] = {
+        at: row.occurredAt.toISOString(),
+        note: row.note,
+        markedByName: row.markedByName,
+        markedAt: row.createdAt.toISOString(),
+      };
+    }
+    return marks;
   }
 
   /**
