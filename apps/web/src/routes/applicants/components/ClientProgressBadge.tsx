@@ -108,18 +108,43 @@ export function ClientProgressBadge({
       </Popover.Trigger>
 
       <Popover.Portal>
+        {/*
+          Eleven stages, each with a line of explanation, is taller than a short
+          viewport — the list ran off the bottom of the screen with no way to
+          reach the last few.
+
+          `--radix-popover-content-available-height` is the space Radix measured
+          between the badge and the edge of the viewport, so capping the panel
+          to it means the panel always fits whatever room it actually has. The
+          heading and the footnote stay put and only the list scrolls, which
+          keeps "what am I looking at" and "when may I use this" on screen while
+          the stages move under them.
+
+          `collisionPadding` leaves a margin at the edge so the panel never sits
+          flush against it, and Radix flips to above the badge on its own when
+          there is more room up there.
+        */}
         <Popover.Content
           align="start"
           sideOffset={6}
-          className="z-50 w-[22rem] rounded-panel border border-line bg-white p-3 shadow-modal animate-scale-in"
+          collisionPadding={12}
+          className={cn(
+            'z-50 flex w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden',
+            'max-h-[var(--radix-popover-content-available-height)]',
+            'rounded-panel border border-line bg-white shadow-modal animate-scale-in',
+          )}
         >
-          <p className="mb-0.5 text-xs font-bold text-ink">Client progress</p>
-          <p className="mb-2.5 text-[11px] leading-relaxed text-ink-3">
-            Each stage is ticked only when it actually happened. A stage needing an employee stays
-            open until they do it — nothing is completed automatically.
-          </p>
+          <div className="shrink-0 px-3 pb-2 pt-3">
+            <p className="mb-0.5 text-xs font-bold text-ink">Client progress</p>
+            <p className="text-[11px] leading-relaxed text-ink-3">
+              Each stage is ticked only when it actually happened. A stage needing an employee stays
+              open until they do it — nothing is completed automatically.
+            </p>
+          </div>
 
-          <ol className="space-y-0.5">
+          {/* `min-h-0` is what lets a flex child actually shrink and scroll —
+              without it the list keeps its full height and overflows again. */}
+          <ol className="scrollbar-slim min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 pb-1">
             {data.stages.map((stage) => (
               <li
                 key={stage.code}
@@ -225,7 +250,7 @@ export function ClientProgressBadge({
           </ol>
 
           {canMark ? (
-            <p className="mt-2 border-t border-line pt-2 text-[10px] leading-snug text-ink-3">
+            <p className="shrink-0 border-t border-line px-3 py-2 text-[10px] leading-snug text-ink-3">
               Mark a stage only when it really happened and the system could not see it — a photo
               sent over WhatsApp, a delivery confirmed by phone. Fees Received always follows the
               ledger.
