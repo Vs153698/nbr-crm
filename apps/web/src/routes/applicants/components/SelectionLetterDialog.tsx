@@ -157,7 +157,7 @@ export function SelectionLetterDialog({
                   <span className="block text-sm font-semibold text-ink">{meta.label}</span>
                   <span className="mt-0.5 block text-xs text-ink-3">{meta.description}</span>
                   <span className="mt-1 block text-[11px] text-ink-4">
-                    Letter reads “{meta.designation}” and “{meta.verb} …”
+                    Letter reads “{meta.designation}” under {meta.heading.toLowerCase()}.
                   </span>
                 </span>
               </button>
@@ -306,7 +306,7 @@ export function SelectionLetterDialog({
             rows={6}
             value={fields.description}
             onChange={(event) => set('description')(event.target.value)}
-            hint={`Reads: "${fields.holderName || 'Name'} … ${meta.verb} <your text>, as confirmed on ${fields.confirmedOn || 'date'}."`}
+            hint="Printed exactly as typed, as its own paragraph in the letter — nothing is added before or after it."
           />
 
           <div className="grid gap-3 sm:grid-cols-3">

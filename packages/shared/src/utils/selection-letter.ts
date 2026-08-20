@@ -156,15 +156,16 @@ const paragraphs = (value: string): string =>
  */
 export const CONFIDENTIAL_STAMP_CID = 'nbr-confidential-stamp';
 
+/**
+ * The description prints as its own paragraph, byte-for-byte what the
+ * operator typed under the title. Nothing is prepended or appended to the
+ * string — no holder name, no date, no verb.
+ */
 export function renderSelectionLetter(
   input: SelectionLetterInput,
   organisation: SelectionLetterOrganisation,
 ): string {
   const meta = SELECTION_KIND_META[input.kind];
-
-  const origin = [input.city, input.state].filter(Boolean).join(', ');
-  const born = input.dateOfBirth ? ` (born on <b>${escape(input.dateOfBirth)}</b>)` : '';
-  const from = origin ? ` of <b>${escape(origin)}</b>` : '';
 
   const P = 'margin:0 0 12px;color:#1f2937;font-size:14px;line-height:1.6';
   const H = 'margin:24px 0 10px;color:#111827;font-size:14px;font-weight:700';
@@ -200,7 +201,7 @@ export function renderSelectionLetter(
 
   <p style="${P}"><b><i><u>${escape(input.title)}</u></i></b></p>
 
-  <div style="${P}"><p style="margin:0 0 12px"><i><u><b>${escape(input.holderName)}</b>${born}${from}, ${meta.verb} ${paragraphs(input.description)}, as confirmed on <b>${escape(input.confirmedOn)}</b>.</u></i></p></div>
+  <p style="${P}"><i><u>${paragraphs(input.description)}</u></i></p>
 
   <p style="${P}"><b>The final content will be printed on the certificate only after approval from the applicant.</b></p>
 
@@ -290,7 +291,6 @@ export function renderSelectionLetterText(
   organisation: SelectionLetterOrganisation,
 ): string {
   const meta = SELECTION_KIND_META[input.kind];
-  const origin = [input.city, input.state].filter(Boolean).join(', ');
 
   return [
     `Dear ${input.holderName},`,
@@ -304,7 +304,7 @@ export function renderSelectionLetterText(
     meta.heading,
     input.title,
     ``,
-    `${input.holderName}${input.dateOfBirth ? ` (born on ${input.dateOfBirth})` : ''}${origin ? ` of ${origin}` : ''}, ${meta.verb} ${input.description}, as confirmed on ${input.confirmedOn}.`,
+    input.description,
     ``,
     `Please check your name, city/state/country, date of birth and any attempt-specific details, and tell us within 2 working days if a correction is needed.`,
     ``,
