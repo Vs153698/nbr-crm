@@ -444,7 +444,7 @@ openssl rand -base64 18    <span class="c"># → SUPER_ADMIN_PASSWORD</span></pr
         <tr><td><code>JWT_REFRESH_TTL</code></td><td><code>7d</code></td><td></td></tr>
         <tr><td><code>COOKIE_SECURE</code></td><td><code>true</code></td><td><span class="pill p-danger">Required</span> Boot fails in production if false.</td></tr>
         <tr><td><code>COOKIE_DOMAIN</code></td><td><code>crm.codeniti.in</code></td><td>The host the browser actually talks to. Not <code>api.codeniti.in</code>, which no browser visits.</td></tr>
-        <tr><td><code>SESSION_IDLE_TIMEOUT_MINUTES</code></td><td><code>30</code></td><td></td></tr>
+        <tr><td><code>SESSION_DEFAULT_TTL_MINUTES</code></td><td><code>2880</code></td><td>Rolling session length when "remember me" is unchecked (2 days). Not an inactivity timer.</td></tr>
         <tr><td><code>LOGIN_MAX_ATTEMPTS</code></td><td><code>5</code></td><td></td></tr>
         <tr><td><code>LOGIN_LOCKOUT_MINUTES</code></td><td><code>15</code></td><td></td></tr>
       </tbody>

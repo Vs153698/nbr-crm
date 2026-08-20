@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { SessionUser } from '@nbr/shared';
 import * as argon2 from 'argon2';
 import { addMinutes, addMilliseconds } from 'date-fns';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { randomToken, sha256 } from '../common/crypto';
 import { RateLimitedError, UnauthorisedError, ValidationError } from '../common/errors';
@@ -27,6 +27,22 @@ export interface TokenPair {
 export interface LoginResult extends TokenPair {
   readonly user: SessionUser;
 }
+
+/** Keys in the `settings` table — kept in sync with the seed script by hand. */
+export const SECURITY_SETTING_KEYS = {
+  sessionDefaultTtlMinutes: 'session.default_ttl_minutes',
+  loginMaxAttempts: 'security.login_max_attempts',
+  loginLockoutMinutes: 'security.lockout_minutes',
+} as const;
+
+interface SecuritySettings {
+  readonly sessionDefaultTtlMinutes: number;
+  readonly loginMaxAttempts: number;
+  readonly loginLockoutMinutes: number;
+}
+
+/** How long a resolved settings row is trusted before the next read. */
+const SECURITY_SETTINGS_CACHE_MS = 60_000;
 
 /**
  * Authentication (§1, P1-03).
@@ -54,6 +70,10 @@ export class AuthService {
    */
   private dummyHash: string | null = null;
 
+  /** Local cache for {@link resolveSecuritySettings} — see its doc comment. */
+  private cachedSecuritySettings: SecuritySettings | null = null;
+  private securitySettingsCachedAt = 0;
+
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(ENV) private readonly env: Env,
@@ -62,6 +82,64 @@ export class AuthService {
     private readonly permissionsService: PermissionsService,
     private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Session length and lockout thresholds, editable from Settings → Security
+   * without a redeploy.
+   *
+   * The env vars remain the seeded defaults and the fallback if a row is
+   * missing, unparseable, or out of bounds — a mistyped value in the UI falls
+   * back to something safe rather than disabling the lockout or leaving
+   * sessions alive forever. Cached for a minute: this runs on every login,
+   * refresh and failed attempt, and these change on the order of once a year.
+   */
+  private async resolveSecuritySettings(): Promise<SecuritySettings> {
+    const now = Date.now();
+    if (
+      this.cachedSecuritySettings &&
+      now - this.securitySettingsCachedAt < SECURITY_SETTINGS_CACHE_MS
+    ) {
+      return this.cachedSecuritySettings;
+    }
+
+    let stored: Record<string, unknown> = {};
+    try {
+      const rows = await this.db
+        .select({ key: schema.settings.key, value: schema.settings.value })
+        .from(schema.settings)
+        .where(inArray(schema.settings.key, Object.values(SECURITY_SETTING_KEYS)));
+      stored = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Could not read security settings, using environment: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const boundedInt = (key: string, fallback: number, min: number, max: number): number => {
+      const value = Number(stored[key]);
+      return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
+    };
+
+    const resolved: SecuritySettings = {
+      sessionDefaultTtlMinutes: boundedInt(
+        SECURITY_SETTING_KEYS.sessionDefaultTtlMinutes,
+        this.env.SESSION_DEFAULT_TTL_MINUTES,
+        5,
+        10_080,
+      ),
+      loginMaxAttempts: boundedInt(SECURITY_SETTING_KEYS.loginMaxAttempts, this.env.LOGIN_MAX_ATTEMPTS, 3, 20),
+      loginLockoutMinutes: boundedInt(
+        SECURITY_SETTING_KEYS.loginLockoutMinutes,
+        this.env.LOGIN_LOCKOUT_MINUTES,
+        1,
+        1440,
+      ),
+    };
+
+    this.cachedSecuritySettings = resolved;
+    this.securitySettingsCachedAt = now;
+    return resolved;
+  }
 
   private get argonOptions(): argon2.Options {
     return {
@@ -175,14 +253,15 @@ export class AuthService {
   }
 
   private async registerFailedAttempt(userId: string, currentCount: number): Promise<void> {
+    const { loginMaxAttempts, loginLockoutMinutes } = await this.resolveSecuritySettings();
     const nextCount = currentCount + 1;
-    const shouldLock = nextCount >= this.env.LOGIN_MAX_ATTEMPTS;
+    const shouldLock = nextCount >= loginMaxAttempts;
 
     await this.db
       .update(schema.users)
       .set({
         failedLoginCount: nextCount,
-        lockedUntil: shouldLock ? addMinutes(new Date(), this.env.LOGIN_LOCKOUT_MINUTES) : null,
+        lockedUntil: shouldLock ? addMinutes(new Date(), loginLockoutMinutes) : null,
       })
       .where(eq(schema.users.id, userId));
 
@@ -237,9 +316,11 @@ export class AuthService {
     const refreshToken = randomToken(48);
     const refreshTtlMs = rememberMe
       ? parseDuration(this.env.JWT_REFRESH_TTL)
-      : // Without "remember me", the refresh window is the idle timeout: close
-        // the laptop lid for an hour and you sign in again.
-        this.env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000;
+      : // Without "remember me" the window is shorter, but it is still a
+        // rolling absolute expiry, not an inactivity check — an active user
+        // is never logged out mid-session just because they went a while
+        // between requests.
+        (await this.resolveSecuritySettings()).sessionDefaultTtlMinutes * 60_000;
 
     const refreshExpiresAt = addMilliseconds(new Date(), refreshTtlMs);
     const context = getContext();
@@ -251,6 +332,7 @@ export class AuthService {
       userAgent: context?.userAgent ?? null,
       ipAddress: context?.ipAddress ?? null,
       expiresAt: refreshExpiresAt,
+      rememberMe,
     });
 
     return {
@@ -291,15 +373,13 @@ export class AuthService {
       );
     }
 
+    // No separate inactivity check: `expiresAt` is the sole cutoff, rolled
+    // forward on every successful refresh below. Remembered sessions get a
+    // 7-day rolling window, unremembered ones get the Settings → Security
+    // "Default session length" (2 days out of the box) — either way, an
+    // active user is never signed out mid-session.
     if (session.expiresAt <= new Date()) {
       throw new UnauthorisedError('REFRESH_EXPIRED', 'Your session has expired. Please sign in again.');
-    }
-
-    // Idle timeout (§1): measured from last activity, not from issue time.
-    const idleCutoff = addMinutes(session.lastSeenAt, this.env.SESSION_IDLE_TIMEOUT_MINUTES);
-    if (idleCutoff <= new Date()) {
-      await this.revokeSession(session.id, 'idle_timeout');
-      throw new UnauthorisedError('SESSION_IDLE_TIMEOUT', 'You were signed out due to inactivity.');
     }
 
     const [user] = await this.db
@@ -317,7 +397,7 @@ export class AuthService {
       user.roleId,
       user.tokenVersion,
       user.mustChangePassword,
-      true,
+      session.rememberMe,
     );
 
     // Link the chain and close the old link.
@@ -375,12 +455,20 @@ export class AuthService {
     await this.cache.invalidateTags(CacheTag.user(userId));
   }
 
-  /** Marks the session as active — feeds the idle-timeout calculation. */
-  async touchSession(sessionId: string): Promise<void> {
-    await this.db
+  /**
+   * Marks the session as active (last-seen telemetry) and returns its real
+   * absolute expiry, so callers can show the user an accurate "signed in
+   * until" time instead of guessing from a fixed constant.
+   */
+  async touchSession(sessionId: string): Promise<Date> {
+    const [row] = await this.db
       .update(schema.sessions)
       .set({ lastSeenAt: new Date() })
-      .where(eq(schema.sessions.id, sessionId));
+      .where(eq(schema.sessions.id, sessionId))
+      .returning({ expiresAt: schema.sessions.expiresAt });
+
+    if (!row) throw new UnauthorisedError();
+    return row.expiresAt;
   }
 
   // ── Password reset (§1 Forgot Password) ──────────────────────────────────

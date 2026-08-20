@@ -19,7 +19,7 @@ export const settings = pgTable(
   'settings',
   {
     id: primaryId(),
-    /** e.g. `notifications.payment_reminder_days`, `session.idle_timeout_minutes`. */
+    /** e.g. `notifications.payment_reminder_days`, `session.default_ttl_minutes`. */
     key: varchar('key', { length: 120 }).notNull(),
     value: jsonb('value').notNull(),
     category: varchar('category', { length: 40 }).notNull().default('general'),

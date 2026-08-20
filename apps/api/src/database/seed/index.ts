@@ -287,23 +287,26 @@ async function seedSettings(db: Database): Promise<void> {
     isEditable?: boolean;
   }> = [
     {
-      key: 'session.idle_timeout_minutes',
-      value: env.SESSION_IDLE_TIMEOUT_MINUTES,
+      key: 'session.default_ttl_minutes',
+      value: env.SESSION_DEFAULT_TTL_MINUTES,
       category: 'security',
-      label: 'Session idle timeout (minutes)',
-      description: 'Users are signed out after this much inactivity (§1).',
+      label: 'Default session length (minutes)',
+      description:
+        'How long a login lasts without "remember me" checked. Rolling — refreshed on activity, not an inactivity timer (§1). Takes effect within a minute, no redeploy needed. Must stay between 5 and 10,080 (7 days).',
     },
     {
       key: 'security.login_max_attempts',
       value: env.LOGIN_MAX_ATTEMPTS,
       category: 'security',
       label: 'Failed login attempts before lockout',
+      description: 'Takes effect within a minute, no redeploy needed. Must stay between 3 and 20.',
     },
     {
       key: 'security.lockout_minutes',
       value: env.LOGIN_LOCKOUT_MINUTES,
       category: 'security',
       label: 'Lockout duration (minutes)',
+      description: 'Takes effect within a minute, no redeploy needed. Must stay between 1 and 1440.',
     },
     {
       key: 'notifications.payment_reminder_days',
@@ -473,6 +476,24 @@ async function seedSettings(db: Database): Promise<void> {
       description: 'Comma-separated addresses. Leave blank to disable delivery.',
     },
   ];
+
+  // `session.idle_timeout_minutes` was renamed to `session.default_ttl_minutes`
+  // when the setting became live-read instead of decorative. On a database
+  // seeded before that rename, carry over any value an operator had already
+  // set rather than silently discarding it and reseeding the env default.
+  await db
+    .update(schema.settings)
+    .set({
+      key: 'session.default_ttl_minutes',
+      label: 'Default session length (minutes)',
+      description:
+        'How long a login lasts without "remember me" checked. Rolling — refreshed on activity, not an inactivity timer (§1). Takes effect within a minute, no redeploy needed. Must stay between 5 and 10,080 (7 days).',
+    })
+    .where(
+      sql`${schema.settings.key} = 'session.idle_timeout_minutes' and not exists (
+        select 1 from ${schema.settings} s2 where s2.key = 'session.default_ttl_minutes'
+      )`,
+    );
 
   await db
     .insert(schema.settings)

@@ -139,6 +139,12 @@ export const sessions = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
+    /**
+     * Carried from the original login and re-propagated on every rotation.
+     * "Remember me" sessions are exempt from the idle timeout — they live
+     * until `expiresAt` (7 days) regardless of gaps between requests.
+     */
+    rememberMe: boolean('remember_me').notNull().default(false),
     revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
     revokedReason: varchar('revoked_reason', { length: 60 }),
     createdAt: createdAt(),

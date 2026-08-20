@@ -86,7 +86,10 @@ export const envSchema = z
     JWT_REFRESH_SECRET: z.string().min(32, 'Use at least 32 characters'),
     JWT_ACCESS_TTL: z.string().default('15m'),
     JWT_REFRESH_TTL: z.string().default('7d'),
-    SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+    // Rolling session length for logins that did NOT check "remember me".
+    // Renewed on every refresh, same as JWT_REFRESH_TTL is for remembered
+    // sessions — this is not a separate inactivity check, just a shorter cap.
+    SESSION_DEFAULT_TTL_MINUTES: z.coerce.number().int().min(5).max(10_080).default(2_880),
     LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
     LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
     COOKIE_DOMAIN: z.string().default('localhost'),

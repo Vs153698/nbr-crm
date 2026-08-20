@@ -161,8 +161,7 @@ export class AuthController {
   @Get('me')
   @AllowDuringPasswordChange()
   async me(@CurrentUser() actor: Actor): Promise<SessionUser> {
-    await this.auth.touchSession(actor.sessionId);
-    const expiresAt = new Date(Date.now() + this.env.SESSION_IDLE_TIMEOUT_MINUTES * 60_000);
+    const expiresAt = await this.auth.touchSession(actor.sessionId);
     return this.auth.buildSessionUser(actor.userId, expiresAt);
   }
 }
