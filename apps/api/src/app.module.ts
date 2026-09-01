@@ -26,6 +26,7 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { RedisModule } from './redis/redis.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 /**
  * Root module.
@@ -45,6 +46,7 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     AuditModule,
     MailModule,
+    WhatsAppModule,
     AuthModule,
     HealthModule,
     TimelineModule,

@@ -1218,6 +1218,26 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     body: zodSchema(whatsappLinkSchema, 'WhatsappLink'),
     response: { type: 'object', properties: { url: { type: 'string', format: 'uri' }, body: { type: 'string' } } },
   },
+  'CommunicationsController.whatsappStatus': {
+    tag: 'Communication',
+    summary: 'Whether WhatsApp sending is configured',
+    description:
+      'True once Settings → WhatsApp holds a phone number ID and access token and is switched ' +
+      'on. Drives whether the composer offers an automated send or only the manual link.',
+    response: { type: 'object', properties: { configured: { type: 'boolean' } } },
+  },
+  'CommunicationsController.sendWhatsApp': {
+    tag: 'Communication',
+    summary: 'Send a WhatsApp message via the Cloud API',
+    description:
+      'Sends through the customer\'s own WhatsApp Business account rather than a click-to-chat ' +
+      'handoff. Only reachable once Settings → WhatsApp is configured — see the WhatsApp service ' +
+      'for why a business-initiated send can still fail outside the 24-hour session window.',
+    body: zodSchema(whatsappLinkSchema, 'SendWhatsApp'),
+    response: { type: 'object', properties: { communicationId: UUID, status: { type: 'string' } } },
+    audited: 'communication.whatsapp_sent',
+    notes: 'Blocked when the applicant carries the Do Not Contact flag.',
+  },
   'CommunicationsController.markSent': {
     tag: 'Communication',
     summary: 'Confirm a WhatsApp message was sent',
@@ -1577,12 +1597,21 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     description: 'Operational settings grouped by category.',
     response: arrayOf({
       category: { type: 'string' },
-      settings: arrayOf({ key: { type: 'string' }, value: {}, label: { type: 'string', nullable: true }, isEditable: { type: 'boolean' } }),
+      settings: arrayOf({
+        key: { type: 'string' },
+        value: {},
+        label: { type: 'string', nullable: true },
+        isEditable: { type: 'boolean' },
+        isSecret: { type: 'boolean' },
+      }),
     }),
     notes:
       'Settings that mirror an environment variable or a statutory limit are returned with ' +
       '`isEditable: false` — changing them from the UI would either create a value the ' +
-      'process never reads, or quietly weaken a legal obligation.',
+      'process never reads, or quietly weaken a legal obligation. A setting with `isSecret: ' +
+      'true` never carries its real value here once one is saved — the `value` field is a ' +
+      'fixed placeholder, and submitting that placeholder back through `PUT /settings/:key` is ' +
+      'rejected rather than accepted as a no-op write.',
   },
   'SettingsController.update': {
     tag: 'Administration',
@@ -1624,6 +1653,27 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
       'only where they are non-empty, so a blank field keeps the deployed value.',
     errors: {
       '422': { description: 'SMTP verification or the send itself failed; the reason is returned.' },
+    },
+  },
+  'SettingsController.testWhatsapp': {
+    tag: 'Administration',
+    summary: 'Test the WhatsApp connection',
+    description:
+      'Calls Meta with the currently saved phone number ID and access token and returns which ' +
+      'number and business name they resolve to.',
+    response: {
+      type: 'object',
+      properties: {
+        displayPhoneNumber: { type: 'string' },
+        verifiedName: { type: 'string' },
+      },
+    },
+    notes:
+      'A real call rather than a shape check: a well-formed token can still be expired, ' +
+      'revoked, or scoped to a different phone number, and that should surface here rather ' +
+      'than on the first applicant-facing send.',
+    errors: {
+      '422': { description: 'The token, phone number ID, or Meta itself rejected the request.' },
     },
   },
   'SettingsController.upsertCategory': {

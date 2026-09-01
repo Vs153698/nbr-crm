@@ -8,6 +8,17 @@ import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
 import { CacheService, CacheTag } from '../redis/cache.service';
 
+/**
+ * Stands in for a secret setting's real value once it leaves the server.
+ *
+ * Never a value the UI is meant to submit back: `updateSetting` refuses it
+ * outright for a secret key (see below), so the only way to change one is to
+ * type an actual new value. Typing nothing and saving something else on the
+ * same screen never touches it — the admin page only sends the keys that were
+ * actually edited.
+ */
+export const MASKED_SECRET_VALUE = '••••••••';
+
 export interface AuditLogRow {
   readonly id: string;
   readonly action: string;
@@ -233,10 +244,15 @@ export class GovernanceService {
       category,
       settings: items.map((item) => ({
         key: item.key,
-        value: item.value,
+        // A credential never leaves the server once it has a value — only
+        // whether one is set. `''` still means "nothing saved yet", exactly as
+        // it does for every other setting, so the admin screen needs no
+        // special case to render an unconfigured secret correctly.
+        value: item.isSecret && item.value ? MASKED_SECRET_VALUE : item.value,
         label: item.label,
         description: item.description,
         isEditable: item.isEditable,
+        isSecret: item.isSecret,
         updatedAt: item.updatedAt.toISOString(),
       })),
     }));
@@ -259,6 +275,18 @@ export class GovernanceService {
     if (!existing.isEditable) {
       throw new ForbiddenError(
         'This setting is controlled by the deployment configuration and cannot be changed here.',
+      );
+    }
+
+    // The masked placeholder is what `listSettings` hands back in place of a
+    // real value — it is never a legitimate new value for one. Seeing it here
+    // means something read the masked response and sent it straight back,
+    // which would otherwise overwrite a real secret with eight bullet
+    // characters. Refusing it is what protects that, not what enables typing
+    // a real value: an actual new token is never equal to this string.
+    if (existing.isSecret && value === MASKED_SECRET_VALUE) {
+      throw new ForbiddenError(
+        'That value is a placeholder, not the real setting. Type the actual value to change it.',
       );
     }
 

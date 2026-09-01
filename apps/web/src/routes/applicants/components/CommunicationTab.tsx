@@ -353,7 +353,19 @@ export function CommunicationTab({
   );
 }
 
-/** M-08 WhatsApp click-to-chat with an explicit "mark as sent". */
+/**
+ * M-08 WhatsApp — sent automatically through the customer's own Meta Business
+ * account once Settings → WhatsApp is configured, with the original
+ * click-to-chat handoff kept as a manual fallback rather than replaced.
+ *
+ * Two independent things decide what an operator sees: whether the Cloud API
+ * is configured at all (`status.configured`, checked here so the dialog does
+ * not need `settings:view` just to know which mode to offer), and, on this
+ * screen, whether they have chosen the manual path anyway — e.g. an automated
+ * send is refused because it is outside the applicant's 24-hour session
+ * window (see the WhatsApp service for what that means) and the message still
+ * needs to go out today.
+ */
 function WhatsAppDialog({
   recordId,
   initialTemplateCode,
@@ -372,6 +384,15 @@ function WhatsAppDialog({
   const [link, setLink] = useState<{ communicationId: string; link: string; body: string } | null>(
     null,
   );
+  const [sentAuto, setSentAuto] = useState(false);
+  /** Explicitly chosen even though the API is configured — see the doc above. */
+  const [manualMode, setManualMode] = useState(false);
+
+  const { data: status } = useQuery({
+    queryKey: ['whatsapp-status'],
+    queryFn: ({ signal }) => api.get<{ configured: boolean }>('/communications/whatsapp-status', undefined, signal),
+    staleTime: 60_000,
+  });
 
   const { data: preview } = useQuery({
     queryKey: ['comm-preview', recordId, templateCode, 'whatsapp'],
@@ -381,6 +402,27 @@ function WhatsAppDialog({
         { recordId, templateCode, channel: TEMPLATE_CHANNEL.WHATSAPP },
         signal,
       ),
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ communicationId: string; status: string }>('/communications/whatsapp', {
+        recordId,
+        templateCode,
+      }),
+    onSuccess: () => {
+      // Queued, not delivered — the real outcome lands in the message history
+      // a moment later, same as an email send. Retry lives there too if Meta
+      // rejects it (most often for a business-initiated message sent outside
+      // the 24-hour session window, which the history shows as the reason).
+      toast.success('WhatsApp queued', {
+        description: 'Check the message history below shortly for delivery status.',
+      });
+      setSentAuto(true);
+      onSent();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not queue the message'),
   });
 
   const linkMutation = useMutation({
@@ -407,6 +449,8 @@ function WhatsAppDialog({
     },
   });
 
+  const useManual = manualMode || status?.configured === false;
+
   return (
     <Dialog
       open
@@ -414,7 +458,11 @@ function WhatsAppDialog({
       title="Send WhatsApp"
       description={preview?.to ? `To ${preview.to}` : undefined}
       footer={
-        link ? (
+        sentAuto ? (
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        ) : link ? (
           <>
             <Button variant="ghost" onClick={onClose}>
               Not sent
@@ -433,14 +481,25 @@ function WhatsAppDialog({
             <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              variant="whatsapp"
-              icon={Icons.MessageCircle}
-              loading={linkMutation.isPending}
-              onClick={() => linkMutation.mutate()}
-            >
-              Open WhatsApp
-            </Button>
+            {useManual ? (
+              <Button
+                variant="whatsapp"
+                icon={Icons.MessageCircle}
+                loading={linkMutation.isPending}
+                onClick={() => linkMutation.mutate()}
+              >
+                Open WhatsApp
+              </Button>
+            ) : (
+              <Button
+                variant="whatsapp"
+                icon={Icons.MessageCircle}
+                loading={sendMutation.isPending}
+                onClick={() => sendMutation.mutate()}
+              >
+                Send WhatsApp
+              </Button>
+            )}
           </>
         )
       }
@@ -449,6 +508,7 @@ function WhatsAppDialog({
         <Select
           label="Template"
           value={templateCode}
+          disabled={sentAuto}
           onChange={(event) => {
             setTemplateCode(event.target.value);
             setLink(null);
@@ -463,16 +523,45 @@ function WhatsAppDialog({
           </pre>
         </div>
 
-        {link ? (
+        {sentAuto ? (
+          <p className="flex items-start gap-1.5 rounded-lg bg-ok-tint p-2.5 text-[11px] text-ok">
+            <Icons.Check size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+            Queued through your WhatsApp Business number. The history below will show sent, or the
+            reason it failed, in a moment.
+          </p>
+        ) : link ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2.5 text-[11px] text-warn">
             <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
             WhatsApp opened in a new tab with the message prefilled. Confirm below once you've
             actually sent it — the history records what you confirm, not what we assume.
           </p>
+        ) : useManual ? (
+          <p className="flex items-start gap-1.5 text-[11px] text-ink-3">
+            <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+            {status?.configured
+              ? 'Sending manually from your own WhatsApp instead of the connected business number.'
+              : 'Connect a WhatsApp Business number under Settings → WhatsApp to send automatically.'}
+            {status?.configured ? (
+              <button
+                type="button"
+                onClick={() => setManualMode(false)}
+                className="ml-1 font-semibold text-brand hover:underline"
+              >
+                Use the connected number instead
+              </button>
+            ) : null}
+          </p>
         ) : (
           <p className="flex items-start gap-1.5 text-[11px] text-ink-3">
             <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
-            Phase 1–2 uses click-to-chat. WhatsApp Business API automation is a future phase.
+            Sends now through your connected WhatsApp Business number.{' '}
+            <button
+              type="button"
+              onClick={() => setManualMode(true)}
+              className="font-semibold text-brand hover:underline"
+            >
+              Send manually instead
+            </button>
           </p>
         )}
       </div>

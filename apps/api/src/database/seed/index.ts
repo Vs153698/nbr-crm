@@ -285,6 +285,8 @@ async function seedSettings(db: Database): Promise<void> {
     label: string;
     description?: string;
     isEditable?: boolean;
+    /** A credential, not a preference — masked by `listSettings()` and shown as a password field. */
+    isSecret?: boolean;
   }> = [
     {
       key: 'session.default_ttl_minutes',
@@ -425,6 +427,7 @@ async function seedSettings(db: Database): Promise<void> {
       label: 'Shared secret',
       description:
         'The same secret configured on the website. Signs every request in both directions.',
+      isSecret: true,
     },
     // ── SMTP ────────────────────────────────────────────────────────────────
     // Empty means "use the values the process booted with". Filling these in
@@ -449,9 +452,53 @@ async function seedSettings(db: Database): Promise<void> {
       label: 'Use TLS on connect — type true for port 465, false for 587',
     },
     { key: 'mail.smtp_user', value: '', category: 'mail', label: 'SMTP username' },
-    { key: 'mail.smtp_password', value: '', category: 'mail', label: 'SMTP password' },
+    {
+      key: 'mail.smtp_password',
+      value: '',
+      category: 'mail',
+      label: 'SMTP password',
+      isSecret: true,
+    },
     { key: 'mail.from_name', value: '', category: 'mail', label: 'From name' },
     { key: 'mail.from_address', value: '', category: 'mail', label: 'From address' },
+    // ── WhatsApp Business (Cloud API) ───────────────────────────────────────
+    // Nothing here has an environment fallback — this is the one integration
+    // meant to be entirely self-service. The customer holds their own Meta
+    // Business account; these four fields are everything the Cloud API needs
+    // from it, and saving them is what turns sending on. No redeploy, no file
+    // anyone has to touch on a server they may not have access to.
+    {
+      key: 'whatsapp.enabled',
+      value: false,
+      category: 'whatsapp',
+      label: 'Send WhatsApp messages automatically',
+      description:
+        'Off by default. Turn on once the fields below are filled in and Test connection succeeds.',
+    },
+    {
+      key: 'whatsapp.phone_number_id',
+      value: '',
+      category: 'whatsapp',
+      label: 'Phone number ID',
+      description:
+        'From Meta Business Manager → WhatsApp → API Setup. Identifies which of your numbers sends the message — not the phone number itself.',
+    },
+    {
+      key: 'whatsapp.access_token',
+      value: '',
+      category: 'whatsapp',
+      label: 'Access token',
+      description:
+        'A permanent token from a system user with whatsapp_business_messaging permission. A temporary token from the quickstart page expires in 24 hours and stops sending without warning.',
+      isSecret: true,
+    },
+    {
+      key: 'whatsapp.api_version',
+      value: 'v22.0',
+      category: 'whatsapp',
+      label: 'Graph API version',
+      description: 'Leave this unless Meta asks you to change it.',
+    },
     // ── Sales ───────────────────────────────────────────────────────────────
     {
       key: 'sales.daily_report_enabled',
@@ -505,6 +552,7 @@ async function seedSettings(db: Database): Promise<void> {
         label: s.label,
         description: s.description ?? null,
         isEditable: s.isEditable ?? true,
+        isSecret: s.isSecret ?? false,
       })),
     )
     // Settings are operator-owned once set — only newly introduced keys land.

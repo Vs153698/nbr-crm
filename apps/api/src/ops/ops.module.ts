@@ -159,6 +159,21 @@ class CommunicationsController {
     return this.comms.preview(uuidSchema.parse(recordId), templateCode, channel);
   }
 
+  /**
+   * Whether WhatsApp is configured — what the composer uses to decide between
+   * an automated send and the manual click-to-chat fallback.
+   *
+   * A static path, declared before `:id` for the same reason `stats` and
+   * `departments` are on the employees controller: Fastify prefers a literal
+   * segment, but ordering it here keeps the routes readable in the order they
+   * are actually matched.
+   */
+  @Get('whatsapp-status')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async whatsappStatus() {
+    return this.comms.whatsappStatus();
+  }
+
   /** Queued, so the request returns before SMTP is touched (§7 async budget). */
   @Post('email')
   @HttpCode(202)
@@ -207,6 +222,24 @@ class CommunicationsController {
     body: { recordId: string; templateCode: string; bodyOverride?: string },
   ) {
     return this.comms.whatsappLink(body);
+  }
+
+  /**
+   * Send through the customer's own WhatsApp Business account.
+   *
+   * Same request body as `whatsapp-link` — the two are alternatives, not a
+   * pair — so this is only reachable at all once Settings → WhatsApp is
+   * configured. Queued the same way email is (§7 async budget): the row is
+   * written and this answers before Meta is ever called.
+   */
+  @Post('whatsapp')
+  @HttpCode(202)
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async sendWhatsApp(
+    @Body(zodBody(whatsappLinkSchema))
+    body: { recordId: string; templateCode: string; bodyOverride?: string },
+  ) {
+    return this.comms.sendWhatsApp(body);
   }
 
   /** Staff confirm they actually sent it — the history stays honest. */
@@ -445,6 +478,7 @@ class NotificationsController {
     WebsiteBlacklistController,
     NotificationsController,
   ],
+  // WhatsAppService is not listed here — it comes from the global WhatsAppModule.
   providers: [TasksService, CommunicationsService, BlacklistService, NotificationsService],
   exports: [TasksService, CommunicationsService, BlacklistService, NotificationsService],
 })

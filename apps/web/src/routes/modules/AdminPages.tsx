@@ -15,7 +15,7 @@ import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, EmptyState, QueryError } from '@/components/ui/Card';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
-import { Input, Select, Textarea } from '@/components/ui/Field';
+import { Checkbox, Input, Select, Textarea } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
@@ -491,6 +491,8 @@ interface SettingGroup {
     label: string | null;
     description: string | null;
     isEditable: boolean;
+    /** The server never sends the real value once one is saved — see the hint text this drives. */
+    isSecret: boolean;
     updatedAt: string;
   }>;
 }
@@ -542,7 +544,19 @@ export function SettingsPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {data?.map((group) => (
+        {/*
+          WhatsApp gets its own purpose-built card below instead of this
+          generic row-of-inputs renderer, for two reasons: the "on/off" switch
+          here is a plain text field with no boolean handling at all — typing
+          "true" saves the literal string `"true"`, which is truthy forever
+          even once someone types "false" into it — and a raw text input is
+          the wrong control for a credential regardless. Filtered out here
+          rather than skipped by category name inside the loop, so it is
+          obviously deliberate at the call site.
+        */}
+        {data
+          ?.filter((group) => group.category !== 'whatsapp')
+          .map((group) => (
           <Card key={group.category}>
             <CardHeader
               title={humanise(group.category)}
@@ -558,15 +572,32 @@ export function SettingsPage() {
             />
             <div className="space-y-3">
               {group.settings.map((setting) => {
-                const current = JSON.stringify(setting.value).replace(/^"|"$/g, '');
+                // A secret's real value never reaches the browser once one is
+                // saved — the server hands back a fixed placeholder instead
+                // (see `MASKED_SECRET_VALUE` server-side). Rendered as empty
+                // here rather than as that placeholder, so leaving the field
+                // untouched cannot be confused with "type the placeholder back
+                // in to keep it" and typing a real replacement always works.
+                const masked = setting.isSecret && Boolean(setting.value);
+                const current = masked
+                  ? ''
+                  : JSON.stringify(setting.value).replace(/^"|"$/g, '');
                 const draft = drafts[setting.key];
                 const dirty = draft !== undefined && draft !== current;
 
                 return (
                   <div key={setting.key}>
                     <Input
+                      type={setting.isSecret ? 'password' : 'text'}
                       label={setting.label ?? setting.key}
-                      hint={setting.description ?? undefined}
+                      placeholder={masked ? '•••••••• (saved — leave blank to keep it)' : undefined}
+                      hint={
+                        setting.isSecret
+                          ? [setting.description, 'Leave blank to keep the saved value.']
+                              .filter(Boolean)
+                              .join(' ')
+                          : (setting.description ?? undefined)
+                      }
                       value={draft ?? current}
                       disabled={!setting.isEditable || !can('settings:manage')}
                       onChange={(event) =>
@@ -627,9 +658,197 @@ export function SettingsPage() {
           </Card>
         ))}
 
+        <WhatsAppSettingsCard settings={data?.find((g) => g.category === 'whatsapp')?.settings ?? []} />
         <WebsiteCatalogueSync />
       </div>
     </div>
+  );
+}
+
+/**
+ * WhatsApp Business (Cloud API) — the customer's own Meta account, wired up
+ * from four fields instead of an environment variable.
+ *
+ * Deliberately its own card rather than a row in the generic settings
+ * renderer above: the enabled switch is a real boolean here (a `Checkbox`,
+ * not text typed into an `Input` and hopefully parsed as one), the access
+ * token is never shown once saved, and "Test connection" makes a real call to
+ * Meta rather than only checking the fields are non-empty.
+ */
+function WhatsAppSettingsCard({
+  settings,
+}: {
+  settings: SettingGroup['settings'];
+}) {
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const canManage = can('settings:manage');
+
+  const byKey = (key: string) => settings.find((s) => s.key === key);
+  const enabledSetting = byKey('whatsapp.enabled');
+  const phoneNumberIdSetting = byKey('whatsapp.phone_number_id');
+  const accessTokenSetting = byKey('whatsapp.access_token');
+  const apiVersionSetting = byKey('whatsapp.api_version');
+
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [phoneNumberId, setPhoneNumberId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState(''); // Never prefilled from a saved value.
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ displayPhoneNumber: string; verifiedName: string } | null>(
+    null,
+  );
+
+  const effectiveEnabled = enabled ?? enabledSetting?.value === true;
+  const effectivePhoneNumberId = phoneNumberId ?? String(phoneNumberIdSetting?.value ?? '');
+  const effectiveApiVersion = apiVersion ?? String(apiVersionSetting?.value ?? 'v22.0');
+  const hasAccessToken = Boolean(accessTokenSetting?.value);
+
+  const dirty =
+    enabled !== null ||
+    phoneNumberId !== null ||
+    accessToken.trim().length > 0 ||
+    apiVersion !== null;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      // Only the fields actually touched are written — leaving the access
+      // token blank must never risk overwriting a saved one with nothing.
+      const writes: Array<[string, unknown]> = [];
+      if (enabled !== null) writes.push(['whatsapp.enabled', enabled]);
+      if (phoneNumberId !== null) writes.push(['whatsapp.phone_number_id', phoneNumberId.trim()]);
+      if (accessToken.trim()) writes.push(['whatsapp.access_token', accessToken.trim()]);
+      if (apiVersion !== null) writes.push(['whatsapp.api_version', apiVersion.trim()]);
+
+      for (const [key, value] of writes) {
+        await api.put(`/settings/${key}`, { value });
+      }
+    },
+    onSuccess: () => {
+      toast.success('WhatsApp settings saved');
+      setEnabled(null);
+      setPhoneNumberId(null);
+      setAccessToken('');
+      setApiVersion(null);
+      setTestResult(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not save WhatsApp settings'),
+  });
+
+  const testMutation = useMutation({
+    mutationFn: () => api.post<{ displayPhoneNumber: string; verifiedName: string }>('/settings/whatsapp/test'),
+    onSuccess: (result) => {
+      setTestResult(result);
+      toast.success('Connected', { description: `Reaches ${result.displayPhoneNumber} (${result.verifiedName})` });
+    },
+    onError: (error: unknown) => {
+      setTestResult(null);
+      toast.error(error instanceof ApiError ? error.message : 'The WhatsApp test failed');
+    },
+  });
+
+  if (!enabledSetting) return null; // Not seeded yet — nothing to render.
+
+  return (
+    <Card>
+      <CardHeader
+        title="WhatsApp Business"
+        subtitle="Configured from your own Meta Business account. Nothing here touches a server file."
+        icon={Icons.MessageCircle}
+      />
+
+      <div className="space-y-3">
+        <Checkbox
+          label="Send WhatsApp messages automatically"
+          hint="Off by default. Turn on once Test connection succeeds below."
+          checked={effectiveEnabled}
+          disabled={!canManage}
+          onChange={(event) => setEnabled(event.target.checked)}
+        />
+
+        <Input
+          label="Phone number ID"
+          hint="Meta Business Manager → WhatsApp → API Setup. Not the phone number itself — the ID next to it."
+          value={effectivePhoneNumberId}
+          disabled={!canManage}
+          onChange={(event) => setPhoneNumberId(event.target.value)}
+        />
+
+        <Input
+          type="password"
+          label="Access token"
+          placeholder={hasAccessToken ? '•••••••• (saved — leave blank to keep it)' : 'Paste the token from Meta'}
+          hint="A permanent token from a system user, not the 24-hour quickstart token — that one expires and sending stops without warning."
+          value={accessToken}
+          disabled={!canManage}
+          onChange={(event) => setAccessToken(event.target.value)}
+        />
+
+        <Input
+          label="Graph API version"
+          hint="Leave this unless Meta asks you to change it."
+          value={effectiveApiVersion}
+          disabled={!canManage}
+          onChange={(event) => setApiVersion(event.target.value)}
+        />
+
+        {testResult ? (
+          <div className="flex items-start gap-2 rounded-lg bg-ok-tint p-2.5 text-[11px] text-ok">
+            <Icons.Check size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+            <span>
+              Connected to <b>{testResult.displayPhoneNumber}</b> — {testResult.verifiedName}
+            </span>
+          </div>
+        ) : null}
+
+        {canManage ? (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={testMutation.isPending}
+              onClick={() => testMutation.mutate()}
+            >
+              Test connection
+            </Button>
+            {dirty ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setEnabled(null);
+                    setPhoneNumberId(null);
+                    setAccessToken('');
+                    setApiVersion(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-ink-3">
+          <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+          Messages send instantly to anyone who has written to this number in the last 24 hours.
+          Outside that window — most first-time outreach — WhatsApp requires the message to be a
+          template pre-approved in Meta Business Manager; a plain send is rejected with the reason
+          shown in the message history. The existing manual "Open WhatsApp" option in an
+          applicant&apos;s Communication tab always still works as a fallback.
+        </p>
+      </div>
+    </Card>
   );
 }
 

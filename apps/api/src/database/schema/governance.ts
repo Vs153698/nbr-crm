@@ -27,6 +27,18 @@ export const settings = pgTable(
     description: text('description'),
     /** Non-editable settings are shown read-only (env-controlled values). */
     isEditable: boolean('is_editable').notNull().default(true),
+    /**
+     * A credential rather than a preference — an SMTP password, a WhatsApp
+     * access token, a webhook shared secret.
+     *
+     * `listSettings()` masks these before they leave the server, and the admin
+     * screen renders them as password fields instead of plain text. Without
+     * this flag, anyone holding `settings:view` could read a live access token
+     * straight out of the response body — a materially worse exposure than the
+     * setting screen was built to have, once a setting's value is itself
+     * something that grants access rather than something that configures it.
+     */
+    isSecret: boolean('is_secret').notNull().default(false),
     updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),

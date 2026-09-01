@@ -43,6 +43,7 @@ import {
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
 import { ImportedRecordsService } from '../integrations/imported-records.service';
 import { MailService } from '../mail/mail.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { ExportsService } from '../reports/exports.service';
 import { ReportsService } from '../reports/reports.service';
 import { GovernanceService } from './governance.service';
@@ -184,6 +185,7 @@ class SettingsController {
   constructor(
     private readonly governance: GovernanceService,
     private readonly mail: MailService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -205,6 +207,18 @@ class SettingsController {
         smtp: [error instanceof Error ? error.message : 'The SMTP test failed.'],
       });
     }
+  }
+
+  /**
+   * Confirm the saved WhatsApp credentials actually reach Meta, and which
+   * number they reach — so an operator knows the integration works before the
+   * first applicant-facing send tests it for them.
+   */
+  @Post('whatsapp/test')
+  @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async testWhatsapp() {
+    return this.whatsapp.testConnection();
   }
 
   @Get()

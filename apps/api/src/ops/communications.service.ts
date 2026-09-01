@@ -42,6 +42,7 @@ import { StorageService } from '../storage/storage.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 import { TasksService } from './tasks.service';
+import { WhatsAppSendError, WhatsAppService } from '../whatsapp/whatsapp.service';
 
 export interface RenderedMessage {
   readonly subject: string | null;
@@ -90,6 +91,7 @@ export class CommunicationsService {
     private readonly tasks: TasksService,
     // Signs the per-attachment links on the message detail view.
     private readonly storage: StorageService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -475,6 +477,14 @@ export class CommunicationsService {
       .set({ status: COMMUNICATION_STATUS.QUEUED, failureReason: null })
       .where(eq(schema.communications.id, communicationId));
 
+    // A WhatsApp message queued by `sendWhatsApp` (rather than the manual
+    // click-to-chat flow, which is never in `failed` status to begin with —
+    // see its own comment) goes back through the Cloud API, not SMTP.
+    if (communication.channel === COMMUNICATION_CHANNEL.WHATSAPP) {
+      void this.deliverWhatsApp(communicationId, communication.toAddress.replace(/^\+/, ''), communication.body);
+      return { status: COMMUNICATION_STATUS.QUEUED };
+    }
+
     // Rebuilt rather than reused, because the HTML was never stored — only the
     // text was. Without this a retry would quietly go out as plain text and
     // look nothing like the message the first attempt tried to send.
@@ -554,6 +564,134 @@ export class CommunicationsService {
       body: rendered,
       to: e164,
     };
+  }
+
+  /** Whether the Cloud API is configured — the switch between the two dialogs on the tab. */
+  async whatsappStatus(): Promise<{ configured: boolean }> {
+    return this.whatsapp.status();
+  }
+
+  /**
+   * Send a WhatsApp message directly, through the customer's own Meta Business
+   * account, instead of the click-to-chat handoff.
+   *
+   * Queued the same way `sendEmail` is: the row is written and the timeline and
+   * audit entries recorded immediately, then the actual call to Meta happens
+   * unawaited so the request answers in milliseconds rather than waiting on a
+   * third party. `deliverWhatsApp` below is what turns `queued` into `sent` or
+   * `failed`, same division of labour as the email path.
+   */
+  async sendWhatsApp(input: {
+    recordId: string;
+    templateCode: string;
+    bodyOverride?: string;
+  }): Promise<{ communicationId: string; status: string }> {
+    const actor = requireActor();
+    const { applicantId, whatsapp, doNotContact } = await this.buildContext(input.recordId);
+
+    if (doNotContact) {
+      throw new ForbiddenError('This applicant is flagged Do Not Contact.');
+    }
+    if (!whatsapp) {
+      throw new ValidationError({ _: ['This applicant has no WhatsApp or mobile number on file.'] });
+    }
+
+    const rendered =
+      input.bodyOverride ??
+      (await this.preview(input.recordId, input.templateCode, TEMPLATE_CHANNEL.WHATSAPP)).body;
+
+    const e164 = toE164(whatsapp);
+    if (!e164) {
+      throw new ValidationError({ _: ['That mobile number is not in a format WhatsApp accepts.'] });
+    }
+
+    const [communication] = await this.db
+      .insert(schema.communications)
+      .values({
+        applicantId,
+        recordId: input.recordId,
+        channel: COMMUNICATION_CHANNEL.WHATSAPP,
+        direction: 'outbound',
+        templateCode: input.templateCode,
+        toAddress: e164,
+        body: rendered,
+        status: COMMUNICATION_STATUS.QUEUED,
+        queuedAt: new Date(),
+        sentByUserId: actor.userId,
+        sentByName: actor.fullName,
+      })
+      .returning({ id: schema.communications.id });
+
+    const communicationId = communication!.id;
+
+    // Meta's `to` field is digits only — the leading `+` from E.164 is rejected
+    // outright rather than tolerated.
+    void this.deliverWhatsApp(communicationId, e164.replace(/^\+/, ''), rendered);
+
+    await this.timeline.write({
+      applicantId,
+      recordId: input.recordId,
+      eventType: TIMELINE_EVENT.WHATSAPP_SENT,
+      summary: `WhatsApp queued — ${input.templateCode}`,
+      meta: { to: e164, templateCode: input.templateCode },
+    });
+
+    await this.audit.record({
+      action: AUDIT.WHATSAPP_SENT,
+      entityType: 'communication',
+      entityId: communicationId,
+      entityLabel: input.templateCode,
+      meta: { to: e164 },
+    });
+
+    return { communicationId, status: COMMUNICATION_STATUS.QUEUED };
+  }
+
+  /**
+   * Call the Cloud API and record what actually happened.
+   *
+   * Errors are caught and written to the row rather than thrown, mirroring
+   * `deliver` for email: the caller has already been answered, and a failed
+   * send must show up in the communication history, not only in a log file.
+   * The one case worth telling apart in the stored reason is the 24-hour
+   * session window — see `WhatsAppService`'s module doc for what that means
+   * and why retrying the same call cannot fix it.
+   */
+  private async deliverWhatsApp(communicationId: string, to: string, body: string): Promise<void> {
+    try {
+      const result = await this.whatsapp.sendText(to, body);
+
+      await this.db
+        .update(schema.communications)
+        .set({
+          status: COMMUNICATION_STATUS.SENT,
+          sentAt: new Date(),
+          providerMessageId: result.providerMessageId,
+          attemptCount: sql`${schema.communications.attemptCount} + 1`,
+        })
+        .where(eq(schema.communications.id, communicationId));
+    } catch (error: unknown) {
+      const message =
+        error instanceof WhatsAppSendError
+          ? error.outsideSessionWindow
+            ? `${error.message} (outside the 24-hour window — this applicant needs to message first, or the message needs to be an approved WhatsApp template)`
+            : error.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
+
+      this.logger.error(`WhatsApp ${communicationId} failed: ${message}`);
+
+      await this.db
+        .update(schema.communications)
+        .set({
+          status: COMMUNICATION_STATUS.FAILED,
+          failedAt: new Date(),
+          failureReason: message,
+          attemptCount: sql`${schema.communications.attemptCount} + 1`,
+        })
+        .where(eq(schema.communications.id, communicationId));
+    }
   }
 
   /** Staff confirm the WhatsApp message actually went out. */

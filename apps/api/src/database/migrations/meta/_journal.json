@@ -148,6 +148,13 @@
       "when": 1787222127486,
       "tag": "0020_clammy_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788246076532,
+      "tag": "0021_settings_secret_flag_and_whatsapp",
+      "breakpoints": true
     }
   ]
 }
