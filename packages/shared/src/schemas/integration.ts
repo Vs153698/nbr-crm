@@ -325,6 +325,16 @@ export const nbrWebhookApplicationSchema = z.object({
    */
   processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
 
+  /**
+   * DEV-002. Whether the applicant asked for an adjudicator to attend.
+   *
+   * Carries a ₹1,00,000 fee on the website, so it explains a large part of what
+   * the applicant paid — and it means someone has to be scheduled to attend.
+   * Defaulted to false: an application filed before the question existed did
+   * not request one.
+   */
+  adjudicatorRequested: z.coerce.boolean().default(false),
+
   applicant: z.object({
     fullName: trimmedString(150),
     fatherName: optionalTrimmedString(150),

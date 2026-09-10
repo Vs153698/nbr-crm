@@ -28,6 +28,8 @@ export interface AddRecordInput {
   readonly initialStatus: RecordStatus;
   /** DEV-001. The turnaround this record is worked to. */
   readonly processingType: ProcessingType;
+  /** DEV-002. An adjudicator was requested to attend the attempt. */
+  readonly adjudicatorRequested: boolean;
   readonly internalRemarks?: string | undefined;
   readonly achievement: {
     readonly recordTitle: string;
@@ -162,6 +164,7 @@ export class AddRecordService {
           status: input.initialStatus,
           source: input.source,
           processingType: input.processingType,
+          adjudicatorRequested: input.adjudicatorRequested,
           assignedToUserId: input.assignedToUserId ?? null,
           internalRemarks: input.internalRemarks ?? null,
           createdByUserId: actor.userId,

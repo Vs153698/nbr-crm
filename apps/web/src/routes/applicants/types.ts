@@ -25,6 +25,8 @@ export interface ApplicantRecord {
   source: string;
   /** DEV-001. Standard or priority turnaround. */
   processingType: string;
+  /** DEV-002. An adjudicator was requested to attend. */
+  adjudicatorRequested: boolean;
   applicationDate: string;
   assignedToUserId: string | null;
   paymentStatus: string;

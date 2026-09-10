@@ -3,8 +3,7 @@ import {
   formatINR,
   PAYMENT_MODE,
   PAYMENT_MODE_LABELS,
-  PRIORITY_SURCHARGE,
-  priorityInvoiceLine,
+  invoiceFeeLines,
 } from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -36,6 +35,7 @@ export function PaymentTab({
   recordId,
   applicantId,
   processingType,
+  adjudicatorRequested,
   autoOpen,
   onAutoOpened,
   onSettled,
@@ -44,6 +44,8 @@ export function PaymentTab({
   applicantId: string;
   /** DEV-001. Standard or priority — decides whether a surcharge row shows. */
   processingType?: string | null;
+  /** DEV-002. An adjudicator was requested, which carries a fee. */
+  adjudicatorRequested?: boolean | null;
   autoOpen?: string | null;
   onAutoOpened?: () => void;
   /**
@@ -205,15 +207,20 @@ export function PaymentTab({
         <dl className="rounded-lg border border-line p-3">
           <DetailRow label="Package" value={payment.packageName} />
           <DetailRow label="Amount" value={formatINR(payment.amount)} />
-          {/* DEV-001. Shown as its own row when the amount contains it, so the
-              figure on screen matches the line the invoice will print and
-              nobody has to work out why this record costs ₹500 more. */}
-          {priorityInvoiceLine(processingType, Number(payment.amount)) > 0 ? (
+          {/* DEV-001/DEV-002. Each optional charge as its own row when the
+              amount contains it, so the figures on screen match the lines the
+              invoice will print and nobody has to work out why this record
+              costs ₹1,00,500 more than the package. */}
+          {invoiceFeeLines(
+            { processingType, adjudicatorRequested },
+            Number(payment.amount),
+          ).map((line) => (
             <DetailRow
-              label="…of which Priority Processing"
-              value={formatINR(String(PRIORITY_SURCHARGE))}
+              key={line.label}
+              label={`…of which ${line.label}`}
+              value={formatINR(String(line.amount))}
             />
-          ) : null}
+          ))}
           <DetailRow label="Discount" value={`− ${formatINR(payment.discount)}`} />
           <DetailRow label="Taxable value" value={formatINR(payment.taxableValue)} />
           <DetailRow label={`GST @ ${payment.gstPercent}%`} value={formatINR(payment.gstAmount)} />

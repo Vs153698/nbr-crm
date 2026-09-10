@@ -1,5 +1,7 @@
 import {
   APPLICATION_SOURCE,
+  ADJUDICATOR_FEE,
+  formatINR,
   PROCESSING_TYPE,
   PROCESSING_TYPES,
   PROCESSING_TYPE_META,
@@ -84,6 +86,7 @@ export default function ApplicantFormPage() {
     description: '',
     source: APPLICATION_SOURCE.WALK_IN as string,
     processingType: PROCESSING_TYPE.STANDARD as string,
+    adjudicatorRequested: false,
     assignedToUserId: '',
     initialStatus: RECORD_STATUS.NEW_LEAD as string,
     // Back-entry of a record NBR awarded before this system existed.
@@ -225,6 +228,7 @@ export default function ApplicantFormPage() {
       record: {
         source: form.source,
         processingType: form.processingType,
+        adjudicatorRequested: form.adjudicatorRequested,
         assignedToUserId: form.assignedToUserId || undefined,
         initialStatus: form.initialStatus,
         internalRemarks: form.internalRemarks || undefined,
@@ -659,6 +663,19 @@ export default function ApplicantFormPage() {
                     value: type,
                     label: `${processingTypeLabel(type)} — ${PROCESSING_TYPE_META[type].turnaround}`,
                   }))}
+                />
+                {/* DEV-002. Filing this on someone's behalf commits them to a
+                    ₹1,00,000 charge, so the figure is on the control itself. */}
+                <Checkbox
+                  label="Adjudicator requested"
+                  hint={`Adds ${formatINR(String(ADJUDICATOR_FEE))} — an official adjudicator attends to verify the attempt.`}
+                  checked={form.adjudicatorRequested}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      adjudicatorRequested: event.target.checked,
+                    }))
+                  }
                 />
                 <Select
                   label="Assign to"

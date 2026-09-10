@@ -583,6 +583,7 @@ export default function ApplicantProfilePage() {
                       recordId={activeRecord.id}
                       recordType={activeRecord.recordType}
                       processingType={activeRecord.processingType}
+                      adjudicatorRequested={activeRecord.adjudicatorRequested}
                     />
                   </div>
                 ) : null}
@@ -741,6 +742,7 @@ export default function ApplicantProfilePage() {
                       recordId={activeRecord.id}
                       applicantId={applicant.id}
                       processingType={activeRecord.processingType}
+                      adjudicatorRequested={activeRecord.adjudicatorRequested}
                       autoOpen={pendingDialog}
                       onAutoOpened={clearPendingDialog}
                       // Fees settled → the certificate is the next thing owed.

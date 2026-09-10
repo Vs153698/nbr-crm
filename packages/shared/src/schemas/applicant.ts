@@ -141,6 +141,8 @@ export const createApplicantSchema = z.object({
       initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
       /** DEV-001. Staff filing on someone's behalf choose the same turnaround. */
       processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
+      /** DEV-002. An adjudicator attends the attempt, for a fee. */
+      adjudicatorRequested: z.boolean().default(false),
       internalRemarks: optionalTrimmedString(2000),
       achievement: achievementSchema,
 
@@ -265,6 +267,8 @@ export const addRecordSchema = z
     initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
     /** DEV-001. Staff filing on someone's behalf choose the same turnaround. */
     processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
+    /** DEV-002. An adjudicator attends the attempt, for a fee. */
+    adjudicatorRequested: z.boolean().default(false),
     internalRemarks: optionalTrimmedString(2000),
     achievement: achievementSchema,
     /** Admin override when the applicant is blacklisted (§19). */

@@ -86,6 +86,14 @@ export const records = pgTable(
     processingType: varchar('processing_type', { length: 20 })
       .notNull()
       .default(PROCESSING_TYPE.STANDARD),
+    /**
+     * DEV-002. The applicant asked for an adjudicator to attend the attempt.
+     *
+     * Worth its own column rather than living in remarks: it carries a
+     * ₹1,00,000 fee, and it is an operational commitment — somebody has to be
+     * sent — so it needs to be queryable, not just readable.
+     */
+    adjudicatorRequested: boolean('adjudicator_requested').notNull().default(false),
     applicationDate: timestamp('application_date', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
