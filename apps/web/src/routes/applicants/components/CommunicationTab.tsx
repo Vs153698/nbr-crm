@@ -2,7 +2,10 @@ import {
   COMMUNICATION_CHANNEL,
   EMAIL_TEMPLATE_CODES,
   TEMPLATE_CHANNEL,
+  WHATSAPP_PARAM_SOURCE,
+  WHATSAPP_PROVIDER,
   WHATSAPP_TEMPLATE_CODES,
+  type WhatsAppTemplate,
 } from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -390,8 +393,52 @@ function WhatsAppDialog({
 
   const { data: status } = useQuery({
     queryKey: ['whatsapp-status'],
-    queryFn: ({ signal }) => api.get<{ configured: boolean }>('/communications/whatsapp-status', undefined, signal),
+    queryFn: ({ signal }) =>
+      api.get<{ configured: boolean; provider: string; templateCount: number }>(
+        '/communications/whatsapp-status',
+        undefined,
+        signal,
+      ),
     staleTime: 60_000,
+  });
+
+  /**
+   * On AiSensy the message is an approved template, so the wording is not ours
+   * to compose — what the sender chooses is which template, and what fills its
+   * placeholders. Only fetched for that provider; on Meta this stays idle.
+   */
+  const onAisensy = status?.provider === WHATSAPP_PROVIDER.AISENSY;
+
+  const { data: registered } = useQuery({
+    queryKey: ['whatsapp-registered-templates'],
+    queryFn: ({ signal }) =>
+      api.get<WhatsAppTemplate[]>('/communications/whatsapp-templates', undefined, signal),
+    enabled: onAisensy,
+    staleTime: 60_000,
+  });
+
+  const [registeredId, setRegisteredId] = useState('');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const chosen = registered?.find((template) => template.id === registeredId) ?? null;
+
+  const templateSendMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ communicationId: string; status: string }>('/communications/whatsapp-template', {
+        recordId,
+        templateId: registeredId,
+        // Blank fields are left out so the server fills them from the record;
+        // sending "" would override a real value with nothing.
+        values: Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim())),
+      }),
+    onSuccess: () => {
+      toast.success('WhatsApp queued', {
+        description: 'Check the message history below shortly for delivery status.',
+      });
+      setSentAuto(true);
+      onSent();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not queue the message'),
   });
 
   const { data: preview } = useQuery({
@@ -490,6 +537,16 @@ function WhatsAppDialog({
               >
                 Open WhatsApp
               </Button>
+            ) : onAisensy ? (
+              <Button
+                variant="whatsapp"
+                icon={Icons.MessageCircle}
+                disabled={!registeredId}
+                loading={templateSendMutation.isPending}
+                onClick={() => templateSendMutation.mutate()}
+              >
+                Send WhatsApp
+              </Button>
             ) : (
               <Button
                 variant="whatsapp"
@@ -505,23 +562,91 @@ function WhatsAppDialog({
       }
     >
       <div className="space-y-3">
-        <Select
-          label="Template"
-          value={templateCode}
-          disabled={sentAuto}
-          onChange={(event) => {
-            setTemplateCode(event.target.value);
-            setLink(null);
-          }}
-          options={WHATSAPP_TEMPLATE_CODES.map((code) => ({ value: code, label: humanise(code) }))}
-        />
+        {onAisensy && !useManual ? (
+          <>
+            <Select
+              label="Template"
+              hint="Your approved templates, as registered under Settings → WhatsApp."
+              value={registeredId}
+              disabled={sentAuto}
+              onChange={(event) => {
+                setRegisteredId(event.target.value);
+                setValues({});
+              }}
+              options={[
+                { value: '', label: '— Choose a template —' },
+                ...(registered ?? []).map((template) => ({
+                  value: template.id,
+                  label: template.label,
+                })),
+              ]}
+            />
 
-        <div>
-          <p className="mb-1.5 text-xs font-semibold text-ink-2">Message preview</p>
-          <pre className="whitespace-pre-wrap rounded-lg border border-line bg-canvas p-3 font-sans text-[11px] leading-relaxed text-ink">
-            {link?.body ?? preview?.body ?? '…'}
-          </pre>
-        </div>
+            {registered && registered.length === 0 ? (
+              <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2.5 text-[11px] text-warn">
+                <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+                No templates are registered yet. Add them under Settings → WhatsApp, using the
+                campaign names from your AiSensy account.
+              </p>
+            ) : null}
+
+            {chosen && chosen.params.length > 0 ? (
+              <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-ink-3">
+                  Message details
+                </p>
+                {chosen.params.map((param, index) => (
+                  <Input
+                    key={param.key}
+                    label={`${index + 1}. ${param.label || param.key}`}
+                    placeholder={
+                      param.source === WHATSAPP_PARAM_SOURCE.MANUAL
+                        ? 'Type a value'
+                        : 'Filled from this record — type to override'
+                    }
+                    value={values[param.key] ?? ''}
+                    disabled={sentAuto}
+                    onChange={(event) =>
+                      setValues((prev) => ({ ...prev, [param.key]: event.target.value }))
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {chosen && chosen.params.length === 0 ? (
+              <p className="text-[11px] text-ink-3">
+                This template takes no values — it sends exactly as approved.
+              </p>
+            ) : null}
+
+            <p className="flex items-start gap-1.5 text-[11px] text-ink-3">
+              <Icons.Info size={13} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+              The wording comes from the template approved in your WhatsApp account, so it cannot be
+              previewed or edited here.
+            </p>
+          </>
+        ) : (
+          <>
+            <Select
+              label="Template"
+              value={templateCode}
+              disabled={sentAuto}
+              onChange={(event) => {
+                setTemplateCode(event.target.value);
+                setLink(null);
+              }}
+              options={WHATSAPP_TEMPLATE_CODES.map((code) => ({ value: code, label: humanise(code) }))}
+            />
+
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-ink-2">Message preview</p>
+              <pre className="whitespace-pre-wrap rounded-lg border border-line bg-canvas p-3 font-sans text-[11px] leading-relaxed text-ink">
+                {link?.body ?? preview?.body ?? '…'}
+              </pre>
+            </div>
+          </>
+        )}
 
         {sentAuto ? (
           <p className="flex items-start gap-1.5 rounded-lg bg-ok-tint p-2.5 text-[11px] text-ok">

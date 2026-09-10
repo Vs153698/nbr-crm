@@ -567,8 +567,13 @@ export class CommunicationsService {
   }
 
   /** Whether the Cloud API is configured — the switch between the two dialogs on the tab. */
-  async whatsappStatus(): Promise<{ configured: boolean }> {
+  async whatsappStatus() {
     return this.whatsapp.status();
+  }
+
+  /** The registered templates a person can choose from when sending. */
+  async listWhatsAppTemplates() {
+    return this.whatsapp.listTemplates();
   }
 
   /**
@@ -645,6 +650,151 @@ export class CommunicationsService {
     });
 
     return { communicationId, status: COMMUNICATION_STATUS.QUEUED };
+  }
+
+  /**
+   * Send a registered, approved template to this record's applicant.
+   *
+   * The counterpart to `sendWhatsApp` for accounts on AiSensy. The body is not
+   * rendered here — the wording lives in the template Meta approved, and this
+   * system never sees it — so what gets stored on the communication row is the
+   * template's friendly name and the values that filled it. That is what makes
+   * the history readable later: "Selection letter — Nikita Saha, NBRR00145"
+   * rather than an opaque campaign id.
+   */
+  async sendWhatsAppTemplate(input: {
+    recordId: string;
+    templateId: string;
+    values: Record<string, string>;
+    phoneOverride?: string;
+  }): Promise<{ communicationId: string; status: string }> {
+    const actor = requireActor();
+    const { applicantId, whatsapp, doNotContact, context } = await this.buildContext(
+      input.recordId,
+    );
+
+    if (doNotContact) {
+      throw new ForbiddenError('This applicant is flagged Do Not Contact.');
+    }
+
+    const number = input.phoneOverride ?? whatsapp;
+    if (!number) {
+      throw new ValidationError({ _: ['This applicant has no WhatsApp or mobile number on file.'] });
+    }
+
+    const e164 = toE164(number);
+    if (!e164) {
+      throw new ValidationError({ _: ['That mobile number is not in a format WhatsApp accepts.'] });
+    }
+
+    const templates = await this.whatsapp.listTemplates();
+    const template = templates.find((entry) => entry.id === input.templateId);
+    if (!template) {
+      throw new ValidationError({ _: ['That template is no longer registered or is switched off.'] });
+    }
+
+    /**
+     * Values the record already knows, overridden by anything typed.
+     *
+     * The person sending is looking at the applicant and may have a reason to
+     * differ from the file — a corrected spelling, an amount agreed on a call —
+     * so what they typed wins over what was looked up.
+     */
+    const merged: Record<string, string> = {
+      // The very context the email templates render from, flattened to strings
+      // so a parameter can name any of it by the same key.
+      ...Object.fromEntries(
+        Object.entries(context).map(([key, value]) => [key, value == null ? '' : String(value)]),
+      ),
+      ...input.values,
+    };
+
+    const summary = template.params
+      .map((param) => merged[param.key] ?? '')
+      .filter(Boolean)
+      .join(', ');
+
+    const [communication] = await this.db
+      .insert(schema.communications)
+      .values({
+        applicantId,
+        recordId: input.recordId,
+        channel: COMMUNICATION_CHANNEL.WHATSAPP,
+        direction: 'outbound',
+        templateCode: template.templateCode ?? template.id,
+        toAddress: e164,
+        body: summary ? `${template.label} — ${summary}` : template.label,
+        status: COMMUNICATION_STATUS.QUEUED,
+        queuedAt: new Date(),
+        sentByUserId: actor.userId,
+        sentByName: actor.fullName,
+      })
+      .returning({ id: schema.communications.id });
+
+    const communicationId = communication!.id;
+
+    void this.deliverWhatsAppTemplate(communicationId, {
+      to: e164.replace(/^\+/, ''),
+      templateId: template.id,
+      values: merged,
+      recipientName: merged.applicant_name ?? '',
+    });
+
+    await this.timeline.write({
+      applicantId,
+      recordId: input.recordId,
+      eventType: TIMELINE_EVENT.WHATSAPP_SENT,
+      summary: `WhatsApp queued — ${template.label}`,
+      meta: { to: e164, template: template.label, campaign: template.campaignName },
+    });
+
+    await this.audit.record({
+      action: AUDIT.WHATSAPP_SENT,
+      entityType: 'communication',
+      entityId: communicationId,
+      entityLabel: template.label,
+      meta: { to: e164, campaign: template.campaignName },
+    });
+
+    return { communicationId, status: COMMUNICATION_STATUS.QUEUED };
+  }
+
+  /** Same record-the-outcome contract as `deliverWhatsApp`, for templates. */
+  private async deliverWhatsAppTemplate(
+    communicationId: string,
+    input: {
+      to: string;
+      templateId: string;
+      values: Record<string, string>;
+      recipientName: string;
+    },
+  ): Promise<void> {
+    try {
+      const result = await this.whatsapp.sendTemplate(input);
+
+      await this.db
+        .update(schema.communications)
+        .set({
+          status: COMMUNICATION_STATUS.SENT,
+          sentAt: new Date(),
+          providerMessageId: result.providerMessageId,
+          attemptCount: sql`${schema.communications.attemptCount} + 1`,
+        })
+        .where(eq(schema.communications.id, communicationId));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`WhatsApp template ${communicationId} failed: ${message}`);
+
+      await this.db
+        .update(schema.communications)
+        .set({
+          status: COMMUNICATION_STATUS.FAILED,
+          failedAt: new Date(),
+          failureReason: message,
+          attemptCount: sql`${schema.communications.attemptCount} + 1`,
+        })
+        .where(eq(schema.communications.id, communicationId));
+    }
   }
 
   /**

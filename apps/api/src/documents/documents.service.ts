@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  priorityInvoiceLine,
   letterBlocksFromHtml,
   PAYSLIP_STATUS,
   payslipPeriodLabel,
@@ -332,13 +333,34 @@ export class DocumentsService {
          * plan: the invoice froze them at issue, and a later price change must
          * not retroactively alter a document already sent to an applicant.
          */
+        /**
+         * DEV-001. The priority surcharge as its own named line.
+         *
+         * Only when the invoiced figure actually contains it: the amount was
+         * frozen when the invoice was issued, and a record switched to priority
+         * afterwards must not retroactively grow a charge on a document already
+         * sent. Splitting it out this way leaves the package line at its
+         * advertised price, so the invoice explains itself rather than reading
+         * ₹500 higher than the published rate for no stated reason.
+         */
+        const surcharge = priorityInvoiceLine(record.processingType, Number(invoice.amount));
+        const packageAmount = Number(invoice.amount) - surcharge;
+
         drawTable(
           doc,
           [
             { key: 'description', label: 'Description', weight: 3.4 },
             { key: 'amount', label: 'Amount', weight: 1.1, money: true },
           ],
-          [{ description: payment.packageName, amount: invoice.amount }],
+          surcharge > 0
+            ? [
+                { description: payment.packageName, amount: packageAmount },
+                {
+                  description: 'Priority Processing — issued within 1-3 working days',
+                  amount: surcharge,
+                },
+              ]
+            : [{ description: payment.packageName, amount: invoice.amount }],
           { zebra: false },
         );
 
@@ -560,6 +582,7 @@ export class DocumentsService {
         id: schema.records.id,
         recordCode: schema.records.recordCode,
         status: schema.records.status,
+        processingType: schema.records.processingType,
         applicantId: schema.applicants.id,
         applicantName: schema.applicants.fullName,
         applicantCode: schema.applicants.applicantCode,

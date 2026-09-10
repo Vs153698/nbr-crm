@@ -1,3 +1,4 @@
+import { PROCESSING_TYPE } from '../constants/processing';
 import { z } from 'zod';
 import {
   APPLICATION_SOURCE,
@@ -138,6 +139,8 @@ export const createApplicantSchema = z.object({
       source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
       assignedToUserId: uuidSchema.optional(),
       initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
+      /** DEV-001. Staff filing on someone's behalf choose the same turnaround. */
+      processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
       internalRemarks: optionalTrimmedString(2000),
       achievement: achievementSchema,
 
@@ -260,6 +263,8 @@ export const addRecordSchema = z
     source: z.nativeEnum(APPLICATION_SOURCE).default(APPLICATION_SOURCE.WALK_IN),
     assignedToUserId: uuidSchema.optional(),
     initialStatus: z.nativeEnum(RECORD_STATUS).default(RECORD_STATUS.NEW_LEAD),
+    /** DEV-001. Staff filing on someone's behalf choose the same turnaround. */
+    processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
     internalRemarks: optionalTrimmedString(2000),
     achievement: achievementSchema,
     /** Admin override when the applicant is blacklisted (§19). */

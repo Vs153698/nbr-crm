@@ -56,6 +56,7 @@ import {
   upsertDispatchSchema,
   upsertRoleSchema,
   upsertTemplateSchema,
+  sendWhatsappTemplateSchema,
   whatsappLinkSchema,
 } from '@nbr/shared';
 import { ERROR_RESPONSES, type TagName } from './openapi.meta';
@@ -1237,6 +1238,54 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     response: { type: 'object', properties: { communicationId: UUID, status: { type: 'string' } } },
     audited: 'communication.whatsapp_sent',
     notes: 'Blocked when the applicant carries the Do Not Contact flag.',
+  },
+  'ImportedRecordsController.sendImportedWhatsApp': {
+    tag: 'Integration',
+    summary: 'Send an approved WhatsApp template to a certificate holder',
+    description:
+      'The provider-carried counterpart to the click-to-chat activity: an approved template, ' +
+      'which is the only route to a holder who has not messaged the business first.',
+    response: { type: 'object', properties: { id: UUID, status: { type: 'string' } } },
+    notes:
+      'Logged as the same `whatsapp` activity kind as a click-to-chat send, so the holder\'s ' +
+      'history reads as one list. Refused when the record carries no phone number.',
+  },
+  'CommunicationsController.whatsappTemplates': {
+    tag: 'Communication',
+    summary: 'Registered WhatsApp templates',
+    description:
+      'The approved templates registered under Settings → WhatsApp, for the picker in the send ' +
+      'dialog. Only active ones are returned.',
+    response: arrayOf({
+      id: { type: 'string' },
+      label: { type: 'string' },
+      campaignName: { type: 'string' },
+      params: arrayOf({
+        key: { type: 'string' },
+        label: { type: 'string' },
+        source: { type: 'string' },
+      }),
+      templateCode: { type: 'string', nullable: true },
+      isActive: { type: 'boolean' },
+    }),
+    notes:
+      'Scoped to sending rather than to settings: choosing a template is part of writing a ' +
+      'message, and the people who do that are not the people who configure the account.',
+  },
+  'CommunicationsController.sendWhatsAppTemplate': {
+    tag: 'Communication',
+    summary: 'Send an approved WhatsApp template',
+    description:
+      'The counterpart to the free-text send for accounts on AiSensy. Takes the registered ' +
+      'template and the values its placeholders expect, rather than a body — the wording lives ' +
+      'in the template approved through Meta and is never composed here.',
+    body: zodSchema(sendWhatsappTemplateSchema, 'SendWhatsappTemplate'),
+    response: { type: 'object', properties: { communicationId: UUID, status: { type: 'string' } } },
+    audited: 'communication.whatsapp_sent',
+    notes:
+      'Values are keyed by the template\'s parameter names, never by position: the ordering into ' +
+      '{{1}}, {{2}} happens server-side from the registry, so a client cannot get it wrong. ' +
+      'Anything omitted is filled from the record. Blocked for Do Not Contact applicants.',
   },
   'CommunicationsController.markSent': {
     tag: 'Communication',

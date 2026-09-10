@@ -23,6 +23,8 @@ export interface ApplicantRecord {
   recordCode: string;
   status: string;
   source: string;
+  /** DEV-001. Standard or priority turnaround. */
+  processingType: string;
   applicationDate: string;
   assignedToUserId: string | null;
   paymentStatus: string;

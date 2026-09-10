@@ -13,6 +13,7 @@ import { formatDate, formatDateTime, formatRelative } from '@/lib/format';
 import { ICON_SIZE, ICON_STROKE, Icons } from '@/lib/icons';
 import { queryKeys } from '@/lib/query-client';
 import { ACTIVITY_META, ActivityDialog } from './ActivityDialog';
+import { SendTemplateDialog } from './SendTemplateDialog';
 import type { ActivityKind, ImportedActivity, ImportedRecordDetail } from './types';
 
 /**
@@ -26,6 +27,7 @@ export default function ImportedRecordDetailPage() {
   const { id = '' } = useParams();
   const { can } = useAuth();
   const [dialog, setDialog] = useState<ActivityKind | null>(null);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.importedRecord(id),
@@ -91,6 +93,17 @@ export default function ImportedRecordDetailPage() {
                   onClick={() => setDialog('whatsapp')}
                 >
                   WhatsApp
+                </Button>
+                {/* The provider-carried send, as opposed to the click-to-chat
+                    link above — the only route to a holder who has not
+                    messaged the business first. */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={Icons.MessageCircle}
+                  onClick={() => setTemplateOpen(true)}
+                >
+                  Send template
                 </Button>
               </>
             ) : null}
@@ -240,6 +253,16 @@ export default function ImportedRecordDetailPage() {
           onOpenChange={(next) => {
             if (!next) setDialog(null);
           }}
+        />
+      ) : null}
+
+      {templateOpen ? (
+        <SendTemplateDialog
+          importedRecordId={data.id}
+          holderName={data.holderName}
+          phone={data.phone}
+          onClose={() => setTemplateOpen(false)}
+          onSent={() => void refetch()}
         />
       ) : null}
     </div>

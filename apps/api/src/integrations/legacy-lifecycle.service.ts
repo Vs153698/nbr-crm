@@ -130,6 +130,17 @@ export class LegacyLifecycleService {
   ): Promise<ApplyResult> {
     const { recordId, applicantId, payload } = input;
 
+    /**
+     * DEV-001. An applicant can upgrade to priority after filing, so this is
+     * re-applied on every merge rather than only at import — otherwise the
+     * record would keep saying "standard" long after they had paid to be moved
+     * up the queue, which is precisely the fact the CRM needs to act on.
+     */
+    await tx
+      .update(schema.records)
+      .set({ processingType: payload.processingType })
+      .where(eq(schema.records.id, recordId));
+
     const paymentApplied = await this.applyPayment(tx, recordId, applicantId, payload);
     const certificateApplied = await this.applyCertificate(tx, recordId, applicantId, payload);
     const dispatchApplied = await this.applyDispatch(tx, recordId, applicantId, payload);

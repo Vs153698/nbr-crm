@@ -468,6 +468,48 @@ async function seedSettings(db: Database): Promise<void> {
     // from it, and saving them is what turns sending on. No redeploy, no file
     // anyone has to touch on a server they may not have access to.
     {
+      /**
+       * Which transport carries the message.
+       *
+       * Meta direct can only send free text, and only to someone who messaged
+       * the business in the last 24 hours — which almost no applicant has.
+       * AiSensy carries approved templates, so a selection notice or a dispatch
+       * update actually arrives. The fields each one needs differ, which is why
+       * this is the first setting on the screen.
+       */
+      key: 'whatsapp.provider',
+      value: 'meta',
+      category: 'whatsapp',
+      label: 'Provider',
+      description:
+        'Meta sends free text and only reaches someone who messaged you in the last 24 hours. AiSensy sends your approved templates, so business-initiated messages arrive.',
+    },
+    {
+      key: 'whatsapp.aisensy_api_key',
+      value: '',
+      category: 'whatsapp',
+      label: 'AiSensy API key',
+      description:
+        'From the AiSensy dashboard under Manage → API Key. Only used when the provider is AiSensy.',
+      isSecret: true,
+    },
+    {
+      key: 'whatsapp.aisensy_sender_name',
+      value: 'National Book of Records',
+      category: 'whatsapp',
+      label: 'AiSensy business name',
+      description:
+        'Filed against the contact inside AiSensy so your team recognises it there. Not shown to the applicant.',
+    },
+    {
+      key: 'whatsapp.templates',
+      value: [],
+      category: 'whatsapp',
+      label: 'Approved templates',
+      description:
+        'Each template you have had approved in AiSensy, with the campaign name it sends under and the values its placeholders expect, in order.',
+    },
+    {
       key: 'whatsapp.enabled',
       value: false,
       category: 'whatsapp',

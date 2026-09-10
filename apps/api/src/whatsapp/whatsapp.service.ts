@@ -1,3 +1,10 @@
+import {
+  WHATSAPP_PROVIDER,
+  buildWhatsAppParams,
+  whatsappRegistrySchema,
+  type WhatsAppProvider,
+  type WhatsAppTemplate,
+} from '@nbr/shared';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { inArray } from 'drizzle-orm';
 import { ValidationError } from '../common/errors';
@@ -11,13 +18,30 @@ export const WHATSAPP_SETTING_KEYS = {
   phoneNumberId: 'whatsapp.phone_number_id',
   accessToken: 'whatsapp.access_token',
   apiVersion: 'whatsapp.api_version',
+  /** Which transport carries the message — see `WHATSAPP_PROVIDER`. */
+  provider: 'whatsapp.provider',
+  aisensyApiKey: 'whatsapp.aisensy_api_key',
+  /** Filed against the contact inside AiSensy; not shown to the applicant. */
+  aisensySenderName: 'whatsapp.aisensy_sender_name',
+  /** The template registry, as a JSON array. */
+  templates: 'whatsapp.templates',
 } as const;
+
+/** AiSensy's campaign endpoint. The API key travels in the body, not a header. */
+const AISENSY_CAMPAIGN_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
+
+/** A send must never hold a request open behind it. */
+const SEND_TIMEOUT_MS = 15_000;
 
 export interface WhatsAppConfig {
   readonly enabled: boolean;
+  readonly provider: WhatsAppProvider;
   readonly phoneNumberId: string;
   readonly accessToken: string;
   readonly apiVersion: string;
+  readonly aisensyApiKey: string;
+  readonly aisensySenderName: string;
+  readonly templates: readonly WhatsAppTemplate[];
 }
 
 /** How long a resolved configuration is reused before Settings is re-read. */
@@ -109,11 +133,20 @@ export class WhatsAppService {
       return typeof value === 'string' ? value.trim() : '';
     };
 
+    const rawProvider = text(WHATSAPP_SETTING_KEYS.provider);
+    const provider: WhatsAppProvider =
+      rawProvider === WHATSAPP_PROVIDER.AISENSY ? WHATSAPP_PROVIDER.AISENSY : WHATSAPP_PROVIDER.META;
+
     const config: WhatsAppConfig = {
       enabled: stored[WHATSAPP_SETTING_KEYS.enabled] === true,
+      provider,
       phoneNumberId: text(WHATSAPP_SETTING_KEYS.phoneNumberId),
       accessToken: text(WHATSAPP_SETTING_KEYS.accessToken),
       apiVersion: text(WHATSAPP_SETTING_KEYS.apiVersion) || 'v22.0',
+      aisensyApiKey: text(WHATSAPP_SETTING_KEYS.aisensyApiKey),
+      aisensySenderName:
+        text(WHATSAPP_SETTING_KEYS.aisensySenderName) || 'National Book of Records',
+      templates: this.parseRegistry(stored[WHATSAPP_SETTING_KEYS.templates]),
     };
 
     this.cachedConfig = config;
@@ -121,12 +154,132 @@ export class WhatsAppService {
     return config;
   }
 
-  isConfigured(config: WhatsAppConfig): boolean {
-    return config.enabled && config.phoneNumberId.length > 0 && config.accessToken.length > 0;
+  /**
+   * Read the stored registry.
+   *
+   * Deliberately total. A settings row hand-edited into something unreadable
+   * disables template sending; it does not throw inside whichever approval or
+   * payment flow happened to trigger the message. Entries that do not parse are
+   * dropped rather than taking the rest of the registry with them.
+   */
+  private parseRegistry(raw: unknown): WhatsAppTemplate[] {
+    if (raw === null || raw === undefined) return [];
+
+    let candidate: unknown = raw;
+    if (typeof raw === 'string') {
+      if (!raw.trim()) return [];
+      try {
+        candidate = JSON.parse(raw);
+      } catch {
+        this.logger.warn('WhatsApp template registry is not valid JSON — treating it as empty');
+        return [];
+      }
+    }
+
+    if (!Array.isArray(candidate)) return [];
+
+    const templates: WhatsAppTemplate[] = [];
+    for (const entry of candidate) {
+      const parsed = whatsappRegistrySchema.element.safeParse(entry);
+      if (parsed.success) templates.push(parsed.data);
+    }
+    return templates;
   }
 
-  async status(): Promise<{ configured: boolean }> {
-    return { configured: this.isConfigured(await this.resolveConfig()) };
+  isConfigured(config: WhatsAppConfig): boolean {
+    if (!config.enabled) return false;
+    if (config.provider === WHATSAPP_PROVIDER.AISENSY) return config.aisensyApiKey.length > 0;
+    return config.phoneNumberId.length > 0 && config.accessToken.length > 0;
+  }
+
+  async status(): Promise<{
+    configured: boolean;
+    provider: WhatsAppProvider;
+    templateCount: number;
+  }> {
+    const config = await this.resolveConfig();
+    return {
+      configured: this.isConfigured(config),
+      provider: config.provider,
+      templateCount: config.templates.filter((t) => t.isActive).length,
+    };
+  }
+
+  /** Active registered templates, for the settings screen and the send dialog. */
+  async listTemplates(): Promise<readonly WhatsAppTemplate[]> {
+    return (await this.resolveConfig()).templates.filter((template) => template.isActive);
+  }
+
+  /**
+   * Send one approved template through AiSensy.
+   *
+   * `templateParams` goes on the wire positionally and unnamed: AiSensy drops
+   * the values into `{{1}}`, `{{2}}` … in the order given. The registry is what
+   * keeps that order meaningful — see the shared `whatsapp` schema.
+   */
+  async sendTemplate(input: {
+    to: string;
+    templateId: string;
+    values: Readonly<Record<string, string | number | null | undefined>>;
+    recipientName?: string;
+  }): Promise<{ providerMessageId: string }> {
+    const config = await this.resolveConfig();
+
+    if (!this.isConfigured(config)) {
+      throw new ValidationError({
+        whatsapp: ['WhatsApp is not configured. Set it up under Settings → WhatsApp first.'],
+      });
+    }
+    if (config.provider !== WHATSAPP_PROVIDER.AISENSY) {
+      throw new ValidationError({
+        whatsapp: ['Template messages require the AiSensy provider. Change it under Settings.'],
+      });
+    }
+
+    const template = config.templates.find((entry) => entry.id === input.templateId);
+    if (!template) {
+      throw new ValidationError({ whatsapp: ['That template is no longer registered.'] });
+    }
+    if (!template.isActive) {
+      throw new ValidationError({ whatsapp: [`"${template.label}" is switched off.`] });
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(AISENSY_CAMPAIGN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: config.aisensyApiKey,
+          campaignName: template.campaignName,
+          destination: input.to,
+          userName: input.recipientName || config.aisensySenderName,
+          source: 'nbr-crm',
+          templateParams: buildWhatsAppParams(template, input.values),
+        }),
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      });
+    } catch (error: unknown) {
+      throw new WhatsAppSendError(
+        `Could not reach AiSensy: ${error instanceof Error ? error.message : String(error)}`,
+        null,
+        false,
+      );
+    }
+
+    if (!response.ok) {
+      const { message } = await this.readError(response);
+      throw new WhatsAppSendError(message, null, false);
+    }
+
+    /**
+     * AiSensy answers a successful campaign send with a plain acknowledgement
+     * and no per-message id. There is therefore nothing provider-side to trace
+     * a delivery complaint back to, so the campaign name is recorded instead —
+     * enough to find the send in their dashboard, which is where the delivery
+     * report lives anyway.
+     */
+    return { providerMessageId: `aisensy:${template.campaignName}` };
   }
 
   private graphUrl(config: WhatsAppConfig, path: string): string {
@@ -164,6 +317,22 @@ export class WhatsAppService {
     if (!this.isConfigured(config)) {
       throw new ValidationError({
         whatsapp: ['WhatsApp is not configured. Set it up under Settings → WhatsApp first.'],
+      });
+    }
+
+    /**
+     * Free text is a Meta-only route.
+     *
+     * On AiSensy the phone number id and access token are blank — the account
+     * is theirs, not ours — so without this the call would go to Meta with
+     * empty credentials and fail with an authentication error that says nothing
+     * about the real cause. Approved templates are the route here.
+     */
+    if (config.provider !== WHATSAPP_PROVIDER.META) {
+      throw new ValidationError({
+        whatsapp: [
+          'This account sends through AiSensy, which only carries approved templates. Choose a template instead.',
+        ],
       });
     }
 
@@ -207,6 +376,21 @@ export class WhatsAppService {
    */
   async testConnection(): Promise<{ displayPhoneNumber: string; verifiedName: string }> {
     const config = await this.resolveConfig({ fresh: true });
+
+    /**
+     * AiSensy has no equivalent of Meta's phone-number lookup — the only way to
+     * learn whether a key works is to send with it. The settings screen offers
+     * a real test send against a chosen template for that reason, and this
+     * method stays Meta's.
+     */
+    if (config.provider === WHATSAPP_PROVIDER.AISENSY) {
+      throw new ValidationError({
+        whatsapp: [
+          'AiSensy cannot be probed without sending. Use “Send a test message” on a template instead.',
+        ],
+      });
+    }
+
     if (!config.phoneNumberId || !config.accessToken) {
       throw new ValidationError({
         whatsapp: ['Enter a phone number ID and access token before testing.'],

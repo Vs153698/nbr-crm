@@ -1,5 +1,7 @@
 import {
   BLACKLIST_KIND,
+  WHATSAPP_PROVIDER,
+  type WhatsAppTemplate,
   BLACKLIST_REASON,
   BLACKLIST_REASON_LABELS,
   EMAIL_TEMPLATE_CODES,
@@ -16,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, EmptyState, QueryError } from '@/components/ui/Card';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Field';
+import { WhatsAppTemplatesEditor } from '@/routes/modules/templates/WhatsAppTemplatesEditor';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
@@ -689,11 +692,19 @@ function WhatsAppSettingsCard({
   const phoneNumberIdSetting = byKey('whatsapp.phone_number_id');
   const accessTokenSetting = byKey('whatsapp.access_token');
   const apiVersionSetting = byKey('whatsapp.api_version');
+  const providerSetting = byKey('whatsapp.provider');
+  const aisensyKeySetting = byKey('whatsapp.aisensy_api_key');
+  const aisensySenderSetting = byKey('whatsapp.aisensy_sender_name');
+  const templatesSetting = byKey('whatsapp.templates');
 
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [phoneNumberId, setPhoneNumberId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState(''); // Never prefilled from a saved value.
   const [apiVersion, setApiVersion] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [aisensyKey, setAisensyKey] = useState(''); // Never prefilled from a saved value.
+  const [aisensySender, setAisensySender] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
   const [testResult, setTestResult] = useState<{ displayPhoneNumber: string; verifiedName: string } | null>(
     null,
   );
@@ -703,11 +714,25 @@ function WhatsAppSettingsCard({
   const effectiveApiVersion = apiVersion ?? String(apiVersionSetting?.value ?? 'v22.0');
   const hasAccessToken = Boolean(accessTokenSetting?.value);
 
+  const effectiveProvider = provider ?? String(providerSetting?.value ?? WHATSAPP_PROVIDER.META);
+  const isAisensy = effectiveProvider === WHATSAPP_PROVIDER.AISENSY;
+  const hasAisensyKey = Boolean(aisensyKeySetting?.value);
+  const effectiveAisensySender =
+    aisensySender ?? String(aisensySenderSetting?.value ?? 'National Book of Records');
+  const storedTemplates = Array.isArray(templatesSetting?.value)
+    ? (templatesSetting.value as WhatsAppTemplate[])
+    : [];
+  const effectiveTemplates = templates ?? storedTemplates;
+
   const dirty =
     enabled !== null ||
     phoneNumberId !== null ||
     accessToken.trim().length > 0 ||
-    apiVersion !== null;
+    apiVersion !== null ||
+    provider !== null ||
+    aisensyKey.trim().length > 0 ||
+    aisensySender !== null ||
+    templates !== null;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -718,6 +743,11 @@ function WhatsAppSettingsCard({
       if (phoneNumberId !== null) writes.push(['whatsapp.phone_number_id', phoneNumberId.trim()]);
       if (accessToken.trim()) writes.push(['whatsapp.access_token', accessToken.trim()]);
       if (apiVersion !== null) writes.push(['whatsapp.api_version', apiVersion.trim()]);
+      if (provider !== null) writes.push(['whatsapp.provider', provider]);
+      if (aisensyKey.trim()) writes.push(['whatsapp.aisensy_api_key', aisensyKey.trim()]);
+      if (aisensySender !== null)
+        writes.push(['whatsapp.aisensy_sender_name', aisensySender.trim()]);
+      if (templates !== null) writes.push(['whatsapp.templates', templates]);
 
       for (const [key, value] of writes) {
         await api.put(`/settings/${key}`, { value });
@@ -729,6 +759,10 @@ function WhatsAppSettingsCard({
       setPhoneNumberId(null);
       setAccessToken('');
       setApiVersion(null);
+      setProvider(null);
+      setAisensyKey('');
+      setAisensySender(null);
+      setTemplates(null);
       setTestResult(null);
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
     },
@@ -754,44 +788,91 @@ function WhatsAppSettingsCard({
     <Card>
       <CardHeader
         title="WhatsApp Business"
-        subtitle="Configured from your own Meta Business account. Nothing here touches a server file."
+        subtitle="Configured from your own provider account. Nothing here touches a server file."
         icon={Icons.MessageCircle}
       />
 
       <div className="space-y-3">
         <Checkbox
           label="Send WhatsApp messages automatically"
-          hint="Off by default. Turn on once Test connection succeeds below."
+          hint="Off by default. Turn on once a test message actually arrives."
           checked={effectiveEnabled}
           disabled={!canManage}
           onChange={(event) => setEnabled(event.target.checked)}
         />
 
-        <Input
-          label="Phone number ID"
-          hint="Meta Business Manager → WhatsApp → API Setup. Not the phone number itself — the ID next to it."
-          value={effectivePhoneNumberId}
+        <Select
+          label="Provider"
+          hint="AiSensy sends your approved templates, so business-initiated messages arrive. Meta direct sends free text, which only reaches someone who messaged you in the last 24 hours."
+          value={effectiveProvider}
           disabled={!canManage}
-          onChange={(event) => setPhoneNumberId(event.target.value)}
+          onChange={(event) => setProvider(event.target.value)}
+          options={[
+            { value: WHATSAPP_PROVIDER.AISENSY, label: 'AiSensy — approved templates' },
+            { value: WHATSAPP_PROVIDER.META, label: 'Meta Cloud API — free text only' },
+          ]}
         />
 
-        <Input
-          type="password"
-          label="Access token"
-          placeholder={hasAccessToken ? '•••••••• (saved — leave blank to keep it)' : 'Paste the token from Meta'}
-          hint="A permanent token from a system user, not the 24-hour quickstart token — that one expires and sending stops without warning."
-          value={accessToken}
-          disabled={!canManage}
-          onChange={(event) => setAccessToken(event.target.value)}
-        />
+        {isAisensy ? (
+          <>
+            <Input
+              type="password"
+              label="AiSensy API key"
+              placeholder={
+                hasAisensyKey ? '•••••••• (saved — leave blank to keep it)' : 'Paste the key from AiSensy'
+              }
+              hint="AiSensy dashboard → Manage → API Key."
+              value={aisensyKey}
+              disabled={!canManage}
+              onChange={(event) => setAisensyKey(event.target.value)}
+            />
 
-        <Input
-          label="Graph API version"
-          hint="Leave this unless Meta asks you to change it."
-          value={effectiveApiVersion}
-          disabled={!canManage}
-          onChange={(event) => setApiVersion(event.target.value)}
-        />
+            <Input
+              label="Business name"
+              hint="Filed against the contact inside AiSensy so your team recognises it there. Not shown to the applicant."
+              value={effectiveAisensySender}
+              disabled={!canManage}
+              onChange={(event) => setAisensySender(event.target.value)}
+            />
+
+            <div className="border-t border-line pt-3">
+              <p className="mb-2 text-xs font-semibold text-ink">Approved templates</p>
+              <WhatsAppTemplatesEditor
+                templates={effectiveTemplates}
+                disabled={!canManage}
+                onChange={setTemplates}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <Input
+              label="Phone number ID"
+              hint="Meta Business Manager → WhatsApp → API Setup. Not the phone number itself — the ID next to it."
+              value={effectivePhoneNumberId}
+              disabled={!canManage}
+              onChange={(event) => setPhoneNumberId(event.target.value)}
+            />
+
+            <Input
+              type="password"
+              label="Access token"
+              placeholder={hasAccessToken ? '•••••••• (saved — leave blank to keep it)' : 'Paste the token from Meta'}
+              hint="A permanent token from a system user, not the 24-hour quickstart token — that one expires and sending stops without warning."
+              value={accessToken}
+              disabled={!canManage}
+              onChange={(event) => setAccessToken(event.target.value)}
+            />
+
+            <Input
+              label="Graph API version"
+              hint="Leave this unless Meta asks you to change it."
+              value={effectiveApiVersion}
+              disabled={!canManage}
+              onChange={(event) => setApiVersion(event.target.value)}
+            />
+          </>
+        )}
 
         {testResult ? (
           <div className="flex items-start gap-2 rounded-lg bg-ok-tint p-2.5 text-[11px] text-ok">

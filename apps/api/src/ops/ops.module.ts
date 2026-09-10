@@ -28,6 +28,7 @@ import {
   selectionLetterSchema,
   uuidSchema,
   type SelectionLetterInput,
+  sendWhatsappTemplateSchema,
   whatsappLinkSchema,
 } from '@nbr/shared';
 import type { FastifyRequest } from 'fastify';
@@ -240,6 +241,41 @@ class CommunicationsController {
     body: { recordId: string; templateCode: string; bodyOverride?: string },
   ) {
     return this.comms.sendWhatsApp(body);
+  }
+
+  /**
+   * The registered templates a person can choose from.
+   *
+   * Scoped to sending rather than to settings: choosing a template is part of
+   * writing a message, and the people who do that are not the people who
+   * configure the account.
+   */
+  @Get('whatsapp-templates')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async whatsappTemplates() {
+    return this.comms.listWhatsAppTemplates();
+  }
+
+  /**
+   * Send an approved template to this record's applicant.
+   *
+   * The counterpart to `whatsapp` for accounts on AiSensy: instead of a body
+   * this takes the template and the values its placeholders expect. Queued the
+   * same way, for the same reason.
+   */
+  @Post('whatsapp-template')
+  @HttpCode(202)
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async sendWhatsAppTemplate(
+    @Body(zodBody(sendWhatsappTemplateSchema))
+    body: {
+      recordId: string;
+      templateId: string;
+      values: Record<string, string>;
+      phoneOverride?: string;
+    },
+  ) {
+    return this.comms.sendWhatsAppTemplate(body);
   }
 
   /** Staff confirm they actually sent it — the history stays honest. */
