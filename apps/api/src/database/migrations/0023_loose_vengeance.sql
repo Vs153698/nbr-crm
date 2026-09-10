@@ -1,0 +1,1 @@
+ALTER TABLE "records" ADD COLUMN "adjudicator_requested" boolean DEFAULT false NOT NULL;

@@ -72,3 +72,61 @@ export function priorityInvoiceLine(
   if (processingType !== PROCESSING_TYPE.PRIORITY) return 0;
   return invoiceAmount > PRIORITY_SURCHARGE ? PRIORITY_SURCHARGE : 0;
 }
+
+/**
+ * DEV-002. What NBR charges to send an adjudicator, in rupees.
+ *
+ * Rupees because that is the unit this system's money columns use; the website
+ * stores paise and keeps its own copy. Same charge, different unit.
+ */
+export const ADJUDICATOR_FEE = 100_000;
+
+export interface InvoiceFeeLine {
+  readonly label: string;
+  readonly note: string;
+  readonly amount: number;
+}
+
+/**
+ * The optional charges to split out of an invoice total, in rupees.
+ *
+ * Guarded against the invoiced figure rather than derived from the record
+ * alone. Invoice amounts are frozen at issue, so a record that opts into
+ * something afterwards must not retroactively grow a charge on a document
+ * already sent — and a fee larger than the invoice would leave the package line
+ * at zero or negative, which is worse than not splitting it at all.
+ *
+ * All or nothing, deliberately. Allocating fees one at a time while headroom
+ * lasts misattributes: a record carrying both charges, invoiced for the
+ * ₹1,00,000 adjudicator but not the ₹500 surcharge, has enough headroom for the
+ * cheaper line and would print "Priority Processing" — the wrong charge, and
+ * ₹99,500 understated. A partial figure cannot be attributed without guessing,
+ * so it is not attributed at all.
+ */
+export function invoiceFeeLines(
+  record: { processingType?: string | null; adjudicatorRequested?: boolean | null },
+  invoiceAmount: number,
+): InvoiceFeeLine[] {
+  const candidates: InvoiceFeeLine[] = [];
+
+  if (record.processingType === PROCESSING_TYPE.PRIORITY) {
+    candidates.push({
+      label: 'Priority Processing',
+      note: 'issued within 1-3 working days',
+      amount: PRIORITY_SURCHARGE,
+    });
+  }
+
+  if (record.adjudicatorRequested === true) {
+    candidates.push({
+      label: 'Adjudicator Fee',
+      note: 'official adjudicator present to verify the attempt',
+      amount: ADJUDICATOR_FEE,
+    });
+  }
+
+  const total = candidates.reduce((sum, line) => sum + line.amount, 0);
+
+  // Strictly less than, so the package line never falls to zero or negative.
+  return total > 0 && total < invoiceAmount ? candidates : [];
+}

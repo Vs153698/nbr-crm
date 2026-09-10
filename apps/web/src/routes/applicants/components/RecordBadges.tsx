@@ -29,11 +29,14 @@ export function RecordBadges({
   recordId,
   recordType,
   processingType,
+  adjudicatorRequested,
 }: {
   recordId: string;
   recordType: string | null;
   /** DEV-001. Standard or priority — see `PROCESSING_TYPE`. */
   processingType?: string | null;
+  /** DEV-002. An adjudicator has to be scheduled for this attempt. */
+  adjudicatorRequested?: boolean | null;
 }) {
   const { data } = useQuery({
     queryKey: queryKeys.legacyActions(recordId),
@@ -66,6 +69,15 @@ export function RecordBadges({
         <Chip tone="orange">
           <Icons.Clock size={10} strokeWidth={2} />
           {processingTypeLabel(processingType)}
+        </Chip>
+      ) : null}
+
+      {/* DEV-002. An operational commitment — someone has to attend — so it is
+          worth a badge rather than being buried in the application tab. */}
+      {adjudicatorRequested ? (
+        <Chip tone="purple">
+          <Icons.Users size={10} strokeWidth={2} />
+          Adjudicator requested
         </Chip>
       ) : null}
 

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  priorityInvoiceLine,
+  invoiceFeeLines,
   letterBlocksFromHtml,
   PAYSLIP_STATUS,
   payslipPeriodLabel,
@@ -343,8 +343,9 @@ export class DocumentsService {
          * advertised price, so the invoice explains itself rather than reading
          * ₹500 higher than the published rate for no stated reason.
          */
-        const surcharge = priorityInvoiceLine(record.processingType, Number(invoice.amount));
-        const packageAmount = Number(invoice.amount) - surcharge;
+        const feeLines = invoiceFeeLines(record, Number(invoice.amount));
+        const feeTotal = feeLines.reduce((sum, line) => sum + line.amount, 0);
+        const packageAmount = Number(invoice.amount) - feeTotal;
 
         drawTable(
           doc,
@@ -352,15 +353,13 @@ export class DocumentsService {
             { key: 'description', label: 'Description', weight: 3.4 },
             { key: 'amount', label: 'Amount', weight: 1.1, money: true },
           ],
-          surcharge > 0
-            ? [
-                { description: payment.packageName, amount: packageAmount },
-                {
-                  description: 'Priority Processing — issued within 1-3 working days',
-                  amount: surcharge,
-                },
-              ]
-            : [{ description: payment.packageName, amount: invoice.amount }],
+          [
+            { description: payment.packageName, amount: packageAmount },
+            ...feeLines.map((line) => ({
+              description: `${line.label} — ${line.note}`,
+              amount: line.amount,
+            })),
+          ],
           { zebra: false },
         );
 
@@ -583,6 +582,7 @@ export class DocumentsService {
         recordCode: schema.records.recordCode,
         status: schema.records.status,
         processingType: schema.records.processingType,
+        adjudicatorRequested: schema.records.adjudicatorRequested,
         applicantId: schema.applicants.id,
         applicantName: schema.applicants.fullName,
         applicantCode: schema.applicants.applicantCode,

@@ -138,7 +138,10 @@ export class LegacyLifecycleService {
      */
     await tx
       .update(schema.records)
-      .set({ processingType: payload.processingType })
+      .set({
+        processingType: payload.processingType,
+        adjudicatorRequested: payload.adjudicatorRequested,
+      })
       .where(eq(schema.records.id, recordId));
 
     const paymentApplied = await this.applyPayment(tx, recordId, applicantId, payload);

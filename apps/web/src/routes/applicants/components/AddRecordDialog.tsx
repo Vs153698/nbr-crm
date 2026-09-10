@@ -1,5 +1,7 @@
 import {
   APPLICATION_SOURCE,
+  ADJUDICATOR_FEE,
+  formatINR,
   PROCESSING_TYPE,
   PROCESSING_TYPES,
   PROCESSING_TYPE_META,
@@ -55,6 +57,7 @@ export function AddRecordDialog({
   const [participantCount, setParticipantCount] = useState('1');
   const [source, setSource] = useState<string>(APPLICATION_SOURCE.WALK_IN);
   const [processingType, setProcessingType] = useState<string>(PROCESSING_TYPE.STANDARD);
+  const [adjudicatorRequested, setAdjudicatorRequested] = useState(false);
   const [initialStatus, setInitialStatus] = useState<string>(RECORD_STATUS.NEW_LEAD);
   const [internalRemarks, setInternalRemarks] = useState('');
   const [override, setOverride] = useState(false);
@@ -83,6 +86,7 @@ export function AddRecordDialog({
       api.post<{ recordId: string; recordCode: string }>(`/applicants/${applicantId}/records`, {
         source,
         processingType,
+        adjudicatorRequested,
         initialStatus,
         internalRemarks: internalRemarks || undefined,
         achievement: {
@@ -247,6 +251,15 @@ export function AddRecordDialog({
             }))}
           />
         </div>
+
+        {/* DEV-002. The figure is on the control, because ticking it commits
+            the applicant to a ₹1,00,000 charge. */}
+        <Checkbox
+          label="Adjudicator requested"
+          hint={`Adds ${formatINR(String(ADJUDICATOR_FEE))} — an official adjudicator attends to verify the attempt.`}
+          checked={adjudicatorRequested}
+          onChange={(event) => setAdjudicatorRequested(event.target.checked)}
+        />
 
         <div className="rounded-card border border-line bg-canvas/40 p-3">
           <Checkbox
