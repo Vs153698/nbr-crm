@@ -60,6 +60,18 @@ const importedActivitySchema = z.object({
 });
 
 /**
+ * Sending one approved template to a certificate holder.
+ *
+ * Values are keyed by the template's own parameter names, never by position —
+ * the ordering into {{1}}, {{2}} happens server-side from the registry.
+ */
+const importedWhatsappTemplateSchema = z.object({
+  templateId: z.string().trim().min(1).max(60),
+  values: z.record(z.string().max(1000)).default({}),
+  phoneOverride: z.string().trim().min(8).max(20).optional(),
+});
+
+/**
  * The permission each imported-record action really needs.
  *
  * Sending a message to a certificate holder is the same act whether they came
@@ -556,6 +568,30 @@ class ImportedRecordsController {
       subject: body.subject,
       body: body.body,
       dueAt: body.dueAt,
+    });
+  }
+
+  /**
+   * Send an approved template to this certificate holder.
+   *
+   * Authorised as sending, like the activity endpoint above — this is the same
+   * operational act, just carried by the provider instead of by the operator's
+   * own phone.
+   */
+  @Post(':id/whatsapp-template')
+  @Can(MODULES.INTEGRATIONS, ACTIONS.VIEW)
+  async sendImportedWhatsApp(
+    @Param('id') id: string,
+    @Body(zodBody(importedWhatsappTemplateSchema))
+    body: { templateId: string; values: Record<string, string>; phoneOverride?: string },
+  ) {
+    requirePermissionFor('whatsapp');
+
+    return this.imported.sendWhatsAppTemplate({
+      importedRecordId: uuidSchema.parse(id),
+      templateId: body.templateId,
+      values: body.values,
+      phoneOverride: body.phoneOverride,
     });
   }
 

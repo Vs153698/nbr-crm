@@ -1,3 +1,4 @@
+import { PROCESSING_TYPE } from '@nbr/shared';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -75,6 +76,16 @@ export const records = pgTable(
     lockedAt: timestamp('locked_at', { withTimezone: true, mode: 'date' }),
 
     source: varchar('source', { length: 40 }).notNull().default('walk_in'),
+    /**
+     * DEV-001. The turnaround the applicant asked for — standard or priority.
+     *
+     * Defaulted rather than nullable for the same reason as on the website:
+     * everything filed before the field existed was handled on the standard
+     * timeline, so that is the true answer, not "unknown".
+     */
+    processingType: varchar('processing_type', { length: 20 })
+      .notNull()
+      .default(PROCESSING_TYPE.STANDARD),
     applicationDate: timestamp('application_date', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),

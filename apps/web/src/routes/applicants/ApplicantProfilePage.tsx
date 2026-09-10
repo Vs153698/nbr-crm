@@ -582,6 +582,7 @@ export default function ApplicantProfilePage() {
                     <RecordBadges
                       recordId={activeRecord.id}
                       recordType={activeRecord.recordType}
+                      processingType={activeRecord.processingType}
                     />
                   </div>
                 ) : null}
@@ -739,6 +740,7 @@ export default function ApplicantProfilePage() {
                     <PaymentTab
                       recordId={activeRecord.id}
                       applicantId={applicant.id}
+                      processingType={activeRecord.processingType}
                       autoOpen={pendingDialog}
                       onAutoOpened={clearPendingDialog}
                       // Fees settled → the certificate is the next thing owed.

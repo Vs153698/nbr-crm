@@ -137,6 +137,7 @@ function snapshotHash(payload: NbrWebhookApplication): string {
     // What makes a *return* to a previous state distinguishable from a retry of
     // it. Genuine retries carry the same value and still collapse to one event.
     sourceUpdatedAt: payload.sourceUpdatedAt?.toISOString() ?? null,
+    processingType: payload.processingType,
     award: payload.award ?? null,
     applicant: payload.applicant,
     achievement: payload.achievement,
@@ -481,6 +482,7 @@ export class NbrWebsiteService {
            */
           status: LEGACY_STAGE_TO_STATUS[payload.stage as LegacyStage] ?? RECORD_STATUS.APPLICATION_SUBMITTED,
           source: APPLICATION_SOURCE.NBR_WEBSITE_SYNC,
+          processingType: payload.processingType,
           applicationDate: payload.approvedAt ?? new Date(),
           externalId: payload.externalId,
           externalSource: NbrWebsiteService.SOURCE,

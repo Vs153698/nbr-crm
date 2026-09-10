@@ -8,6 +8,7 @@
  * removes the "the form allowed it but the API rejected it" class of bug.
  */
 
+export * from './constants/processing';
 export * from './constants/statuses';
 export * from './constants/workflow';
 export * from './constants/client-progress';
@@ -28,6 +29,7 @@ export * from './schemas/operations';
 export * from './schemas/privacy';
 export * from './schemas/integration';
 export * from './schemas/sales';
+export * from './schemas/whatsapp';
 
 export * from './utils/money';
 export * from './utils/identity';

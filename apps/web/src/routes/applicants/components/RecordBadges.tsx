@@ -1,3 +1,4 @@
+import { PROCESSING_TYPE, processingTypeLabel } from '@nbr/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Chip } from '@/components/ui/Badge';
 import { api } from '@/lib/api-client';
@@ -27,9 +28,12 @@ interface WebsiteContext {
 export function RecordBadges({
   recordId,
   recordType,
+  processingType,
 }: {
   recordId: string;
   recordType: string | null;
+  /** DEV-001. Standard or priority — see `PROCESSING_TYPE`. */
+  processingType?: string | null;
 }) {
   const { data } = useQuery({
     queryKey: queryKeys.legacyActions(recordId),
@@ -49,6 +53,19 @@ export function RecordBadges({
             <Icons.User size={10} strokeWidth={2} />
           )}
           {isGroup ? 'Group entry' : 'Individual'}
+        </Chip>
+      ) : null}
+
+      {/*
+        DEV-001. Only shown when it is priority.
+        Standard is the default and the overwhelming majority, so a chip saying
+        so on every record would be noise that buries the one case that changes
+        what anyone does — this record is being worked to a 1–3 day promise.
+      */}
+      {processingType === PROCESSING_TYPE.PRIORITY ? (
+        <Chip tone="orange">
+          <Icons.Clock size={10} strokeWidth={2} />
+          {processingTypeLabel(processingType)}
         </Chip>
       ) : null}
 

@@ -1,3 +1,4 @@
+import { PROCESSING_TYPE } from '../constants/processing';
 import { z } from 'zod';
 import { RECORD_TYPE } from '../constants/catalog';
 import { CONSENT_ARTEFACT, PROCESSING_PURPOSE } from '../constants/dpdp';
@@ -313,6 +314,16 @@ export const nbrWebhookApplicationSchema = z.object({
    * was silently dropped as a duplicate.
    */
   sourceUpdatedAt: z.coerce.date().optional(),
+
+  /**
+   * DEV-001. The turnaround the applicant chose on the website form.
+   *
+   * Optional, and defaulted rather than nullable: every application filed
+   * before the field existed was worked through on the standard timeline, so
+   * that is the true answer for them — and it saves every screen here deciding
+   * for itself what an absent value means.
+   */
+  processingType: z.nativeEnum(PROCESSING_TYPE).default(PROCESSING_TYPE.STANDARD),
 
   applicant: z.object({
     fullName: trimmedString(150),

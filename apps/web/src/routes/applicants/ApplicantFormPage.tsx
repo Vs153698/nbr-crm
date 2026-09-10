@@ -1,5 +1,9 @@
 import {
   APPLICATION_SOURCE,
+  PROCESSING_TYPE,
+  PROCESSING_TYPES,
+  PROCESSING_TYPE_META,
+  processingTypeLabel,
   APPLICATION_SOURCE_LABELS,
   CONSENT_ARTEFACT,
   CONSENT_CHANNEL,
@@ -79,6 +83,7 @@ export default function ApplicantFormPage() {
     participantCount: '1',
     description: '',
     source: APPLICATION_SOURCE.WALK_IN as string,
+    processingType: PROCESSING_TYPE.STANDARD as string,
     assignedToUserId: '',
     initialStatus: RECORD_STATUS.NEW_LEAD as string,
     // Back-entry of a record NBR awarded before this system existed.
@@ -219,6 +224,7 @@ export default function ApplicantFormPage() {
       identifiers: form.aadhaarNumber ? { aadhaarNumber: form.aadhaarNumber } : undefined,
       record: {
         source: form.source,
+        processingType: form.processingType,
         assignedToUserId: form.assignedToUserId || undefined,
         initialStatus: form.initialStatus,
         internalRemarks: form.internalRemarks || undefined,
@@ -642,6 +648,17 @@ export default function ApplicantFormPage() {
                       value: source,
                       label: APPLICATION_SOURCE_LABELS[source],
                     }))}
+                />
+                {/* DEV-001. The same turnaround choice the applicant gets on
+                    the website, so a record filed here carries the same promise. */}
+                <Select
+                  label="Processing type"
+                  value={form.processingType}
+                  onChange={(event) => set('processingType')(event.target.value)}
+                  options={PROCESSING_TYPES.map((type) => ({
+                    value: type,
+                    label: `${processingTypeLabel(type)} — ${PROCESSING_TYPE_META[type].turnaround}`,
+                  }))}
                 />
                 <Select
                   label="Assign to"

@@ -11,6 +11,7 @@ import type { Env } from '../config/env';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MailService } from '../mail/mail.service';
 import { LegacyPushService } from './legacy-push.service';
 
@@ -136,6 +137,7 @@ export class ImportedRecordsService {
     @Inject(ENV) private readonly env: Env,
     private readonly legacy: LegacyPushService,
     private readonly mail: MailService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   private sign(body: string, secret: string): string {
@@ -487,6 +489,103 @@ export class ImportedRecordsService {
     }
 
     return { id: row!.id, status, whatsappUrl };
+  }
+
+  /**
+   * Send an approved template to a certificate holder.
+   *
+   * The click-to-chat path above stays: it is the only route when no provider
+   * is configured, and it is still the right one for an ad-hoc message an
+   * operator wants to word themselves. This is the counterpart for the case
+   * the provider exists to serve — a business-initiated message to someone who
+   * has not written in, which WhatsApp only carries as an approved template.
+   *
+   * Logged as the same `whatsapp` activity kind so the record's history reads
+   * as one list rather than splitting by how the message happened to go out.
+   */
+  async sendWhatsAppTemplate(input: {
+    importedRecordId: string;
+    templateId: string;
+    values: Record<string, string>;
+    phoneOverride?: string;
+  }): Promise<{ id: string; status: string }> {
+    const [record] = await this.db
+      .select()
+      .from(schema.importedRecords)
+      .where(eq(schema.importedRecords.id, input.importedRecordId))
+      .limit(1);
+
+    if (!record) {
+      throw new ValidationError({ importedRecordId: ['That imported record no longer exists.'] });
+    }
+
+    const number = input.phoneOverride ?? record.phone;
+    if (!number) {
+      throw new ValidationError({
+        templateId: ['This record has no phone number on the website, so there is nowhere to send it.'],
+      });
+    }
+
+    const templates = await this.whatsapp.listTemplates();
+    const template = templates.find((entry) => entry.id === input.templateId);
+    if (!template) {
+      throw new ValidationError({ templateId: ['That template is no longer registered.'] });
+    }
+
+    /**
+     * What this record can fill in on its own, overridden by anything typed.
+     *
+     * An imported record is a certificate and its holder — there is no payment
+     * or dispatch behind it — so only the handful of values that genuinely
+     * exist are offered. Everything else the template asks for is typed.
+     */
+    const merged: Record<string, string> = {
+      applicant_name: record.holderName,
+      record_title: record.recordTitle ?? '',
+      category: record.category ?? '',
+      certificate_no: record.certificateNumber,
+      ...input.values,
+    };
+
+    let status = 'sent';
+    let error: string | null = null;
+    try {
+      await this.whatsapp.sendTemplate({
+        to: toDialable(number),
+        templateId: template.id,
+        values: merged,
+        recipientName: record.holderName,
+      });
+    } catch (cause) {
+      status = 'failed';
+      error = cause instanceof Error ? cause.message : 'The provider rejected the message.';
+      this.logger.warn(`Imported-record WhatsApp to ${number} failed: ${error}`);
+    }
+
+    const actor = getActor();
+    const summary = template.params
+      .map((param) => merged[param.key] ?? '')
+      .filter(Boolean)
+      .join(', ');
+
+    const [row] = await this.db
+      .insert(schema.importedRecordActivity)
+      .values({
+        importedRecordId: input.importedRecordId,
+        kind: 'whatsapp',
+        subject: template.label,
+        body: summary ? `${template.label} — ${summary}` : template.label,
+        status,
+        error,
+        createdByUserId: actor?.userId ?? null,
+      })
+      .returning({ id: schema.importedRecordActivity.id });
+
+    if (status === 'failed') {
+      throw new ValidationError({ templateId: [`Could not send: ${error}`] });
+    }
+
+    return { id: row!.id, status };
   }
 
   async completeTask(activityId: string) {

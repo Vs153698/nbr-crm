@@ -1,5 +1,9 @@
 import {
   APPLICATION_SOURCE,
+  PROCESSING_TYPE,
+  PROCESSING_TYPES,
+  PROCESSING_TYPE_META,
+  processingTypeLabel,
   APPLICATION_SOURCE_LABELS,
   ORDERED_STATUSES,
   RECORD_STATUS,
@@ -50,6 +54,7 @@ export function AddRecordDialog({
   const [location, setLocation] = useState('');
   const [participantCount, setParticipantCount] = useState('1');
   const [source, setSource] = useState<string>(APPLICATION_SOURCE.WALK_IN);
+  const [processingType, setProcessingType] = useState<string>(PROCESSING_TYPE.STANDARD);
   const [initialStatus, setInitialStatus] = useState<string>(RECORD_STATUS.NEW_LEAD);
   const [internalRemarks, setInternalRemarks] = useState('');
   const [override, setOverride] = useState(false);
@@ -77,6 +82,7 @@ export function AddRecordDialog({
     mutationFn: () =>
       api.post<{ recordId: string; recordCode: string }>(`/applicants/${applicantId}/records`, {
         source,
+        processingType,
         initialStatus,
         internalRemarks: internalRemarks || undefined,
         achievement: {
@@ -229,6 +235,16 @@ export function AddRecordDialog({
             options={Object.values(APPLICATION_SOURCE)
               .filter((value) => value !== APPLICATION_SOURCE.NBR_WEBSITE_SYNC)
               .map((value) => ({ value, label: APPLICATION_SOURCE_LABELS[value] }))}
+          />
+          {/* DEV-001. Same turnaround choice as the website form. */}
+          <Select
+            label="Processing type"
+            value={processingType}
+            onChange={(event) => setProcessingType(event.target.value)}
+            options={PROCESSING_TYPES.map((type) => ({
+              value: type,
+              label: `${processingTypeLabel(type)} — ${PROCESSING_TYPE_META[type].turnaround}`,
+            }))}
           />
         </div>
 

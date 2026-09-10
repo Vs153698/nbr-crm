@@ -1,4 +1,11 @@
-import { computePaymentPlan, formatINR, PAYMENT_MODE, PAYMENT_MODE_LABELS } from '@nbr/shared';
+import {
+  computePaymentPlan,
+  formatINR,
+  PAYMENT_MODE,
+  PAYMENT_MODE_LABELS,
+  PRIORITY_SURCHARGE,
+  priorityInvoiceLine,
+} from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -28,12 +35,15 @@ import { useAutoOpen } from '@/hooks/useAutoOpen';
 export function PaymentTab({
   recordId,
   applicantId,
+  processingType,
   autoOpen,
   onAutoOpened,
   onSettled,
 }: {
   recordId: string;
   applicantId: string;
+  /** DEV-001. Standard or priority — decides whether a surcharge row shows. */
+  processingType?: string | null;
   autoOpen?: string | null;
   onAutoOpened?: () => void;
   /**
@@ -195,6 +205,15 @@ export function PaymentTab({
         <dl className="rounded-lg border border-line p-3">
           <DetailRow label="Package" value={payment.packageName} />
           <DetailRow label="Amount" value={formatINR(payment.amount)} />
+          {/* DEV-001. Shown as its own row when the amount contains it, so the
+              figure on screen matches the line the invoice will print and
+              nobody has to work out why this record costs ₹500 more. */}
+          {priorityInvoiceLine(processingType, Number(payment.amount)) > 0 ? (
+            <DetailRow
+              label="…of which Priority Processing"
+              value={formatINR(String(PRIORITY_SURCHARGE))}
+            />
+          ) : null}
           <DetailRow label="Discount" value={`− ${formatINR(payment.discount)}`} />
           <DetailRow label="Taxable value" value={formatINR(payment.taxableValue)} />
           <DetailRow label={`GST @ ${payment.gstPercent}%`} value={formatINR(payment.gstAmount)} />

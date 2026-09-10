@@ -4,6 +4,7 @@ import {
   RECORD_STATUS,
   TIMELINE_EVENT,
   type ApplicationSource,
+  type ProcessingType,
   type RecordStatus,
 } from '@nbr/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
@@ -25,6 +26,8 @@ export interface AddRecordInput {
   readonly source: ApplicationSource;
   readonly assignedToUserId?: string | undefined;
   readonly initialStatus: RecordStatus;
+  /** DEV-001. The turnaround this record is worked to. */
+  readonly processingType: ProcessingType;
   readonly internalRemarks?: string | undefined;
   readonly achievement: {
     readonly recordTitle: string;
@@ -158,6 +161,7 @@ export class AddRecordService {
           applicantId,
           status: input.initialStatus,
           source: input.source,
+          processingType: input.processingType,
           assignedToUserId: input.assignedToUserId ?? null,
           internalRemarks: input.internalRemarks ?? null,
           createdByUserId: actor.userId,

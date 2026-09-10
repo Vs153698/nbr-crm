@@ -519,3 +519,19 @@ export const markProgressSchema = z.object({
 });
 
 export type MarkProgressInput = z.infer<typeof markProgressSchema>;
+
+/**
+ * Sending one approved WhatsApp template to a record's applicant.
+ *
+ * `values` is keyed by the parameter keys the template registers, not by
+ * position — the ordering into `{{1}}`, `{{2}}` … happens server-side from the
+ * registry, so a client cannot get it wrong by sending an array in the wrong
+ * order.
+ */
+export const sendWhatsappTemplateSchema = z.object({
+  recordId: uuidSchema,
+  templateId: z.string().trim().min(1).max(60),
+  values: z.record(z.string().max(1000)).default({}),
+  /** Send to a corrected or alternate number instead of the one on file. */
+  phoneOverride: z.string().trim().min(8).max(20).optional(),
+});

@@ -1,0 +1,1 @@
+ALTER TABLE "records" ADD COLUMN "processing_type" varchar(20) DEFAULT 'standard' NOT NULL;
