@@ -551,7 +551,7 @@ export class ImportedRecordsService {
     let error: string | null = null;
     try {
       await this.whatsapp.sendTemplate({
-        to: toDialable(number),
+        to: number,
         templateId: template.id,
         values: merged,
         recipientName: record.holderName,

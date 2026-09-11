@@ -734,7 +734,7 @@ export class CommunicationsService {
     const communicationId = communication!.id;
 
     void this.deliverWhatsAppTemplate(communicationId, {
-      to: e164.replace(/^\+/, ''),
+      to: e164,
       templateId: template.id,
       values: merged,
       recipientName: merged.applicant_name ?? '',

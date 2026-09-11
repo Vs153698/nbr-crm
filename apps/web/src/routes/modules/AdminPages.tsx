@@ -832,6 +832,46 @@ function WhatsAppSettingsCard({
 
         {isAisensy ? (
           <>
+            {/*
+              Collapsed by default. Someone opening this screen has usually
+              already set AiSensy up and wants the templates list; the steps
+              only matter the first time, and an always-open block would push
+              everything else below the fold.
+            */}
+            <details className="rounded-lg border border-line bg-canvas">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-ink">
+                How to set AiSensy up
+              </summary>
+              <ol className="list-decimal space-y-2 px-3 pb-3 pl-7 text-[11px] leading-relaxed text-ink-2">
+                <li>
+                  In AiSensy, open <b>Manage → API Key</b> and copy the key. Paste it below and
+                  save. It is stored on the server and never sent back to this screen — to change
+                  it, paste a new one over the top.
+                </li>
+                <li>
+                  Get your approved template live as an <b>API Campaign</b>. This is the step most
+                  often missed: sends are addressed by <b>campaign name</b>, not template name, and
+                  a template with no campaign cannot be sent. In AiSensy, go to{' '}
+                  <b>Campaigns → API Campaign</b> and create one from the approved template.
+                </li>
+                <li>
+                  Add that campaign under <b>Approved templates</b> below: a name your team will
+                  recognise, the campaign name spelled <b>exactly</b> as it appears in AiSensy, and
+                  one parameter row for each <code>{'{{1}}'}</code>, <code>{'{{2}}'}</code> … in the
+                  template, <b>in the same order</b>. The count has to match the campaign exactly —
+                  AiSensy rejects the whole message if it does not, rather than leaving a blank.
+                </li>
+                <li>
+                  Tick <b>Send WhatsApp messages automatically</b> at the top, then save.
+                </li>
+                <li>
+                  Send yourself a test from the box at the bottom of this card before relying on
+                  it. Numbers go out with their country code — a ten-digit number is treated as
+                  Indian, anything else needs the full international form.
+                </li>
+              </ol>
+            </details>
+
             <Input
               type="password"
               label="AiSensy API key"
@@ -912,7 +952,7 @@ function WhatsAppSettingsCard({
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input
                 label="To (with country code)"
-                placeholder="919876543210"
+                placeholder="+919876543210"
                 value={testPhone}
                 onChange={(event) => setTestPhone(event.target.value)}
               />

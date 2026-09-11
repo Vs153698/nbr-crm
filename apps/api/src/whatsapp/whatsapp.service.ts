@@ -33,6 +33,30 @@ const AISENSY_CAMPAIGN_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
 /** A send must never hold a request open behind it. */
 const SEND_TIMEOUT_MS = 15_000;
 
+/** Assumed when a stored number carries no country code of its own. */
+const DEFAULT_DIAL_CODE = '91';
+const NATIONAL_NUMBER_LENGTH = 10;
+
+/**
+ * A destination in the form AiSensy's API reference documents: `+917428526285`.
+ *
+ * Callers hold numbers in every shape the CRM has ever stored — `+91 98765
+ * 43210` from `toE164`, a bare ten-digit mobile imported from the website — and
+ * two of them used to strip the plus before calling in. That was wrong: AiSensy
+ * accepts the plus, and for any number outside India requires it. Indian
+ * numbers survived the stripping only because AiSensy defaults an unresolvable
+ * number to +91, which is why nobody noticed.
+ *
+ * Normalising here rather than at each call site means a new caller cannot
+ * reintroduce the same bug.
+ */
+export function toAiSensyDestination(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.length === NATIONAL_NUMBER_LENGTH
+    ? `+${DEFAULT_DIAL_CODE}${digits}`
+    : `+${digits}`;
+}
+
 export interface WhatsAppConfig {
   readonly enabled: boolean;
   readonly provider: WhatsAppProvider;
@@ -269,7 +293,7 @@ export class WhatsAppService {
         body: JSON.stringify({
           apiKey: config.aisensyApiKey,
           campaignName: template.campaignName,
-          destination: input.to,
+          destination: toAiSensyDestination(input.to),
           userName: input.recipientName || config.aisensySenderName,
           source: 'nbr-crm',
           templateParams: buildWhatsAppParams(template, input.values),

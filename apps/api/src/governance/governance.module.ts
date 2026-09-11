@@ -262,7 +262,7 @@ class SettingsController {
     body: { to: string; templateId: string; values: Record<string, string> },
   ) {
     await this.whatsapp.sendTemplate({
-      to: body.to.replace(/\D/g, ''),
+      to: body.to,
       templateId: body.templateId,
       values: body.values,
       recipientName: body.values.applicant_name ?? 'Test',
