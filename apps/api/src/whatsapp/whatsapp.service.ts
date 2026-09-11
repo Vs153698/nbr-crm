@@ -306,6 +306,17 @@ export class WhatsAppService {
 
     let response: Response;
     try {
+      /**
+       * `templateParams` is omitted entirely for a template with no
+       * placeholders, rather than sent as `[]`.
+       *
+       * AiSensy rejects the message outright when the array length does not
+       * match the campaign's parameter count, and documents the field as
+       * optional — so for a campaign that takes none, absent is the shape they
+       * describe and an empty array is a guess.
+       */
+      const templateParams = buildWhatsAppParams(template, input.values);
+
       response = await fetch(AISENSY_CAMPAIGN_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -315,7 +326,7 @@ export class WhatsAppService {
           destination: toAiSensyDestination(input.to),
           userName: input.recipientName || config.aisensySenderName,
           source: 'nbr-crm',
-          templateParams: buildWhatsAppParams(template, input.values),
+          ...(templateParams.length > 0 ? { templateParams } : {}),
         }),
         signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
       });
