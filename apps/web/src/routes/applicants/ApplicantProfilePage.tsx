@@ -743,6 +743,7 @@ export default function ApplicantProfilePage() {
                       applicantId={applicant.id}
                       processingType={activeRecord.processingType}
                       adjudicatorRequested={activeRecord.adjudicatorRequested}
+                      adjudicatorFeeDue={activeRecord.adjudicatorFeeDue}
                       autoOpen={pendingDialog}
                       onAutoOpened={clearPendingDialog}
                       // Fees settled → the certificate is the next thing owed.

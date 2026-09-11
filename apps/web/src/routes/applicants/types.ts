@@ -27,6 +27,8 @@ export interface ApplicantRecord {
   processingType: string;
   /** DEV-002. An adjudicator was requested to attend. */
   adjudicatorRequested: boolean;
+  /** Whether the applicant is being charged for that adjudicator. */
+  adjudicatorFeeDue: boolean;
   applicationDate: string;
   assignedToUserId: string | null;
   paymentStatus: string;

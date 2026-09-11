@@ -30,6 +30,12 @@ const LEGACY_PATHS = {
    */
   applicationAction: '/api/crm-connector/application-action',
   /**
+   * Detail corrections — the adjudicator fee decision, the processing type.
+   * Separate from `applicationAction` because these change no status and send
+   * the applicant no mail; they are edits, not decisions.
+   */
+  applicationDetails: '/api/crm-connector/application-details',
+  /**
    * A file attached in the CRM. The website pulls the bytes into its own bucket
    * so the applicant portal, the adjudicator view and the certificate pack —
    * all of which read from its columns — can see it.
@@ -822,6 +828,25 @@ export class LegacyPushService {
     }
 
     return outcome;
+  }
+
+  /**
+   * Push a detail correction back to the website.
+   *
+   * Awaited rather than detached, unlike the event pushes: the operator is
+   * looking at the toggle they just moved, and a change that silently failed to
+   * reach the website would leave the two systems disagreeing about what the
+   * applicant owes.
+   */
+  async pushApplicationDetails(
+    recordId: string,
+    input: {
+      inviteAdjudicator?: boolean;
+      adjudicatorFeeDue?: boolean;
+      processingType?: string;
+    },
+  ): Promise<void> {
+    await this.push('applicationDetails', recordId, { ...input }, { suppressEcho: true });
   }
 
   /** Connection health for the integrations screen. */

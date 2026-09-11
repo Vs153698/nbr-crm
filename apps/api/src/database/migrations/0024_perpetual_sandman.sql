@@ -1,0 +1,1 @@
+ALTER TABLE "records" ADD COLUMN "adjudicator_fee_due" boolean DEFAULT true NOT NULL;

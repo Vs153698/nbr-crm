@@ -373,6 +373,15 @@ export const nbrWebhookApplicationSchema = z.object({
    */
   adjudicatorRequested: z.coerce.boolean().default(false),
 
+  /**
+   * Whether the website is collecting the adjudicator fee from the applicant.
+   *
+   * Separate from the request: staff may waive, defer, or settle it outside the
+   * portal, and none of those cancel the adjudicator. Defaults true so an
+   * application from before the switch existed reads as it always did.
+   */
+  adjudicatorFeeDue: z.coerce.boolean().default(true),
+
   applicant: z.object({
     fullName: trimmedString(150),
     fatherName: optionalTrimmedString(150),

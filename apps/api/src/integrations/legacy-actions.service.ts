@@ -222,6 +222,41 @@ export class LegacyActionsService {
    * The timeline entry is the exception: it records that an operator *here*
    * asked for this, which the returning snapshot cannot say.
    */
+  /**
+   * Set whether the applicant is charged for the adjudicator.
+   *
+   * Written here and pushed to the website, because the website is what shows
+   * the applicant their payable amount and takes the money. Writing only
+   * locally would leave the CRM saying one thing and the applicant's dashboard
+   * charging another.
+   */
+  async setAdjudicatorFee(
+    recordId: string,
+    input: { adjudicatorRequested?: boolean; adjudicatorFeeDue?: boolean },
+  ): Promise<{ ok: true }> {
+    const patch: Record<string, boolean> = {};
+    if (input.adjudicatorRequested !== undefined) {
+      patch.adjudicatorRequested = input.adjudicatorRequested;
+    }
+    if (input.adjudicatorFeeDue !== undefined) patch.adjudicatorFeeDue = input.adjudicatorFeeDue;
+
+    if (Object.keys(patch).length === 0) {
+      throw new ValidationError({ _: ['Nothing to change.'] });
+    }
+
+    await this.db.update(schema.records).set(patch).where(eq(schema.records.id, recordId));
+
+    // Awaited: the operator is looking at the switch they just moved, and a
+    // failure to reach the website must surface rather than leave the two
+    // systems disagreeing about what the applicant owes.
+    await this.legacyPush.pushApplicationDetails(recordId, {
+      inviteAdjudicator: input.adjudicatorRequested,
+      adjudicatorFeeDue: input.adjudicatorFeeDue,
+    });
+
+    return { ok: true };
+  }
+
   async run(
     recordId: string,
     input: LegacyApplicationActionInput,
