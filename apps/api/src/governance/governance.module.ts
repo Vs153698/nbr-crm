@@ -66,6 +66,13 @@ const importedActivitySchema = z.object({
  * the ordering into {{1}}, {{2}} happens server-side from the registry.
  */
 /** Who pays for the adjudicator, and whether one was asked for at all. */
+/** A real test send: a number the operator nominates, and one of their templates. */
+const whatsappTestSendSchema = z.object({
+  to: z.string().trim().min(8).max(20),
+  templateId: z.string().trim().min(1).max(60),
+  values: z.record(z.string().max(1000)).default({}),
+});
+
 const adjudicatorFeeSchema = z.object({
   adjudicatorRequested: z.boolean().optional(),
   adjudicatorFeeDue: z.boolean().optional(),
@@ -237,6 +244,31 @@ class SettingsController {
   @HttpCode(200)
   async testWhatsapp() {
     return this.whatsapp.testConnection();
+  }
+
+  /**
+   * Send a real test message through AiSensy.
+   *
+   * AiSensy has no endpoint that reports whether a key works without sending —
+   * unlike Meta, which exposes the phone number behind the token. So the only
+   * honest test is an actual message to a number the operator nominates, using
+   * one of their own approved templates. `testWhatsapp` above stays Meta's.
+   */
+  @Post('whatsapp/test-send')
+  @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async testWhatsappSend(
+    @Body(zodBody(whatsappTestSendSchema))
+    body: { to: string; templateId: string; values: Record<string, string> },
+  ) {
+    await this.whatsapp.sendTemplate({
+      to: body.to.replace(/\D/g, ''),
+      templateId: body.templateId,
+      values: body.values,
+      recipientName: body.values.applicant_name ?? 'Test',
+    });
+
+    return { sent: true, to: body.to };
   }
 
   @Get()

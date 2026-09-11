@@ -1239,6 +1239,19 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     audited: 'communication.whatsapp_sent',
     notes: 'Blocked when the applicant carries the Do Not Contact flag.',
   },
+  'SettingsController.testWhatsappSend': {
+    tag: 'Settings',
+    summary: 'Send a real WhatsApp test message',
+    description:
+      'Sends one of the registered approved templates to a nominated number, using the saved ' +
+      'credentials.',
+    response: { type: 'object', properties: { sent: { type: 'boolean' }, to: { type: 'string' } } },
+    notes:
+      'The AiSensy counterpart to Test connection. AiSensy exposes nothing that reports whether ' +
+      'a key works without sending — unlike Meta, which returns the phone number behind the ' +
+      'token — so the only honest check is an actual message. It really sends, and it uses the ' +
+      'stored credentials rather than whatever is on screen.',
+  },
   'LegacyActionsController.setAdjudicatorFee': {
     tag: 'Integration',
     summary: 'Set whether the adjudicator fee is charged',
