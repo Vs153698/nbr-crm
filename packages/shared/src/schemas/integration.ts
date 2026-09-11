@@ -30,6 +30,11 @@ export const LEGACY_STAGE = {
   SUBMITTED: 'submitted',
   UNDER_REVIEW: 'under_review',
   VALIDATED: 'validated',
+  /**
+   * DEV-006. Selected, then withdrawn from active processing for missing the
+   * 48-hour payment window. Reversible — the website can reactivate it.
+   */
+  ON_HOLD: 'on_hold',
   // Decided, and everything after.
   APPROVED: 'approved',
   PAYMENT_RECEIVED: 'payment_received',
@@ -54,6 +59,14 @@ export type LegacyStage = (typeof LEGACY_STAGE)[keyof typeof LEGACY_STAGE];
 export const LEGACY_DECISION_STAGES: readonly LegacyStage[] = [
   LEGACY_STAGE.REJECTED,
   LEGACY_STAGE.CANCELLED,
+  /**
+   * DEV-006. On Hold is a decision taken about a record, not a step along the
+   * ladder — it can be applied from anywhere, including after selection, and
+   * must be allowed to land. Without this the only-advance guard compares its
+   * rank (off the ladder, so -1) against wherever the record currently sits and
+   * silently refuses every withdrawal.
+   */
+  LEGACY_STAGE.ON_HOLD,
 ];
 
 export function isLegacyDecisionStage(stage: LegacyStage): boolean {
@@ -79,6 +92,10 @@ export const LEGACY_APPLICATION_ACTION = {
   VALIDATE: 'validate',
   CANCEL: 'cancel',
   REOPEN: 'reopen',
+  /** DEV-006. Withdraw a selected claim from active processing. */
+  HOLD: 'hold',
+  /** DEV-006. Put an On Hold claim back into active processing. */
+  REACTIVATE: 'reactivate',
 } as const;
 
 export type LegacyApplicationAction =
@@ -125,6 +142,22 @@ export const LEGACY_APPLICATION_ACTION_META: Readonly<
     field: 'note',
     required: false,
     tone: 'secondary',
+  },
+  [LEGACY_APPLICATION_ACTION.HOLD]: {
+    label: 'Place on hold',
+    effect:
+      'Withdraws the selected claim from active processing, unpublishes the awardee page and record, and tells the applicant it is On Hold rather than cancelled. Reversible.',
+    field: 'reason',
+    required: true,
+    tone: 'warning',
+  },
+  [LEGACY_APPLICATION_ACTION.REACTIVATE]: {
+    label: 'Reactivate',
+    effect:
+      'Returns an On Hold claim to active processing with a fresh payment window, and tells the applicant. An applicant who has already paid returns as paid.',
+    field: 'note',
+    required: true,
+    tone: 'primary',
   },
   [LEGACY_APPLICATION_ACTION.CANCEL]: {
     label: 'Cancel',
@@ -249,6 +282,7 @@ export const LEGACY_STAGE_TO_STATUS: Readonly<Record<LegacyStage, RecordStatus>>
   // Pending is the status that occupies that same slot here — after review,
   // before Selected — even though its label reads from the other direction.
   [LEGACY_STAGE.VALIDATED]: RECORD_STATUS.VERIFICATION_PENDING,
+  [LEGACY_STAGE.ON_HOLD]: RECORD_STATUS.ON_HOLD,
   [LEGACY_STAGE.APPROVED]: RECORD_STATUS.SELECTED,
   [LEGACY_STAGE.PAYMENT_RECEIVED]: RECORD_STATUS.PAYMENT_RECEIVED,
   [LEGACY_STAGE.CERTIFICATE_ISSUED]: RECORD_STATUS.CERTIFICATE_UPLOADED,
@@ -273,6 +307,10 @@ export const LEGACY_STAGE_RANK: Readonly<Record<LegacyStage, number>> = {
   [LEGACY_STAGE.SUBMITTED]: 0,
   [LEGACY_STAGE.UNDER_REVIEW]: 1,
   [LEGACY_STAGE.VALIDATED]: 2,
+  // Off the ladder like the other reversible-but-not-progress states: being put
+  // on hold is not a step forward, and ranking it as one would let it block a
+  // later, genuine advance under the only-advance rule.
+  [LEGACY_STAGE.ON_HOLD]: -1,
   [LEGACY_STAGE.APPROVED]: 3,
   [LEGACY_STAGE.PAYMENT_RECEIVED]: 4,
   [LEGACY_STAGE.CERTIFICATE_ISSUED]: 5,
