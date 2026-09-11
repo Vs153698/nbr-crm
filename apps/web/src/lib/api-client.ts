@@ -43,6 +43,20 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 
+  /**
+   * The message worth showing a person.
+   *
+   * `message` on a validation failure is the generic "Please correct the
+   * highlighted fields", which is useless outside a form that can highlight
+   * something — on a settings card or a dialog it names nothing and leaves the
+   * operator guessing. The field messages carry the actual reason, so they win
+   * when they exist.
+   */
+  get detail(): string {
+    const fromFields = this.fieldErrors.map((entry) => entry.message).filter(Boolean);
+    return fromFields.length > 0 ? fromFields.join(' ') : this.message;
+  }
+
   /** Field errors in the shape react-hook-form's `setError` expects. */
   get fieldErrors(): Array<{ name: string; message: string }> {
     if (!this.fields) return [];

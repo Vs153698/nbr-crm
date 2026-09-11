@@ -769,7 +769,7 @@ function WhatsAppSettingsCard({
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
     },
     onError: (error: unknown) =>
-      toast.error(error instanceof ApiError ? error.message : 'Could not save WhatsApp settings'),
+      toast.error(error instanceof ApiError ? error.detail : 'Could not save WhatsApp settings'),
   });
 
   const testSendMutation = useMutation({
@@ -784,7 +784,7 @@ function WhatsAppSettingsCard({
         description: `AiSensy accepted it for ${result.to}. Check the handset.`,
       }),
     onError: (error: unknown) =>
-      toast.error(error instanceof ApiError ? error.message : 'The test send failed'),
+      toast.error(error instanceof ApiError ? error.detail : 'The test send failed'),
   });
 
   const testMutation = useMutation({
@@ -795,7 +795,7 @@ function WhatsAppSettingsCard({
     },
     onError: (error: unknown) => {
       setTestResult(null);
-      toast.error(error instanceof ApiError ? error.message : 'The WhatsApp test failed');
+      toast.error(error instanceof ApiError ? error.detail : 'The WhatsApp test failed');
     },
   });
 
@@ -928,13 +928,25 @@ function WhatsAppSettingsCard({
                 ]}
               />
             </div>
-            <p className="text-2xs text-ink-3">
-              Sends for real, using the credentials already saved — save your changes first.
-            </p>
+            {dirty ? (
+              <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2 text-2xs text-warn">
+                <Icons.Info size={12} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+                Save first. The test sends with the credentials and templates already stored, not
+                what is on screen.
+              </p>
+            ) : !effectiveEnabled ? (
+              <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2 text-2xs text-warn">
+                <Icons.Info size={12} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
+                Sending is switched off — tick “Send WhatsApp messages automatically” above and
+                save, or the test will be refused.
+              </p>
+            ) : (
+              <p className="text-2xs text-ink-3">Sends a real message using the stored settings.</p>
+            )}
             <Button
               size="sm"
               variant="secondary"
-              disabled={!testPhone.trim() || !testTemplateId}
+              disabled={!testPhone.trim() || !testTemplateId || dirty || !effectiveEnabled}
               loading={testSendMutation.isPending}
               onClick={() => testSendMutation.mutate()}
             >
