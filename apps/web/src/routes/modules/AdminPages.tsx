@@ -707,6 +707,7 @@ function WhatsAppSettingsCard({
   const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
   const [testPhone, setTestPhone] = useState('');
   const [testTemplateId, setTestTemplateId] = useState('');
+  const [testValues, setTestValues] = useState<Record<string, string>>({});
   const [testResult, setTestResult] = useState<{ displayPhoneNumber: string; verifiedName: string } | null>(
     null,
   );
@@ -766,18 +767,31 @@ function WhatsAppSettingsCard({
       setAisensySender(null);
       setTemplates(null);
       setTestResult(null);
+      setTestValues({});
       void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
     },
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.detail : 'Could not save WhatsApp settings'),
   });
 
+  const testTemplateParams =
+    effectiveTemplates.find((template) => template.id === testTemplateId)?.params ?? [];
+
+  /**
+   * AiSensy rejects the message if the number of params does not match the
+   * campaign, and an empty one is no better than a missing one — so the button
+   * stays disabled until every placeholder has something in it.
+   */
+  const testValuesComplete = testTemplateParams.every((param) =>
+    (testValues[param.key] ?? '').trim(),
+  );
+
   const testSendMutation = useMutation({
     mutationFn: () =>
       api.post<{ sent: boolean; to: string }>('/settings/whatsapp/test-send', {
         to: testPhone.trim(),
         templateId: testTemplateId,
-        values: {},
+        values: testValues,
       }),
     onSuccess: (result) =>
       toast.success('Test message sent', {
@@ -959,7 +973,22 @@ function WhatsAppSettingsCard({
               <Select
                 label="Template"
                 value={testTemplateId}
-                onChange={(event) => setTestTemplateId(event.target.value)}
+                onChange={(event) => {
+                  setTestTemplateId(event.target.value);
+                  // Sample text per placeholder, so the test exercises a real
+                  // message. Sending blanks is not a lighter test — AiSensy
+                  // refuses empty params outright, and anything that did get
+                  // through would read "Dear ,".
+                  const chosen = effectiveTemplates.find((t) => t.id === event.target.value);
+                  setTestValues(
+                    Object.fromEntries(
+                      (chosen?.params ?? []).map((param, index) => [
+                        param.key,
+                        `Test ${param.key || index + 1}`,
+                      ]),
+                    ),
+                  );
+                }}
                 options={[
                   { value: '', label: '— Choose —' },
                   ...effectiveTemplates
@@ -968,6 +997,21 @@ function WhatsAppSettingsCard({
                 ]}
               />
             </div>
+
+            {testTemplateParams.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {testTemplateParams.map((param, index) => (
+                  <Input
+                    key={param.key || index}
+                    label={`{{${index + 1}}} ${param.key}`}
+                    value={testValues[param.key] ?? ''}
+                    onChange={(event) =>
+                      setTestValues((current) => ({ ...current, [param.key]: event.target.value }))
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
             {dirty ? (
               <p className="flex items-start gap-1.5 rounded-lg bg-warn-tint p-2 text-2xs text-warn">
                 <Icons.Info size={12} strokeWidth={ICON_STROKE} className="mt-0.5 shrink-0" />
@@ -986,7 +1030,13 @@ function WhatsAppSettingsCard({
             <Button
               size="sm"
               variant="secondary"
-              disabled={!testPhone.trim() || !testTemplateId || dirty || !effectiveEnabled}
+              disabled={
+                !testPhone.trim() ||
+                !testTemplateId ||
+                !testValuesComplete ||
+                dirty ||
+                !effectiveEnabled
+              }
               loading={testSendMutation.isPending}
               onClick={() => testSendMutation.mutate()}
             >

@@ -5,9 +5,9 @@ import {
   type WhatsAppProvider,
   type WhatsAppTemplate,
 } from '@nbr/shared';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { inArray } from 'drizzle-orm';
-import { ValidationError } from '../common/errors';
+import { DomainError, ValidationError } from '../common/errors';
 import type { Database } from '../database/client';
 import { DB } from '../database/database.tokens';
 import * as schema from '../database/schema';
@@ -79,14 +79,33 @@ const CONFIG_TTL_MS = 60_000;
  */
 const OUTSIDE_SESSION_WINDOW_CODE = 131047;
 
-export class WhatsAppSendError extends Error {
+/**
+ * A send the provider refused, or could not be reached to attempt.
+ *
+ * A `DomainError` rather than a plain `Error` deliberately. As a plain Error it
+ * carried no HTTP mapping, so the exception filter fell through to a generic
+ * 500 and the provider's own explanation — the single most useful thing here,
+ * and usually something only the operator can fix, like a campaign that does
+ * not exist — reached the server log and nothing else. `testConnection` in this
+ * same service always surfaced its provider message properly; this path did
+ * not, for no reason beyond the base class.
+ *
+ * The message goes in `fields.whatsapp` as well as the body so the settings
+ * screen shows it against the WhatsApp form rather than as a bare toast.
+ */
+export class WhatsAppSendError extends DomainError {
   constructor(
     message: string,
     readonly metaCode: number | null,
     /** True for the specific, expected, unfixable-by-retrying case above. */
     readonly outsideSessionWindow: boolean,
+    /**
+     * A refusal is the operator's to fix and is reported as such; a provider we
+     * could not reach at all is a gateway fault and must not be blamed on them.
+     */
+    status: HttpStatus = HttpStatus.UNPROCESSABLE_ENTITY,
   ) {
-    super(message);
+    super('WHATSAPP_SEND_FAILED', message, status, { whatsapp: [message] });
   }
 }
 
@@ -305,6 +324,7 @@ export class WhatsAppService {
         `Could not reach AiSensy: ${error instanceof Error ? error.message : String(error)}`,
         null,
         false,
+        HttpStatus.BAD_GATEWAY,
       );
     }
 
@@ -401,7 +421,12 @@ export class WhatsAppService {
     if (!providerMessageId) {
       // Meta returned 2xx with no message id — treat as a failure rather than
       // record a "sent" row with nothing to trace a delivery complaint back to.
-      throw new WhatsAppSendError('WhatsApp accepted the request but returned no message id.', null, false);
+      throw new WhatsAppSendError(
+        'WhatsApp accepted the request but returned no message id.',
+        null,
+        false,
+        HttpStatus.BAD_GATEWAY,
+      );
     }
 
     return { providerMessageId };
