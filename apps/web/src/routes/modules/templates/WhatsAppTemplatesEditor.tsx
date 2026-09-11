@@ -37,36 +37,77 @@ interface Props {
   onChange: (next: WhatsAppTemplate[]) => void;
 }
 
-/** A slug that stays stable once created, so bindings survive a rename. */
-function slugify(label: string): string {
-  return (
-    label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 40) || `template-${Date.now().toString(36)}`
-  );
+/**
+ * A row identifier, unique for the life of the page.
+ *
+ * The counter matters: two rows added inside the same millisecond would
+ * otherwise share a timestamp, and duplicate ids are the whole bug this
+ * replaced.
+ */
+let idCounter = 0;
+function newTemplateId(): string {
+  idCounter += 1;
+  return `template-${Date.now().toString(36)}-${idCounter.toString(36)}`;
+}
+
+/**
+ * Guarantee every row has an id of its own before the change leaves the editor.
+ *
+ * Ids used to be derived from the friendly name, and only on its first
+ * keystroke — so a row's permanent id was the slug of a single character, and
+ * any two templates whose names began with the same letter shared one. Every
+ * edit then hit both rows, and Remove deleted both.
+ *
+ * Repairing on the way out means opening this screen and touching anything
+ * fixes a registry already saved in that state. Reassigning is safe: nothing
+ * outside the registry stores a template id — automatic sends bind through
+ * `templateCode`, and the test send picks from the live list.
+ */
+function withUniqueIds(templates: readonly WhatsAppTemplate[]): WhatsAppTemplate[] {
+  const seen = new Set<string>();
+  return templates.map((template) => {
+    if (template.id && !seen.has(template.id)) {
+      seen.add(template.id);
+      return template;
+    }
+    let candidate = newTemplateId();
+    while (seen.has(candidate)) candidate = newTemplateId();
+    seen.add(candidate);
+    return { ...template, id: candidate };
+  });
 }
 
 export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props) {
-  function updateTemplate(id: string, patch: Partial<WhatsAppTemplate>) {
-    onChange(templates.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  /** Every change leaves through here, so ids are repaired on the way out. */
+  function emit(next: readonly WhatsAppTemplate[]): void {
+    onChange(withUniqueIds(next));
   }
 
-  function updateParam(templateId: string, index: number, patch: Partial<WhatsAppTemplateParam>) {
-    onChange(
-      templates.map((t) =>
-        t.id === templateId
-          ? { ...t, params: t.params.map((p, i) => (i === index ? { ...p, ...patch } : p)) }
+  /**
+   * Rows are addressed by position rather than by id throughout.
+   *
+   * A row is only ever edited from its own controls, so its index is exactly
+   * the right handle — and unlike an id it cannot be shared with another row,
+   * so a registry already saved with duplicate ids still edits correctly.
+   */
+  function updateTemplate(index: number, patch: Partial<WhatsAppTemplate>) {
+    emit(templates.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+  }
+
+  function updateParam(templateIndex: number, index: number, patch: Partial<WhatsAppTemplateParam>) {
+    emit(
+      templates.map((t, i) =>
+        i === templateIndex
+          ? { ...t, params: t.params.map((p, j) => (j === index ? { ...p, ...patch } : p)) }
           : t,
       ),
     );
   }
 
-  function moveParam(templateId: string, index: number, delta: number) {
-    onChange(
-      templates.map((t) => {
-        if (t.id !== templateId) return t;
+  function moveParam(templateIndex: number, index: number, delta: number) {
+    emit(
+      templates.map((t, i) => {
+        if (i !== templateIndex) return t;
         const target = index + delta;
         if (target < 0 || target >= t.params.length) return t;
         const params = [...t.params];
@@ -91,10 +132,10 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
           icon={Icons.Plus}
           disabled={disabled}
           onClick={() =>
-            onChange([
+            emit([
               ...templates,
               {
-                id: `template-${Date.now().toString(36)}`,
+                id: newTemplateId(),
                 label: '',
                 campaignName: '',
                 params: [],
@@ -118,30 +159,25 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
         </div>
       ) : null}
 
-      {templates.map((template) => (
-        <div key={template.id} className="space-y-3 rounded-xl border border-line bg-canvas/60 p-3">
+      {templates.map((template, templateIndex) => (
+        <div
+          key={templateIndex}
+          className="space-y-3 rounded-xl border border-line bg-canvas/60 p-3"
+        >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input
               label="Friendly name"
               placeholder="e.g. Selection letter"
               value={template.label}
               disabled={disabled}
-              onChange={(event) => {
-                const label = event.target.value;
-                updateTemplate(template.id, {
-                  label,
-                  // Only derive the id while the template is new and unnamed —
-                  // renaming later must not orphan anything pointing at it.
-                  ...(template.label === '' && label ? { id: slugify(label) } : {}),
-                });
-              }}
+              onChange={(event) => updateTemplate(templateIndex, { label: event.target.value })}
             />
             <Input
               label="AiSensy campaign name"
               placeholder="e.g. nbr_selection_v3"
               value={template.campaignName}
               disabled={disabled}
-              onChange={(event) => updateTemplate(template.id, { campaignName: event.target.value })}
+              onChange={(event) => updateTemplate(templateIndex, { campaignName: event.target.value })}
             />
             <Select
               label="Answers template"
@@ -149,7 +185,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
               value={template.templateCode ?? ''}
               disabled={disabled}
               onChange={(event) =>
-                updateTemplate(template.id, { templateCode: event.target.value || null })
+                updateTemplate(templateIndex, { templateCode: event.target.value || null })
               }
               options={[
                 { value: '', label: '— Manual sends only —' },
@@ -163,7 +199,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                   checked={template.isActive}
                   disabled={disabled}
                   onChange={(event) =>
-                    updateTemplate(template.id, { isActive: event.target.checked })
+                    updateTemplate(templateIndex, { isActive: event.target.checked })
                   }
                   className="h-4 w-4 rounded border-line text-brand focus:ring-brand"
                 />
@@ -174,7 +210,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                 variant="ghost"
                 icon={Icons.Trash2}
                 disabled={disabled}
-                onClick={() => onChange(templates.filter((t) => t.id !== template.id))}
+                onClick={() => emit(templates.filter((_, i) => i !== templateIndex))}
               >
                 Remove
               </Button>
@@ -190,7 +226,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                 type="button"
                 disabled={disabled}
                 onClick={() =>
-                  updateTemplate(template.id, {
+                  updateTemplate(templateIndex, {
                     params: [
                       ...template.params,
                       {
@@ -224,7 +260,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                     disabled={disabled}
                     placeholder="What is this? e.g. Applicant name"
                     onChange={(event) =>
-                      updateParam(template.id, index, { label: event.target.value })
+                      updateParam(templateIndex, index, { label: event.target.value })
                     }
                     className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-white px-2.5 text-xs text-ink outline-none transition-colors focus:border-brand"
                   />
@@ -232,7 +268,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                     value={param.source}
                     disabled={disabled}
                     onChange={(event) =>
-                      updateParam(template.id, index, {
+                      updateParam(templateIndex, index, {
                         source: event.target.value as WhatsAppTemplateParam['source'],
                         // The key doubles as the form field name on a manual
                         // send; aligning it to the source is what lets an
@@ -256,7 +292,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                       type="button"
                       aria-label="Move up"
                       disabled={disabled || index === 0}
-                      onClick={() => moveParam(template.id, index, -1)}
+                      onClick={() => moveParam(templateIndex, index, -1)}
                       className={cn('px-1 text-[9px] text-ink-3 hover:text-ink', 'disabled:opacity-30')}
                     >
                       ▲
@@ -265,7 +301,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                       type="button"
                       aria-label="Move down"
                       disabled={disabled || index === template.params.length - 1}
-                      onClick={() => moveParam(template.id, index, 1)}
+                      onClick={() => moveParam(templateIndex, index, 1)}
                       className={cn('px-1 text-[9px] text-ink-3 hover:text-ink', 'disabled:opacity-30')}
                     >
                       ▼
@@ -276,7 +312,7 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
                     aria-label="Remove value"
                     disabled={disabled}
                     onClick={() =>
-                      updateTemplate(template.id, {
+                      updateTemplate(templateIndex, {
                         params: template.params.filter((_, i) => i !== index),
                       })
                     }
