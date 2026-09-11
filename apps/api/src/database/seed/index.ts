@@ -490,7 +490,7 @@ async function seedSettings(db: Database): Promise<void> {
       category: 'whatsapp',
       label: 'AiSensy API key',
       description:
-        'From the AiSensy dashboard under Manage → API Key. Only used when the provider is AiSensy.',
+        'AiSensy → your project → Developer → API Campaign Key → Generate. A Project API Key will not work — campaign sends need the campaign key. Only used when the provider is AiSensy.',
       isSecret: true,
     },
     {

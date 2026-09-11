@@ -858,7 +858,10 @@ function WhatsAppSettingsCard({
               </summary>
               <ol className="list-decimal space-y-2 px-3 pb-3 pl-7 text-[11px] leading-relaxed text-ink-2">
                 <li>
-                  In AiSensy, open <b>Manage → API Key</b> and copy the key. Paste it below and
+                  In AiSensy, open your project, go to the <b>Developer</b> page, and on the{' '}
+                  <b>API Campaign Key</b> tab press <b>Generate Key</b>. It must be that tab — a{' '}
+                  <b>Project API Key</b> is a different credential and will not authenticate a
+                  campaign send. Copy it, paste it below and
                   save. It is stored on the server and never sent back to this screen — to change
                   it, paste a new one over the top.
                 </li>
@@ -892,7 +895,7 @@ function WhatsAppSettingsCard({
               placeholder={
                 hasAisensyKey ? '•••••••• (saved — leave blank to keep it)' : 'Paste the key from AiSensy'
               }
-              hint="AiSensy dashboard → Manage → API Key."
+              hint="AiSensy → your project → Developer → API Campaign Key → Generate. Not a Project API Key — that one cannot send campaigns."
               value={aisensyKey}
               disabled={!canManage}
               onChange={(event) => setAisensyKey(event.target.value)}
