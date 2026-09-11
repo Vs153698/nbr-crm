@@ -226,8 +226,19 @@ export class WhatsAppService {
     const config = await this.resolveConfig();
 
     if (!this.isConfigured(config)) {
+      /**
+       * Say which half is missing.
+       *
+       * "Not configured" is unhelpful to someone standing on the settings
+       * screen with a key pasted in: the usual cause is the enable checkbox
+       * still being off, which does not look like configuration at all.
+       */
       throw new ValidationError({
-        whatsapp: ['WhatsApp is not configured. Set it up under Settings → WhatsApp first.'],
+        whatsapp: [
+          !config.enabled
+            ? 'Tick “Send WhatsApp messages automatically” and save — sending is switched off.'
+            : 'Add your AiSensy API key and save first.',
+        ],
       });
     }
     if (config.provider !== WHATSAPP_PROVIDER.AISENSY) {
@@ -238,7 +249,13 @@ export class WhatsAppService {
 
     const template = config.templates.find((entry) => entry.id === input.templateId);
     if (!template) {
-      throw new ValidationError({ whatsapp: ['That template is no longer registered.'] });
+      // Most often an unsaved one: the editor holds it locally until Save, and
+      // only saved templates exist here.
+      throw new ValidationError({
+        whatsapp: [
+          'That template is not saved yet. Save your settings, then send the test.',
+        ],
+      });
     }
     if (!template.isActive) {
       throw new ValidationError({ whatsapp: [`"${template.label}" is switched off.`] });
