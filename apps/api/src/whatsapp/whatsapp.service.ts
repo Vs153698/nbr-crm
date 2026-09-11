@@ -356,15 +356,53 @@ export class WhatsAppService {
    * API version Meta has since changed the wording of.
    */
   private async readError(response: Response): Promise<{ message: string; code: number | null }> {
+    const raw = await response.text().catch(() => '');
+
+    // Always logged, whatever shape it is. The parsing below is best-effort and
+    // the operator's report of "it just says 400" has to be answerable.
+    if (raw) this.logger.warn(`Provider error body (${response.status}): ${raw.slice(0, 1000)}`);
+
+    let parsed: unknown = null;
     try {
-      const body = (await response.json()) as { error?: { message?: string; code?: number } };
-      if (body?.error?.message) {
-        return { message: body.error.message, code: body.error.code ?? null };
-      }
+      parsed = raw ? JSON.parse(raw) : null;
     } catch {
-      // Not JSON — fall through to the status line.
+      // Not JSON. The raw text is still the best thing to show.
     }
-    return { message: `WhatsApp API returned ${response.status} ${response.statusText}`, code: null };
+
+    if (parsed !== null && typeof parsed === 'object') {
+      const body = parsed as Record<string, unknown>;
+
+      // Meta nests under `error`; AiSensy does not document its error shape at
+      // all, and has been seen to use several. Rather than guess one, take the
+      // first plausible message-bearing field — and if none matches, fall back
+      // to the raw body rather than throwing the provider's explanation away,
+      // which is exactly what this method used to do.
+      const nested = body.error;
+      if (typeof nested === 'object' && nested !== null) {
+        const inner = nested as Record<string, unknown>;
+        if (typeof inner.message === 'string' && inner.message.trim()) {
+          return {
+            message: inner.message,
+            code: typeof inner.code === 'number' ? inner.code : null,
+          };
+        }
+      }
+
+      for (const key of ['message', 'errorMessage', 'error', 'msg', 'description', 'detail']) {
+        const value = body[key];
+        if (typeof value === 'string' && value.trim()) {
+          return { message: value, code: typeof body.code === 'number' ? body.code : null };
+        }
+      }
+    }
+
+    const detail = raw.trim().slice(0, 300);
+    return {
+      message: detail
+        ? `WhatsApp API returned ${response.status}: ${detail}`
+        : `WhatsApp API returned ${response.status} ${response.statusText}`,
+      code: null,
+    };
   }
 
   /**
