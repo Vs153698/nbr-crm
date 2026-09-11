@@ -386,7 +386,7 @@ export class WhatsAppService {
     if (config.provider === WHATSAPP_PROVIDER.AISENSY) {
       throw new ValidationError({
         whatsapp: [
-          'AiSensy cannot be probed without sending. Use “Send a test message” on a template instead.',
+          'AiSensy has no way to verify a key without sending. Use the “Send a test message” box on this screen instead — it sends one of your approved templates to a number you choose.',
         ],
       });
     }

@@ -705,6 +705,8 @@ function WhatsAppSettingsCard({
   const [aisensyKey, setAisensyKey] = useState(''); // Never prefilled from a saved value.
   const [aisensySender, setAisensySender] = useState<string | null>(null);
   const [templates, setTemplates] = useState<WhatsAppTemplate[] | null>(null);
+  const [testPhone, setTestPhone] = useState('');
+  const [testTemplateId, setTestTemplateId] = useState('');
   const [testResult, setTestResult] = useState<{ displayPhoneNumber: string; verifiedName: string } | null>(
     null,
   );
@@ -768,6 +770,21 @@ function WhatsAppSettingsCard({
     },
     onError: (error: unknown) =>
       toast.error(error instanceof ApiError ? error.message : 'Could not save WhatsApp settings'),
+  });
+
+  const testSendMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ sent: boolean; to: string }>('/settings/whatsapp/test-send', {
+        to: testPhone.trim(),
+        templateId: testTemplateId,
+        values: {},
+      }),
+    onSuccess: (result) =>
+      toast.success('Test message sent', {
+        description: `AiSensy accepted it for ${result.to}. Check the handset.`,
+      }),
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'The test send failed'),
   });
 
   const testMutation = useMutation({
@@ -883,16 +900,61 @@ function WhatsAppSettingsCard({
           </div>
         ) : null}
 
-        {canManage ? (
-          <div className="flex gap-2">
+        {/*
+          AiSensy has no endpoint that reports whether a key works without
+          sending, so there is nothing to "test connect" to. The only honest
+          check is a real message to a number the operator nominates, using one
+          of their own approved templates.
+        */}
+        {canManage && isAisensy ? (
+          <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
+            <p className="text-xs font-semibold text-ink">Send a test message</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Input
+                label="To (with country code)"
+                placeholder="919876543210"
+                value={testPhone}
+                onChange={(event) => setTestPhone(event.target.value)}
+              />
+              <Select
+                label="Template"
+                value={testTemplateId}
+                onChange={(event) => setTestTemplateId(event.target.value)}
+                options={[
+                  { value: '', label: '— Choose —' },
+                  ...effectiveTemplates
+                    .filter((template) => template.isActive && template.campaignName)
+                    .map((template) => ({ value: template.id, label: template.label || template.id })),
+                ]}
+              />
+            </div>
+            <p className="text-2xs text-ink-3">
+              Sends for real, using the credentials already saved — save your changes first.
+            </p>
             <Button
               size="sm"
               variant="secondary"
-              loading={testMutation.isPending}
-              onClick={() => testMutation.mutate()}
+              disabled={!testPhone.trim() || !testTemplateId}
+              loading={testSendMutation.isPending}
+              onClick={() => testSendMutation.mutate()}
             >
-              Test connection
+              Send test
             </Button>
+          </div>
+        ) : null}
+
+        {canManage ? (
+          <div className="flex gap-2">
+            {!isAisensy ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={testMutation.isPending}
+                onClick={() => testMutation.mutate()}
+              >
+                Test connection
+              </Button>
+            ) : null}
             {dirty ? (
               <>
                 <Button
