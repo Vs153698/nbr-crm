@@ -1240,7 +1240,7 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     notes: 'Blocked when the applicant carries the Do Not Contact flag.',
   },
   'SettingsController.testWhatsappSend': {
-    tag: 'Settings',
+    tag: 'Administration',
     summary: 'Send a real WhatsApp test message',
     description:
       'Sends one of the registered approved templates to a nominated number, using the saved ' +
