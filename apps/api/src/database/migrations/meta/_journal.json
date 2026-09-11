@@ -169,6 +169,13 @@
       "when": 1789015758125,
       "tag": "0023_loose_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789107888366,
+      "tag": "0024_perpetual_sandman",
+      "breakpoints": true
     }
   ]
 }

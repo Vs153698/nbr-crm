@@ -94,6 +94,14 @@ export const records = pgTable(
      * sent — so it needs to be queryable, not just readable.
      */
     adjudicatorRequested: boolean('adjudicator_requested').notNull().default(false),
+    /**
+     * Whether the applicant is being charged for the adjudicator.
+     *
+     * Its own column rather than inferred from the fee appearing on a payment:
+     * an invoice raised before the decision, or one settled offline, would both
+     * give the wrong answer.
+     */
+    adjudicatorFeeDue: boolean('adjudicator_fee_due').notNull().default(true),
     applicationDate: timestamp('application_date', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),

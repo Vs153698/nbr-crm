@@ -65,6 +65,12 @@ const importedActivitySchema = z.object({
  * Values are keyed by the template's own parameter names, never by position —
  * the ordering into {{1}}, {{2}} happens server-side from the registry.
  */
+/** Who pays for the adjudicator, and whether one was asked for at all. */
+const adjudicatorFeeSchema = z.object({
+  adjudicatorRequested: z.boolean().optional(),
+  adjudicatorFeeDue: z.boolean().optional(),
+});
+
 const importedWhatsappTemplateSchema = z.object({
   templateId: z.string().trim().min(1).max(60),
   values: z.record(z.string().max(1000)).default({}),
@@ -500,6 +506,24 @@ class LegacyActionsController {
    * Awaited rather than detached: an operator who clicks Approve has to be told
    * if the applicant was not in fact written to.
    */
+  /**
+   * Decide whether the applicant is charged for the adjudicator.
+   *
+   * Gated on changing a record rather than on managing the integration: this is
+   * ordinary commercial judgement about one applicant, not reconfiguring the
+   * link between the two systems.
+   */
+  @Post(':id/adjudicator-fee')
+  @Can(MODULES.RECORDS, ACTIONS.CHANGE_STATUS)
+  @HttpCode(200)
+  async setAdjudicatorFee(
+    @Param('id') id: string,
+    @Body(zodBody(adjudicatorFeeSchema))
+    body: { adjudicatorRequested?: boolean; adjudicatorFeeDue?: boolean },
+  ) {
+    return this.legacyActions.setAdjudicatorFee(uuidSchema.parse(id), body);
+  }
+
   @Post(':id/legacy-action')
   @Can(MODULES.RECORDS, ACTIONS.CHANGE_STATUS)
   async run(

@@ -1239,6 +1239,20 @@ export const ROUTE_DOCS: Readonly<Record<string, RouteDoc>> = {
     audited: 'communication.whatsapp_sent',
     notes: 'Blocked when the applicant carries the Do Not Contact flag.',
   },
+  'LegacyActionsController.setAdjudicatorFee': {
+    tag: 'Integration',
+    summary: 'Set whether the adjudicator fee is charged',
+    description:
+      'Records whether an adjudicator was requested and whether the applicant is being charged ' +
+      'for one, and pushes both to the website.',
+    response: { type: 'object', properties: { ok: { type: 'boolean' } } },
+    notes:
+      'The two are separate on purpose: staff may waive, defer or settle the fee outside the ' +
+      'portal, and none of those cancel the adjudicator — conflating them would stop one being ' +
+      'scheduled. Pushed synchronously, because the website is what shows the applicant their ' +
+      'payable amount, and a silent failure would leave the two systems disagreeing about what ' +
+      'is owed.',
+  },
   'ImportedRecordsController.sendImportedWhatsApp': {
     tag: 'Integration',
     summary: 'Send an approved WhatsApp template to a certificate holder',

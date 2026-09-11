@@ -104,7 +104,11 @@ export interface InvoiceFeeLine {
  * so it is not attributed at all.
  */
 export function invoiceFeeLines(
-  record: { processingType?: string | null; adjudicatorRequested?: boolean | null },
+  record: {
+    processingType?: string | null
+    adjudicatorRequested?: boolean | null
+    adjudicatorFeeDue?: boolean | null
+  },
   invoiceAmount: number,
 ): InvoiceFeeLine[] {
   const candidates: InvoiceFeeLine[] = [];
@@ -117,7 +121,12 @@ export function invoiceFeeLines(
     });
   }
 
-  if (record.adjudicatorRequested === true) {
+  /**
+   * Charged only when it was requested *and* NBR is collecting for it. A waived
+   * or separately-settled fee is not part of this invoice, and splitting a line
+   * out for it would make the figures disagree with what was paid.
+   */
+  if (record.adjudicatorRequested === true && record.adjudicatorFeeDue !== false) {
     candidates.push({
       label: 'Adjudicator Fee',
       note: 'official adjudicator present to verify the attempt',

@@ -3,6 +3,7 @@ import {
   formatINR,
   PAYMENT_MODE,
   PAYMENT_MODE_LABELS,
+  ADJUDICATOR_FEE,
   invoiceFeeLines,
 } from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +13,7 @@ import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { CardHeader, DetailRow, EmptyState } from '@/components/ui/Card';
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog';
-import { Input, Select, Textarea } from '@/components/ui/Field';
+import { Checkbox, Input, Select, Textarea } from '@/components/ui/Field';
 import { useAuth } from '@/hooks/useAuth';
 import { api, ApiError } from '@/lib/api-client';
 import { cn } from '@/lib/cn';
@@ -36,6 +37,7 @@ export function PaymentTab({
   applicantId,
   processingType,
   adjudicatorRequested,
+  adjudicatorFeeDue,
   autoOpen,
   onAutoOpened,
   onSettled,
@@ -46,6 +48,8 @@ export function PaymentTab({
   processingType?: string | null;
   /** DEV-002. An adjudicator was requested, which carries a fee. */
   adjudicatorRequested?: boolean | null;
+  /** Whether that fee is being collected from the applicant. */
+  adjudicatorFeeDue?: boolean | null;
   autoOpen?: string | null;
   onAutoOpened?: () => void;
   /**
@@ -138,6 +142,23 @@ export function PaymentTab({
       toast.error(error instanceof ApiError ? error.message : 'Could not reverse the payment'),
   });
 
+  /**
+   * Writes to the CRM and the website together. Awaited by the service, so a
+   * failure surfaces here rather than leaving the applicant's dashboard
+   * charging something the CRM says is waived.
+   */
+  const feeMutation = useMutation({
+    mutationFn: (adjudicatorFeeDue: boolean) =>
+      api.post(`/records/${recordId}/adjudicator-fee`, { adjudicatorFeeDue }),
+    onSuccess: () => {
+      toast.success('Adjudicator fee updated');
+      void queryClient.invalidateQueries({ queryKey: queryKeys.applicant(applicantId) });
+      void queryClient.invalidateQueries({ queryKey: ['payment', recordId] });
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof ApiError ? error.message : 'Could not update the fee'),
+  });
+
   if (isLoading) return <div className="skeleton h-48" />;
 
   if (!payment) {
@@ -207,12 +228,31 @@ export function PaymentTab({
         <dl className="rounded-lg border border-line p-3">
           <DetailRow label="Package" value={payment.packageName} />
           <DetailRow label="Amount" value={formatINR(payment.amount)} />
+          {/* Staff decide whether the applicant is billed for the adjudicator.
+              Shown here because it changes the payable amount beside it, and
+              pushed to the website, which is what actually takes the money. */}
+          {adjudicatorRequested ? (
+            <div className="mt-1.5 border-t border-line pt-1.5">
+              <Checkbox
+                label={`Charge the applicant ${formatINR(String(ADJUDICATOR_FEE))} for the adjudicator`}
+                hint={
+                  adjudicatorFeeDue === false
+                    ? 'Off — the adjudicator is still arranged, but nothing is billed for it here.'
+                    : 'On — added to what the applicant pays and shown on their invoice.'
+                }
+                checked={adjudicatorFeeDue !== false}
+                disabled={feeMutation.isPending}
+                onChange={(event) => feeMutation.mutate(event.target.checked)}
+              />
+            </div>
+          ) : null}
+
           {/* DEV-001/DEV-002. Each optional charge as its own row when the
               amount contains it, so the figures on screen match the lines the
               invoice will print and nobody has to work out why this record
               costs ₹1,00,500 more than the package. */}
           {invoiceFeeLines(
-            { processingType, adjudicatorRequested },
+            { processingType, adjudicatorRequested, adjudicatorFeeDue },
             Number(payment.amount),
           ).map((line) => (
             <DetailRow

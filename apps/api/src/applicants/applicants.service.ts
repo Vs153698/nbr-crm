@@ -416,6 +416,7 @@ export class ApplicantsService {
           source: schema.records.source,
           processingType: schema.records.processingType,
           adjudicatorRequested: schema.records.adjudicatorRequested,
+          adjudicatorFeeDue: schema.records.adjudicatorFeeDue,
           applicationDate: schema.records.applicationDate,
           assignedToUserId: schema.records.assignedToUserId,
           paymentStatus: schema.records.paymentStatus,

@@ -141,6 +141,7 @@ export class LegacyLifecycleService {
       .set({
         processingType: payload.processingType,
         adjudicatorRequested: payload.adjudicatorRequested,
+        adjudicatorFeeDue: payload.adjudicatorFeeDue,
       })
       .where(eq(schema.records.id, recordId));
 
