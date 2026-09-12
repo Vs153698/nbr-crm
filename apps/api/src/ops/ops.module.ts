@@ -257,6 +257,18 @@ class CommunicationsController {
   }
 
   /**
+   * What this record would fill a template's placeholders with.
+   *
+   * Lets the send form show the values before they go, rather than presenting
+   * empty boxes for data the CRM already holds.
+   */
+  @Get('whatsapp-template-context/:recordId')
+  @Can(MODULES.COMMUNICATIONS, ACTIONS.SEND)
+  async whatsappTemplateContext(@Param('recordId') recordId: string) {
+    return this.comms.whatsAppTemplateContext(recordId);
+  }
+
+  /**
    * Send an approved template to this record's applicant.
    *
    * The counterpart to `whatsapp` for accounts on AiSensy: instead of a body

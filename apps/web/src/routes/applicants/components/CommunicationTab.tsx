@@ -8,7 +8,7 @@ import {
   type WhatsAppTemplate,
 } from '@nbr/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Chip } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -421,6 +421,49 @@ function WhatsAppDialog({
   const [values, setValues] = useState<Record<string, string>>({});
   const chosen = registered?.find((template) => template.id === registeredId) ?? null;
 
+  /**
+   * What the record itself would fill each placeholder with.
+   *
+   * The server merges exactly this when a field is left blank, so the message
+   * always went out filled — but the sender could not see it, and had to retype
+   * values the CRM already held just to check one. Fetched once per record and
+   * used to seed the boxes below.
+   */
+  const { data: templateContext } = useQuery({
+    queryKey: ['whatsapp-template-context', recordId],
+    queryFn: ({ signal }) =>
+      api.get<Record<string, string>>(
+        `/communications/whatsapp-template-context/${recordId}`,
+        undefined,
+        signal,
+      ),
+    enabled: onAisensy,
+    staleTime: 60_000,
+  });
+
+  /**
+   * Seed the boxes whenever the chosen template or the looked-up values change.
+   *
+   * Keyed on the template so switching templates re-seeds for its own
+   * placeholders; edits survive until then, because the sender's typing is the
+   * whole point of showing the fields.
+   */
+  useEffect(() => {
+    if (!chosen) return;
+    setValues(
+      Object.fromEntries(
+        chosen.params.map((param) => [
+          param.key,
+          // `manual` has nothing behind it by definition — it is the source for
+          // a value only a person can supply, so it stays blank on purpose.
+          param.source === WHATSAPP_PARAM_SOURCE.MANUAL
+            ? ''
+            : (templateContext?.[param.key] ?? templateContext?.[param.source] ?? ''),
+        ]),
+      ),
+    );
+  }, [chosen, templateContext]);
+
   const templateSendMutation = useMutation({
     mutationFn: () =>
       api.post<{ communicationId: string; status: string }>('/communications/whatsapp-template', {
@@ -595,6 +638,10 @@ function WhatsAppDialog({
                 <p className="text-2xs font-semibold uppercase tracking-wider text-ink-3">
                   Message details
                 </p>
+                <p className="text-[11px] text-ink-3">
+                  Filled in from this record. Edit anything that should read differently — what you
+                  type is what gets sent.
+                </p>
                 {chosen.params.map((param, index) => (
                   <Input
                     key={param.key}
@@ -602,7 +649,9 @@ function WhatsAppDialog({
                     placeholder={
                       param.source === WHATSAPP_PARAM_SOURCE.MANUAL
                         ? 'Type a value'
-                        : 'Filled from this record — type to override'
+                        // Only reachable when the record holds nothing for this
+                        // source — otherwise the box arrives already filled.
+                        : 'Nothing on file for this — type a value'
                     }
                     value={values[param.key] ?? ''}
                     disabled={sentAuto}

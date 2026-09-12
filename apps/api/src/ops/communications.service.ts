@@ -662,6 +662,24 @@ export class CommunicationsService {
    * the history readable later: "Selection letter — Nikita Saha, NBRR00145"
    * rather than an opaque campaign id.
    */
+  /**
+   * The record's own values, flattened, for prefilling a send form.
+   *
+   * `sendWhatsAppTemplate` already merges this server-side, so a message goes
+   * out correctly filled either way — but the sender could not see what it was
+   * about to say, and had to retype values the record already held in order to
+   * check or adjust one. Same map, same keys, so what the form shows is exactly
+   * what would have been used had they typed nothing.
+   */
+  async whatsAppTemplateContext(recordId: string): Promise<Record<string, string>> {
+    const { context } = await this.buildContext(recordId);
+    return Object.fromEntries(
+      Object.entries(context)
+        .filter(([, value]) => value !== null && value !== undefined && String(value) !== '')
+        .map(([key, value]) => [key, String(value)]),
+    );
+  }
+
   async sendWhatsAppTemplate(input: {
     recordId: string;
     templateId: string;

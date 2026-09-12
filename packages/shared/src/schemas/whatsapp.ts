@@ -45,6 +45,25 @@ export const WHATSAPP_PARAM_SOURCE = {
   MAGAZINE_NAME: 'magazine_name',
   ORGANISATION_NAME: 'organisation_name',
   SUPPORT_PHONE: 'support_phone',
+  /**
+   * Everything below is filled from the same record context as the entries
+   * above and was simply never listed, so an operator whose approved template
+   * asked for a tracking link or a due-date countdown had to type it by hand on
+   * every send. The keys match `TemplateContext` exactly — that is what makes
+   * them resolve.
+   */
+  APPLICANT_CODE: 'applicant_id',
+  ASSIGNED_EMPLOYEE: 'assigned_employee',
+  AMOUNT_PAID: 'amount_paid',
+  DAYS_REMAINING: 'days_remaining',
+  TRANSACTION_ID: 'transaction_id',
+  CERTIFICATE_ISSUE_DATE: 'certificate_issue_date',
+  TRACKING_URL: 'tracking_url',
+  DISPATCH_DATE: 'dispatch_date',
+  MAGAZINE_PAGE: 'magazine_page',
+  ARTICLE_URL: 'article_url',
+  SUPPORT_EMAIL: 'support_email',
+  TODAY: 'today',
 } as const;
 
 export type WhatsAppParamSource =
@@ -69,6 +88,18 @@ export const WHATSAPP_PARAM_SOURCE_LABELS: Readonly<Record<WhatsAppParamSource, 
   [WHATSAPP_PARAM_SOURCE.MAGAZINE_NAME]: 'Magazine name',
   [WHATSAPP_PARAM_SOURCE.ORGANISATION_NAME]: 'Organisation name',
   [WHATSAPP_PARAM_SOURCE.SUPPORT_PHONE]: 'Support phone',
+  [WHATSAPP_PARAM_SOURCE.APPLICANT_CODE]: 'Applicant ID',
+  [WHATSAPP_PARAM_SOURCE.ASSIGNED_EMPLOYEE]: 'Assigned employee',
+  [WHATSAPP_PARAM_SOURCE.AMOUNT_PAID]: 'Amount paid',
+  [WHATSAPP_PARAM_SOURCE.DAYS_REMAINING]: 'Days remaining until due',
+  [WHATSAPP_PARAM_SOURCE.TRANSACTION_ID]: 'Transaction reference',
+  [WHATSAPP_PARAM_SOURCE.CERTIFICATE_ISSUE_DATE]: 'Certificate issue date',
+  [WHATSAPP_PARAM_SOURCE.TRACKING_URL]: 'Tracking link',
+  [WHATSAPP_PARAM_SOURCE.DISPATCH_DATE]: 'Dispatch date',
+  [WHATSAPP_PARAM_SOURCE.MAGAZINE_PAGE]: 'Magazine page number',
+  [WHATSAPP_PARAM_SOURCE.ARTICLE_URL]: 'Article link',
+  [WHATSAPP_PARAM_SOURCE.SUPPORT_EMAIL]: 'Support email',
+  [WHATSAPP_PARAM_SOURCE.TODAY]: "Today's date",
 };
 
 /** Which provider actually carries the message. */
