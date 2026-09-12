@@ -38,23 +38,47 @@ const DEFAULT_DIAL_CODE = '91';
 const NATIONAL_NUMBER_LENGTH = 10;
 
 /**
- * A destination in the form AiSensy's API reference documents: `+917428526285`.
+ * Put a number people actually typed into the form AiSensy documents.
  *
- * Callers hold numbers in every shape the CRM has ever stored — `+91 98765
- * 43210` from `toE164`, a bare ten-digit mobile imported from the website — and
- * two of them used to strip the plus before calling in. That was wrong: AiSensy
- * accepts the plus, and for any number outside India requires it. Indian
- * numbers survived the stripping only because AiSensy defaults an unresolvable
- * number to +91, which is why nobody noticed.
+ * Applicants write the same mobile every way there is — `9876543210`,
+ * `09876543210`, `91 98765 43210`, `+91-98765-43210`, `0091 9876543210` — and
+ * only the bare ten-digit form was understood here. Everything else went out as
+ * typed: `09876543210` became `+09876543210`, which AiSensy rejects as "Invalid
+ * Number", so the applicant never heard from us.
  *
- * Normalising here rather than at each call site means a new caller cannot
- * reintroduce the same bug.
+ * The two prefixes handled are the ones that actually turn up:
+ *
+ *  - `00` — the international access code, meaning what a `+` means.
+ *  - `0`  — India's trunk prefix, dialled before a mobile from a landline and
+ *           habitually written down that way. It appears bare, and after the
+ *           country code (`910XXXXXXXXXX`).
+ *
+ * The leading plus is kept: their reference shows `+917428526285` and requires
+ * that form for any number outside India. Normalising here rather than at each
+ * call site means a new caller cannot reintroduce either bug.
  */
 export function toAiSensyDestination(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  return digits.length === NATIONAL_NUMBER_LENGTH
-    ? `+${DEFAULT_DIAL_CODE}${digits}`
-    : `+${digits}`;
+  let digits = phone.replace(/\D/g, '');
+
+  if (digits.startsWith('00')) digits = digits.slice(2);
+
+  // Trunk prefix, bare: 0 + ten digits.
+  if (digits.length === NATIONAL_NUMBER_LENGTH + 1 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+
+  // Trunk prefix kept after the country code: 91 + 0 + ten digits.
+  if (digits.length === NATIONAL_NUMBER_LENGTH + 3 && digits.startsWith(`${DEFAULT_DIAL_CODE}0`)) {
+    digits = `${DEFAULT_DIAL_CODE}${digits.slice(3)}`;
+  }
+
+  // No country code of its own. A bare ten-digit number is never a complete
+  // international number, so this is safe even when the writer typed a `+`.
+  if (digits.length === NATIONAL_NUMBER_LENGTH) {
+    digits = `${DEFAULT_DIAL_CODE}${digits}`;
+  }
+
+  return `+${digits}`;
 }
 
 export interface WhatsAppConfig {
