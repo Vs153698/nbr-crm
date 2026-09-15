@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
+import { WhatsAppWorkbookService } from './whatsapp-workbook.service';
 
 /**
  * Global, same as `MailModule`: both the communications module (sending) and
@@ -11,7 +12,7 @@ import { WhatsAppService } from './whatsapp.service';
  */
 @Global()
 @Module({
-  providers: [WhatsAppService],
-  exports: [WhatsAppService],
+  providers: [WhatsAppService, WhatsAppWorkbookService],
+  exports: [WhatsAppService, WhatsAppWorkbookService],
 })
 export class WhatsAppModule {}

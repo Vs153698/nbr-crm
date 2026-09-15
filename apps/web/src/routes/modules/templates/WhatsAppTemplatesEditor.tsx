@@ -5,7 +5,10 @@ import {
   type WhatsAppTemplate,
   type WhatsAppTemplateParam,
 } from '@nbr/shared';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
+import { api, ApiError } from '@/lib/api-client';
 import { Input, Select } from '@/components/ui/Field';
 import { cn } from '@/lib/cn';
 import { humanise } from '@/lib/format';
@@ -118,6 +121,79 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
     );
   }
 
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<'download' | 'import' | null>(null);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+
+  /**
+   * Hand the operator a spreadsheet of what is registered.
+   *
+   * Base64 rather than a direct link because every response on this API is
+   * wrapped in the standard envelope; turning it back into a file here is a few
+   * lines and keeps the endpoint ordinary.
+   */
+  async function downloadWorkbook() {
+    setBusy('download');
+    try {
+      const result = await api.get<{ filename: string; contentType: string; fileBase64: string }>(
+        '/settings/whatsapp/templates/workbook',
+      );
+      const bytes = Uint8Array.from(atob(result.fileBase64), (c) => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: result.contentType }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      toast.error(error instanceof ApiError ? error.detail : 'Could not build the workbook');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Read a filled-in workbook into the editor — not into the database.
+   *
+   * The rows land in the form unsaved, so the operator sees exactly what they
+   * are about to store and can fix or discard it. A bad import is undone by not
+   * pressing Save.
+   */
+  async function importWorkbook(file: File) {
+    setBusy('import');
+    setImportErrors([]);
+    try {
+      const buffer = await file.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      // Chunked: spreading a large array into String.fromCharCode blows the
+      // call stack, and a workbook is comfortably large enough to do it.
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+
+      const result = await api.post<{ templates: WhatsAppTemplate[]; errors: string[] }>(
+        '/settings/whatsapp/templates/parse',
+        { fileBase64: btoa(binary) },
+      );
+
+      setImportErrors(result.errors);
+      if (result.templates.length > 0) {
+        emit(result.templates);
+        toast.success(`${result.templates.length} template(s) loaded`, {
+          description: 'Check them over, then Save to store them.',
+        });
+      } else {
+        toast.error('Nothing could be read from that workbook');
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof ApiError ? error.detail : 'Could not read that workbook');
+    } finally {
+      setBusy(null);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -126,6 +202,42 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
           the friendly name is what your team picks from when sending. Values fill the placeholders
           in the order listed.
         </p>
+        <div className="flex shrink-0 items-center gap-2">
+          {/*
+            Bulk editing, for the thirteen-templates-in-one-sitting case. The
+            download is prefilled with what is registered, so the same file is
+            an export: edit it and import it back.
+          */}
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Icons.Download}
+            disabled={disabled || busy !== null}
+            loading={busy === 'download'}
+            onClick={() => void downloadWorkbook()}
+          >
+            Workbook
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".xlsx"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importWorkbook(file);
+            }}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={Icons.Upload}
+            disabled={disabled || busy !== null}
+            loading={busy === 'import'}
+            onClick={() => fileInput.current?.click()}
+          >
+            Import
+          </Button>
         <Button
           size="sm"
           variant="secondary"
@@ -147,7 +259,26 @@ export function WhatsAppTemplatesEditor({ templates, disabled, onChange }: Props
         >
           Add template
         </Button>
+        </div>
       </div>
+
+      {/*
+        Rows the workbook could not use, named by row so they can be found in
+        the file. Shown alongside the ones that did load rather than instead of
+        them — one mistyped value should not cost the other twelve.
+      */}
+      {importErrors.length > 0 ? (
+        <div className="space-y-1 rounded-lg border border-warn/40 bg-warn-tint p-3">
+          <p className="text-2xs font-semibold text-warn">
+            {importErrors.length} row(s) could not be used
+          </p>
+          {importErrors.map((message, index) => (
+            <p key={index} className="text-[11px] leading-relaxed text-warn">
+              {message}
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {templates.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line p-6 text-center">

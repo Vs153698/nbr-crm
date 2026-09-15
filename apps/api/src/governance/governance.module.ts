@@ -44,6 +44,7 @@ import { NbrWebsiteService } from '../integrations/nbr-website.service';
 import { ImportedRecordsService } from '../integrations/imported-records.service';
 import { MailService } from '../mail/mail.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { WhatsAppWorkbookService } from '../whatsapp/whatsapp-workbook.service';
 import { ExportsService } from '../reports/exports.service';
 import { ReportsService } from '../reports/reports.service';
 import { GovernanceService } from './governance.service';
@@ -67,6 +68,11 @@ const importedActivitySchema = z.object({
  */
 /** Who pays for the adjudicator, and whether one was asked for at all. */
 /** A real test send: a number the operator nominates, and one of their templates. */
+/** A workbook arrives base64-encoded; 8 MB of it is far more than a settings file. */
+const whatsappWorkbookSchema = z.object({
+  fileBase64: z.string().min(1).max(8 * 1024 * 1024),
+});
+
 const whatsappTestSendSchema = z.object({
   to: z.string().trim().min(8).max(20),
   templateId: z.string().trim().min(1).max(60),
@@ -211,6 +217,7 @@ class SettingsController {
     private readonly governance: GovernanceService,
     private readonly mail: MailService,
     private readonly whatsapp: WhatsAppService,
+    private readonly whatsappWorkbook: WhatsAppWorkbookService,
   ) {}
 
   /**
@@ -254,6 +261,42 @@ class SettingsController {
    * honest test is an actual message to a number the operator nominates, using
    * one of their own approved templates. `testWhatsapp` above stays Meta's.
    */
+  /**
+   * The template registry as a spreadsheet, prefilled with what is registered.
+   *
+   * Base64 rather than a binary stream: every response on this API goes through
+   * the envelope interceptor, and carving out an exception for one settings
+   * download would be a bigger change than the download is worth. The file is a
+   * few kilobytes.
+   */
+  @Get('whatsapp/templates/workbook')
+  @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
+  async whatsappWorkbookDownload() {
+    const templates = (await this.whatsapp.resolveConfig({ fresh: true })).templates;
+    const buffer = await this.whatsappWorkbook.build(templates);
+    return {
+      filename: 'nbr-whatsapp-templates.xlsx',
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      fileBase64: buffer.toString('base64'),
+    };
+  }
+
+  /**
+   * Read a filled-in workbook back into templates. Writes nothing.
+   *
+   * The rows come back for the operator to look over in the editor they already
+   * know, and saving stays the one existing path — so a bad import is undone by
+   * not pressing Save, rather than by restoring a registry.
+   */
+  @Post('whatsapp/templates/parse')
+  @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
+  @HttpCode(200)
+  async whatsappWorkbookParse(
+    @Body(zodBody(whatsappWorkbookSchema)) body: { fileBase64: string },
+  ) {
+    return this.whatsappWorkbook.parse(body.fileBase64);
+  }
+
   @Post('whatsapp/test-send')
   @Can(MODULES.SETTINGS, ACTIONS.MANAGE)
   @HttpCode(200)
