@@ -77,6 +77,12 @@ export const EVIDENCE_KIND = {
   WITNESS_STATEMENT: 'witness_statement',
   MEASUREMENT_RECORD: 'measurement_record',
   OTHER: 'other',
+  /**
+   * Uploaded by the applicant from the website dashboard in response to a
+   * staff request for more proof. Not a kind an operator picks — it only ever
+   * arrives on the inbound `proof-uploads` webhook from the website.
+   */
+  REQUESTED_PROOF: 'requested_proof',
 } as const;
 
 export type EvidenceKind = (typeof EVIDENCE_KIND)[keyof typeof EVIDENCE_KIND];
@@ -90,6 +96,7 @@ export const EVIDENCE_KIND_LABELS: Readonly<Record<EvidenceKind, string>> = {
   [EVIDENCE_KIND.WITNESS_STATEMENT]: 'Witness statement',
   [EVIDENCE_KIND.MEASUREMENT_RECORD]: 'Measurement record',
   [EVIDENCE_KIND.OTHER]: 'Other',
+  [EVIDENCE_KIND.REQUESTED_PROOF]: 'Requested proof',
 };
 
 /** General attachment kinds (§16). */

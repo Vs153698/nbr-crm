@@ -42,6 +42,13 @@ const LEGACY_PATHS = {
    */
   evidence: '/api/crm-connector/evidence',
   /**
+   * "We need more proof." Fired when an operator sends a request-more-evidence
+   * message from here, alongside the email: it opens the upload card on the
+   * applicant's website dashboard carrying the staff's message. A command, not
+   * a state mirror — the website records it as a fresh, answerable request.
+   */
+  proofRequest: '/api/crm-connector/proof-request',
+  /**
    * A blacklist added or lifted here. Applicant-scoped, not record-scoped —
    * see `pushBlacklist` for why it cannot go through `push` below.
    */
@@ -721,6 +728,30 @@ export class LegacyPushService {
         (error: unknown) => {
           this.logger.error(
             `Detached evidence push threw: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      );
+    });
+  }
+
+  /**
+   * Open an upload request on the applicant's website dashboard.
+   *
+   * Travels with a request-more-evidence email, never instead of one — the CRM
+   * template and its queue are the message; this is what turns the same words
+   * into a card the applicant can act on. Echo suppression stays off, as it
+   * does for every command: asking an applicant for the same document twice is
+   * a legitimate sequence and the second request must land.
+   *
+   * Detached: the email is already queued and answered 202; the operator's
+   * click must not wait on the website being reachable.
+   */
+  pushProofRequest(recordId: string, input: { message: string; requestedBy?: string }): void {
+    setImmediate(() => {
+      void this.push('proofRequest', recordId, { ...input }, { suppressEcho: false }).catch(
+        (error: unknown) => {
+          this.logger.error(
+            `Detached proof-request push threw: ${error instanceof Error ? error.message : String(error)}`,
           );
         },
       );

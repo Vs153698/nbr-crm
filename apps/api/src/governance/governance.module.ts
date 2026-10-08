@@ -43,6 +43,7 @@ import {
 import { NbrWebsiteService } from '../integrations/nbr-website.service';
 import { ImportedRecordsService } from '../integrations/imported-records.service';
 import { MailService } from '../mail/mail.service';
+import { VaultModule } from '../vault/vault.module';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { WhatsAppWorkbookService } from '../whatsapp/whatsapp-workbook.service';
 import { ExportsService } from '../reports/exports.service';
@@ -425,6 +426,29 @@ class IntegrationsController {
   }
 
   /**
+   * Inbound push for files an applicant uploaded on the website dashboard in
+   * answer to a staff request for more proof (source either CRM).
+   *
+   * Its own endpoint for the same reason as `imported-certificates`: the
+   * `applications` payload is a full application snapshot and one of these —
+   * which has an applicant but no application fields — would be rejected
+   * before reaching anything useful. `@Public()` with the HMAC check inside
+   * `receiveProofUploads` doing the authentication, exactly like its siblings.
+   */
+  @Public()
+  @Post('proof-uploads')
+  @HttpCode(202)
+  async receiveProofUploads(
+    @Req() request: FastifyRequest & { rawBody?: string; body: unknown },
+  ) {
+    return this.nbr.receiveProofUploads(
+      request.rawBody ?? '',
+      request.headers[WEBHOOK_SIGNATURE_HEADER] as string | undefined,
+      request.body,
+    );
+  }
+
+  /**
    * Clear everything that came from the website, ready for a full re-push.
    *
    * `@Public()` for the same reason as the webhook above: this is a
@@ -712,7 +736,7 @@ class ImportedRecordsController {
   // The importer reuses the same duplicate-detection engine the manual Add
   // Applicant form uses, so a website submission from a returning applicant
   // merges onto their existing profile rather than creating a second one.
-  imports: [forwardRef(() => ApplicantsModule)],
+  imports: [forwardRef(() => ApplicantsModule), forwardRef(() => VaultModule)],
   controllers: [
     ReportsController,
     ExportsController,

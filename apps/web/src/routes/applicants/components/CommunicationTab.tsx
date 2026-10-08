@@ -72,11 +72,25 @@ export function CommunicationTab({
    * whichever template happens to sort first.
    */
   const [presetTemplate, setPresetTemplate] = useState<string | null>(null);
+  /**
+   * True when the composer is open for a "request more evidence" send. The
+   * composer then asks the server to open the upload card on the applicant's
+   * website dashboard with the same message. Cleared whenever any other
+   * opener runs, so a plain email afterwards stays plain.
+   */
+  const [proofRequestSend, setProofRequestSend] = useState(false);
 
   useAutoOpen(
     autoOpen,
     {
-      email: () => { setPresetTemplate(null); setEmailOpen(true); },
+      email: () => { setPresetTemplate(null); setProofRequestSend(false); setEmailOpen(true); },
+      // The staff's words in the composer become the message on the portal's
+      // upload card — one send, one ask, in both places.
+      'email:proof-request': () => {
+        setPresetTemplate(null);
+        setProofRequestSend(true);
+        setEmailOpen(true);
+      },
       'call-note': () => setCallOpen(true),
       // The selection letter is its own composer — fixed wording, an attached
       // Achiever Pack and a preview — rather than a template in the generic one.
@@ -84,7 +98,7 @@ export function CommunicationTab({
       ...Object.fromEntries(
         EMAIL_TEMPLATE_CODES.map((code) => [
           `email:${code}`,
-          () => { setPresetTemplate(code); setEmailOpen(true); },
+          () => { setPresetTemplate(code); setProofRequestSend(false); setEmailOpen(true); },
         ]),
       ),
       ...Object.fromEntries(
@@ -332,7 +346,11 @@ export function CommunicationTab({
           recordId={recordId}
           defaultTo={applicantEmail}
           initialTemplateCode={presetTemplate}
-          onClose={() => setEmailOpen(false)}
+          proofRequestOnSend={proofRequestSend}
+          onClose={() => {
+            setEmailOpen(false);
+            setProofRequestSend(false);
+          }}
           onSent={invalidate}
         />
       ) : null}

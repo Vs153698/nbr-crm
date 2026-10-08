@@ -34,7 +34,7 @@ export function SmartActionPanel({
   applicantId: string;
   panel?: PanelData;
   isLoading: boolean;
-  onAction?: (action: { kind: string; target: string }) => void;
+  onAction?: (action: { id: string; kind: string; target: string }) => void;
 }) {
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [targetStatus, setTargetStatus] = useState('');
@@ -183,7 +183,7 @@ export function SmartActionPanel({
                       setTargetStatus(action.target);
                       setStatusDialogOpen(true);
                     } else {
-                      onAction?.({ kind: action.kind, target: action.target });
+                      onAction?.({ id: action.id, kind: action.kind, target: action.target });
                     }
                   }}
                 >
