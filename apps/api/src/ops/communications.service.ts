@@ -43,6 +43,7 @@ import { CacheService, CacheTag } from '../redis/cache.service';
 import { TimelineService } from '../timeline/timeline.service';
 import { TasksService } from './tasks.service';
 import { WhatsAppSendError, WhatsAppService } from '../whatsapp/whatsapp.service';
+import { LegacyPushService } from '../integrations/legacy-push.service';
 
 export interface RenderedMessage {
   readonly subject: string | null;
@@ -92,6 +93,9 @@ export class CommunicationsService {
     // Signs the per-attachment links on the message detail view.
     private readonly storage: StorageService,
     private readonly whatsapp: WhatsAppService,
+    // Opens the dashboard upload card on the website for a request-more-
+    // evidence send. Detached and failure-isolated — the email is the action.
+    private readonly legacyPush: LegacyPushService,
   ) {}
 
   /**
@@ -337,6 +341,7 @@ export class CommunicationsService {
     body: string;
     bodyEdited?: boolean;
     attachmentKeys?: string[];
+    openProofRequest?: boolean;
   }): Promise<{ communicationId: string; status: string }> {
     const actor = requireActor();
     const { applicantId, doNotContact } = await this.buildContext(input.recordId);
@@ -391,6 +396,21 @@ export class CommunicationsService {
       entityLabel: input.subject,
       meta: { to: input.to },
     });
+
+    /**
+     * A request-more-evidence send also opens the upload card on the website.
+     *
+     * The card carries this exact body, so what the applicant reads on the
+     * dashboard and what the email said can never drift apart. Pushed detached
+     * — the operator's action is the email; a website that is unreachable
+     * must not fail it, and the push surfaces on the integrations screen.
+     */
+    if (input.openProofRequest) {
+      this.legacyPush.pushProofRequest(input.recordId, {
+        message: input.body,
+        requestedBy: actor.fullName,
+      });
+    }
 
     return { communicationId, status: COMMUNICATION_STATUS.QUEUED };
   }

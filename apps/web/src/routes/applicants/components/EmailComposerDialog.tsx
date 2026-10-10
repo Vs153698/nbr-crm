@@ -50,6 +50,7 @@ export function EmailComposerDialog({
   recordId,
   defaultTo,
   initialTemplateCode,
+  proofRequestOnSend,
   onClose,
   onSent,
 }: {
@@ -61,6 +62,12 @@ export function EmailComposerDialog({
    * header's Email button wants, since it carries no workflow intent.
    */
   initialTemplateCode?: string | null;
+  /**
+   * Set when the send is a "request more evidence" ask from the Smart Action
+   * panel. Alongside the email, the server opens the upload card on the
+   * applicant's website dashboard carrying this body as the staff's message.
+   */
+  proofRequestOnSend?: boolean;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -112,6 +119,8 @@ export function EmailComposerDialog({
         // Untouched, the server re-renders the template's own areas. Rewritten
         // — or written from scratch — these words are what goes out.
         bodyEdited: edited || !usingTemplate,
+        // The portal's upload card shows exactly what the email said.
+        openProofRequest: proofRequestOnSend === true,
       }),
     onSuccess: () => {
       toast.success('Email queued', {

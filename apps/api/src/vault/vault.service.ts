@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { EVIDENCE_KIND, TIMELINE_EVENT } from '@nbr/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { AUDIT, AuditService } from '../audit/audit.service';
@@ -24,6 +25,9 @@ export interface EvidenceItem {
   readonly uploadedByName: string | null;
   readonly createdAt: string;
 }
+
+/** Long enough for a slow origin on a 500 MB video, short enough to fail a stuck pull. */
+const PROOF_FETCH_TIMEOUT_MS = 120_000;
 
 /**
  * Evidence vault and general attachments (§7, §16, P1-12, P1-13).
@@ -224,6 +228,136 @@ export class VaultService {
       });
 
     return { id: inserted!.id };
+  }
+
+  /**
+   * Ingest a proof upload the applicant sent from the website dashboard.
+   *
+   * Called from the inbound `proof-uploads` webhook, never from an operator.
+   * The bytes live in the website's bucket, so we fetch them once over its
+   * public URL, verify the SHA-256 the website computed, and store a copy
+   * under our own vault key — the same direction of travel as the website
+   * pulling our evidence, so this system keeps a copy that outlives the link.
+   *
+   * Deliberately different from `confirmEvidence`: no upload intent to check
+   * (the website stored the file itself), no uploader (the applicant has no
+   * account here), and — critically — no push back. These bytes came from the
+   * website; echoing them home would ping-pong forever.
+   */
+  async ingestRequestedProof(input: {
+    recordId: string;
+    sourceUrl: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    checksumSha256: string;
+    description?: string;
+  }): Promise<{ id: string; fileName: string } | null> {
+    const [record] = await this.db
+      .select({
+        id: schema.records.id,
+        applicantId: schema.records.applicantId,
+        recordCode: schema.records.recordCode,
+      })
+      .from(schema.records)
+      .where(and(eq(schema.records.id, input.recordId), isNull(schema.records.deletedAt)))
+      .limit(1);
+
+    if (!record) throw new NotFoundError('Record');
+
+    const response = await fetch(input.sourceUrl, {
+      signal: AbortSignal.timeout(PROOF_FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new ValidationError({
+        sourceUrl: [`The website returned HTTP ${response.status} for ${input.fileName}.`],
+      });
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+
+    // The website sent a checksum of what it stored; if our copy disagrees,
+    // something corrupted the transfer and the row would vouch for bytes we
+    // do not actually hold.
+    const checksum = createHash('sha256').update(bytes).digest('hex');
+    if (checksum !== input.checksumSha256.toLowerCase()) {
+      throw new ValidationError({
+        checksum: [`Checksum mismatch fetching ${input.fileName} from the website.`],
+      });
+    }
+
+    // A repeated delivery of identical bytes must not become a second row —
+    // the unique (record, checksum) index turns the insert into a conflict.
+    const [existing] = await this.db
+      .select({ id: schema.evidenceFiles.id })
+      .from(schema.evidenceFiles)
+      .where(
+        and(
+          eq(schema.evidenceFiles.recordId, record.id),
+          eq(schema.evidenceFiles.checksumSha256, checksum),
+        ),
+      )
+      .limit(1);
+    if (existing) return null;
+
+    const storageKey = this.storage.buildKey('evidence', record.id, input.fileName);
+    await this.storage.putObject(storageKey, bytes, input.contentType);
+
+    const [inserted] = await this.db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(schema.evidenceFiles)
+        .values({
+          recordId: record.id,
+          applicantId: record.applicantId,
+          kind: EVIDENCE_KIND.REQUESTED_PROOF,
+          storageKey,
+          fileName: input.fileName,
+          contentType: input.contentType,
+          sizeBytes: bytes.length,
+          checksumSha256: checksum,
+          description: input.description ?? null,
+          isSensitive: false,
+          uploadedByUserId: null,
+        })
+        .returning({ id: schema.evidenceFiles.id });
+
+      await tx
+        .update(schema.records)
+        .set({ evidenceCount: sql`${schema.records.evidenceCount} + 1` })
+        .where(eq(schema.records.id, record.id));
+
+      await this.timeline.write(
+        {
+          applicantId: record.applicantId,
+          recordId: record.id,
+          eventType: TIMELINE_EVENT.EVIDENCE_UPLOADED,
+          summary: `Requested proof uploaded by applicant — ${input.fileName}`,
+          meta: { kind: EVIDENCE_KIND.REQUESTED_PROOF, fileName: input.fileName },
+        },
+        tx,
+      );
+
+      await this.audit.record(
+        {
+          action: AUDIT.EVIDENCE_UPLOADED,
+          entityType: 'evidence',
+          entityId: rows[0]!.id,
+          entityLabel: `${record.recordCode} — ${input.fileName}`,
+          meta: { kind: EVIDENCE_KIND.REQUESTED_PROOF, source: 'website_proof_upload' },
+        },
+        tx,
+      );
+
+      return rows;
+    });
+
+    await this.cache.invalidateTags(
+      CacheTag.record(record.id),
+      CacheTag.applicant(record.applicantId),
+      CacheTag.applicantList(),
+    );
+
+    return { id: inserted!.id, fileName: input.fileName };
   }
 
   async listEvidence(recordId: string): Promise<EvidenceItem[]> {

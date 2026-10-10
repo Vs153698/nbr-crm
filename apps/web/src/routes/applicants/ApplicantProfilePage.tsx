@@ -848,6 +848,18 @@ export default function ApplicantProfilePage() {
                     return;
                   }
 
+                  /**
+                   * "Request more evidence" sends the email as usual, and the
+                   * same message also opens the upload card on the applicant's
+                   * website dashboard. The synthetic `email:proof-request`
+                   * key routes to the composer, which flags the send.
+                   */
+                  if (action.id === 'request-evidence') {
+                    setTab('communication');
+                    setPendingDialog('email:proof-request');
+                    return;
+                  }
+
                   const tab = tabForAction(action.target);
                   if (tab) {
                     // Switch first: the tab has to be mounted before it can act

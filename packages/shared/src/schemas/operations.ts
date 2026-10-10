@@ -282,6 +282,13 @@ export const sendEmailSchema = z.object({
    */
   bodyEdited: z.boolean().default(false),
   attachmentKeys: z.array(trimmedString(500)).max(5).optional(),
+  /**
+   * Set when the send is a "request more evidence" message from the Smart
+   * Action panel. Alongside the email, the website opens an upload card on the
+   * applicant's dashboard carrying this body as the staff's message — so the
+   * two never disagree about what was asked for.
+   */
+  openProofRequest: z.boolean().default(false),
 });
 
 export const whatsappLinkSchema = z.object({

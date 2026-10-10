@@ -191,6 +191,7 @@ class CommunicationsController {
       body: string;
       bodyEdited?: boolean;
       attachmentKeys?: string[];
+      openProofRequest?: boolean;
     },
   ) {
     return this.comms.sendEmail(body);

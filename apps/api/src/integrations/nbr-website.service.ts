@@ -29,6 +29,7 @@ import {
   type RecordStatus,
 } from '@nbr/shared';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { AUDIT, AuditService } from '../audit/audit.service';
 import { verifyWebhookSignature } from '../common/crypto';
 import { UnauthorisedError, ValidationError } from '../common/errors';
@@ -42,6 +43,7 @@ import { DuplicateService } from '../applicants/duplicate.service';
 import { CacheService, CacheTag } from '../redis/cache.service';
 import { StorageService } from '../storage/storage.service';
 import { TimelineService } from '../timeline/timeline.service';
+import { VaultService } from '../vault/vault.service';
 import { LegacyLifecycleService } from './legacy-lifecycle.service';
 
 /**
@@ -163,6 +165,48 @@ export interface SyncStatus {
 }
 
 /**
+ * Shape of the website's `proof.uploaded` push — the files an applicant sent
+ * from the dashboard in answer to a staff request for more proof.
+ *
+ * The bytes stay in the website's bucket; `url` is its public object URL,
+ * which we pull once into our own vault (see `VaultService.ingestRequestedProof`).
+ * `proofRequestId` is the website's own request row — kept only for the event
+ * log and traceability, this system has no such row.
+ */
+const proofUploadsWebhookSchema = z.object({
+  externalId: z.string().min(1),
+  proofRequestId: z.string().min(1).optional(),
+  files: z
+    .array(
+      z.object({
+        fileName: z.string().min(1).max(255),
+        url: z.string().url(),
+        contentType: z.string().max(120),
+        sizeBytes: z.number().int().positive(),
+        checksumSha256: z.string().regex(/^[a-f0-9]{64}$/i),
+        uploadedAt: z.string().optional(),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+type ProofUploadsWebhook = z.infer<typeof proofUploadsWebhookSchema>;
+
+function parseProofUploadsPayload(body: unknown): ProofUploadsWebhook {
+  const result = proofUploadsWebhookSchema.safeParse(body);
+  if (result.success) return result.data;
+
+  const fields: Record<string, string[]> = {};
+  for (const issue of result.error.issues) {
+    const key = issue.path.join('.') || 'payload';
+    (fields[key] ??= []).push(issue.message);
+  }
+
+  throw new ValidationError(fields, 'The website sent a payload this system cannot accept.');
+}
+
+/**
  * Inbound integration with the existing NBR website (P2-14).
  *
  * When an application is approved in the current admin panel it POSTs here and
@@ -194,6 +238,7 @@ export class NbrWebsiteService {
     private readonly audit: AuditService,
     private readonly cache: CacheService,
     private readonly lifecycle: LegacyLifecycleService,
+    private readonly vault: VaultService,
   ) {}
 
   /**
@@ -207,41 +252,7 @@ export class NbrWebsiteService {
     signatureHeader: string | undefined,
     parsedBody: unknown,
   ): Promise<{ eventId: string; status: string; duplicate: boolean }> {
-    const verification = verifyWebhookSignature({
-      header: signatureHeader,
-      rawBody,
-      secret: this.env.NBR_WEBHOOK_SECRET,
-      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
-    });
-
-    if (!verification.valid) {
-      this.logger.warn(`Rejected webhook: ${verification.reason}`);
-
-      await this.audit.record({
-        action: AUDIT.WEBHOOK_REJECTED,
-        entityType: 'integration',
-        entityLabel: NbrWebsiteService.SOURCE,
-        meta: { reason: verification.reason },
-      });
-
-      /**
-       * The reason is returned, not just logged.
-       *
-       * Withholding it sounds safer but is not: an attacker learns the same
-       * thing by experiment — resend with a fresh timestamp, and if it still
-       * fails the signature is wrong — while the operator setting the
-       * integration up cannot see the server log and is left guessing between a
-       * mismatched secret, a drifting clock and a proxy stripping the header.
-       * Stripe, GitHub and Shopify all name the reason for exactly this reason.
-       *
-       * Nothing here is derived from the secret; these four strings are the
-       * complete vocabulary.
-       */
-      throw new UnauthorisedError(
-        'WEBHOOK_SIGNATURE_INVALID',
-        `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
-      );
-    }
+    await this.assertVerifiedSignature(rawBody, signatureHeader);
 
     const payload = parseWebhookPayload(parsedBody);
 
@@ -305,6 +316,208 @@ export class NbrWebsiteService {
     void this.processEvent(event.id);
 
     return { eventId: event.id, status: INTEGRATION_IMPORT_STATUS.RECEIVED, duplicate: false };
+  }
+
+  /**
+   * Shared signature gate for every inbound website webhook.
+   *
+   * The rejection reason is returned, not just logged.
+   *
+   * Withholding it sounds safer but is not: an attacker learns the same thing
+   * by experiment — resend with a fresh timestamp, and if it still fails the
+   * signature is wrong — while the operator setting the integration up cannot
+   * see the server log and is left guessing between a mismatched secret, a
+   * drifting clock and a proxy stripping the header. Stripe, GitHub and
+   * Shopify all name the reason for exactly this reason.
+   *
+   * Nothing here is derived from the secret; the four SIGNATURE_FAILURE_HINT
+   * strings are the complete vocabulary.
+   */
+  private async assertVerifiedSignature(
+    rawBody: string,
+    signatureHeader: string | undefined,
+  ): Promise<void> {
+    const verification = verifyWebhookSignature({
+      header: signatureHeader,
+      rawBody,
+      secret: this.env.NBR_WEBHOOK_SECRET,
+      toleranceSeconds: this.env.NBR_WEBHOOK_TOLERANCE_SECONDS,
+    });
+
+    if (verification.valid) return;
+
+    this.logger.warn(`Rejected webhook: ${verification.reason}`);
+
+    await this.audit.record({
+      action: AUDIT.WEBHOOK_REJECTED,
+      entityType: 'integration',
+      entityLabel: NbrWebsiteService.SOURCE,
+      meta: { reason: verification.reason },
+    });
+
+    throw new UnauthorisedError(
+      'WEBHOOK_SIGNATURE_INVALID',
+      `${SIGNATURE_FAILURE_HINT[verification.reason ?? 'signature_mismatch']} (${verification.reason})`,
+    );
+  }
+
+  /**
+   * Receive a `proof.uploaded` push: the files an applicant sent from the
+   * website dashboard in answer to a staff request for more proof.
+   *
+   * Same shape as `receive`: verify, store, ack 202, process detached. The
+   * event key is content-hashed so the website's retries collapse to one
+   * import even though the same application may answer many requests over its
+   * life.
+   */
+  async receiveProofUploads(
+    rawBody: string,
+    signatureHeader: string | undefined,
+    parsedBody: unknown,
+  ): Promise<{ eventId: string; status: string; duplicate: boolean }> {
+    await this.assertVerifiedSignature(rawBody, signatureHeader);
+
+    const payload = parseProofUploadsPayload(parsedBody);
+
+    const contentHash = createHash('sha256').update(rawBody).digest('hex');
+    const eventKey = `proof-uploads:${payload.externalId}#${contentHash.slice(0, 16)}`;
+
+    const [event] = await this.db
+      .insert(schema.integrationEvents)
+      .values({
+        source: NbrWebsiteService.SOURCE,
+        externalId: eventKey,
+        eventType: 'proof.uploaded',
+        payload: payload as unknown as Record<string, unknown>,
+        signatureValid: true,
+        deliveryMode: 'webhook',
+        status: INTEGRATION_IMPORT_STATUS.RECEIVED,
+        receivedAt: new Date(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.integrationEvents.id });
+
+    if (!event) {
+      const [existing] = await this.db
+        .select({ id: schema.integrationEvents.id, status: schema.integrationEvents.status })
+        .from(schema.integrationEvents)
+        .where(
+          and(
+            eq(schema.integrationEvents.source, NbrWebsiteService.SOURCE),
+            eq(schema.integrationEvents.externalId, eventKey),
+          ),
+        )
+        .limit(1);
+
+      return {
+        eventId: existing?.id ?? '',
+        status: existing?.status ?? INTEGRATION_IMPORT_STATUS.DUPLICATE_SKIPPED,
+        duplicate: true,
+      };
+    }
+
+    await this.audit.record({
+      action: AUDIT.WEBHOOK_RECEIVED,
+      entityType: 'integration',
+      entityId: event.id,
+      entityLabel: eventKey,
+      meta: { fileCount: payload.files.length },
+    });
+
+    // Detached, as in `receive` — the website gets its 202 now.
+    void this.processProofUploads(event.id);
+
+    return { eventId: event.id, status: INTEGRATION_IMPORT_STATUS.RECEIVED, duplicate: false };
+  }
+
+  /**
+   * Import one stored proof-upload event.
+   *
+   * Resolves the application through `legacy_mirror` (the website pushes its
+   * own id; this system only knows the record id it minted at import), then
+   * pulls each file into the vault. One bad file fails that file's row only —
+   * the others still land, and the event row records what happened.
+   */
+  async processProofUploads(eventId: string): Promise<void> {
+    try {
+      await this.db
+        .update(schema.integrationEvents)
+        .set({
+          status: INTEGRATION_IMPORT_STATUS.PROCESSING,
+          attemptCount: sql`${schema.integrationEvents.attemptCount} + 1`,
+        })
+        .where(eq(schema.integrationEvents.id, eventId));
+
+      const [event] = await this.db
+        .select()
+        .from(schema.integrationEvents)
+        .where(eq(schema.integrationEvents.id, eventId))
+        .limit(1);
+
+      if (!event) return;
+
+      const payload = proofUploadsWebhookSchema.parse(event.payload);
+
+      const [mirror] = await this.db
+        .select({ recordId: schema.legacyMirror.recordId })
+        .from(schema.legacyMirror)
+        .where(eq(schema.legacyMirror.externalId, payload.externalId))
+        .limit(1);
+
+      if (!mirror) {
+        throw new Error(`Application ${payload.externalId} does not exist in the CRM`);
+      }
+
+      const failures: string[] = [];
+      let ingested = 0;
+
+      for (const file of payload.files) {
+        try {
+          const result = await this.vault.ingestRequestedProof({
+            recordId: mirror.recordId,
+            sourceUrl: file.url,
+            fileName: file.fileName,
+            contentType: file.contentType,
+            sizeBytes: file.sizeBytes,
+            checksumSha256: file.checksumSha256,
+            description: 'Uploaded by the applicant from the website in response to a staff request for more proof.',
+          });
+          if (result) ingested += 1;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Proof ingest failed for ${file.fileName}: ${message}`);
+          failures.push(`${file.fileName}: ${message}`);
+        }
+      }
+
+      if (failures.length > 0 && ingested === 0) {
+        throw new Error(failures.join('; '));
+      }
+
+      await this.db
+        .update(schema.integrationEvents)
+        .set({
+          status: INTEGRATION_IMPORT_STATUS.IMPORTED,
+          recordId: mirror.recordId,
+          processedAt: new Date(),
+          error: failures.length > 0 ? `Partial: ${failures.join('; ')}` : null,
+        })
+        .where(eq(schema.integrationEvents.id, eventId));
+
+      await this.cache.invalidateTags(CacheTag.dashboard(), CacheTag.applicantList());
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Proof-upload import ${eventId} failed: ${message}`);
+
+      await this.db
+        .update(schema.integrationEvents)
+        .set({
+          status: INTEGRATION_IMPORT_STATUS.FAILED,
+          error: message,
+          processedAt: new Date(),
+        })
+        .where(eq(schema.integrationEvents.id, eventId));
+    }
   }
 
   /**
