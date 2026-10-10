@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Module, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Module, Param, Post, Query, forwardRef } from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
@@ -144,9 +144,11 @@ class AttachmentsController {
 @Module({
   controllers: [UploadsController, EvidenceController, AttachmentsController],
   // Files attached here are pushed up to the website, whose applicant portal and
-  // adjudicator view read from its own columns. No cycle: nothing the governance
-  // module depends on reaches back into the vault.
-  imports: [GovernanceModule],
+  // adjudicator view read from its own columns. Governance itself is in a
+  // deliberate forwardRef cycle with ApplicantsModule, so every module that
+  // imports GovernanceModule must also use forwardRef or Nest can see undefined
+  // during module resolution.
+  imports: [forwardRef(() => GovernanceModule)],
   providers: [VaultService],
   exports: [VaultService],
 })

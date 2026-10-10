@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   Req,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ACTIONS,
@@ -516,7 +517,9 @@ class NotificationsController {
 @Module({
   // For `LegacyPushService`: a blacklist added here blocks the person's website
   // account too, otherwise they simply log in over there and file again.
-  imports: [GovernanceModule],
+  // Governance is in a deliberate forwardRef cycle with ApplicantsModule, so
+  // any module that imports it must also use forwardRef.
+  imports: [forwardRef(() => GovernanceModule)],
   controllers: [
     TasksController,
     CommunicationsController,

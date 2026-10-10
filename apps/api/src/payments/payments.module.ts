@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Module, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Module, Param, Post, Query, forwardRef } from '@nestjs/common';
 import {
   ACTIONS,
   MODULES,
@@ -245,8 +245,10 @@ class DispatchController {
  */
 @Module({
   // Payments, certificates and dispatch each push their change back to the
-  // public NBR website when the record originated there.
-  imports: [GovernanceModule],
+  // public NBR website when the record originated there. Governance is in a
+  // deliberate forwardRef cycle with ApplicantsModule, so any module that
+  // imports it must also use forwardRef to avoid undefined at resolution time.
+  imports: [forwardRef(() => GovernanceModule)],
   controllers: [
     PaymentsController,
     CertificatesController,
